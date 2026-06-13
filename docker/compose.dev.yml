@@ -1,0 +1,39 @@
+services:
+
+  runestone:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: runestone
+    restart: unless-stopped
+    command: |-
+      --providers.docker.network="${PREFIX}-network"
+    environment:
+      HOST_DOMAIN: ${HOST_DOMAIN:-docker.so}
+      MAILPIT_HOST: mailpit.${HOST_DOMAIN:-docker.so}
+      TRAEFIK_HOST: traefik.${HOST_DOMAIN:-docker.so}
+      WEB_ENTRYPOINT_NAME: ${WEB_ENTRYPOINT_NAME:-web}
+      WEB_ENTRYPOINT_PORT: ${WEB_ENTRYPOINT_PORT:-80}
+      WEB_SECURE_ENTRYPOINT_NAME: ${WEB_SECURE_ENTRYPOINT_NAME:-websecure}
+      WEB_SECURE_ENTRYPOINT_PORT: ${WEB_SECURE_ENTRYPOINT_PORT:-443}
+      PREFIX: ${PREFIX}
+    ports:
+      - "${WEB_ENTRYPOINT_PORT:-80}:${WEB_ENTRYPOINT_PORT:-80}"
+      - "${WEB_SECURE_ENTRYPOINT_PORT:-443}:${WEB_SECURE_ENTRYPOINT_PORT:-443}"
+      - "${SMTP_PORT:-1025}:1025"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - //var/run/docker.sock:/var/run/docker.sock
+      # - ./certs:/ssl # mkcert certs
+      - configuration:/configuration
+      - ssh:/tmp/druid_ssh-agent/
+
+networks:
+  default:
+    name: ${PREFIX:-runestone}-network
+    external: true
+
+volumes:
+  configuration:
+  ssh:

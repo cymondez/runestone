@@ -1,0 +1,29 @@
+global:
+  sendAnonymousUsage: false
+
+log:
+  level: "DEBUG"
+
+api:
+  dashboard: true
+  debug: true
+  insecure: false
+
+entryPoints:
+  ${WEB_ENTRYPOINT_NAME}:
+    address: ":${WEB_ENTRYPOINT_PORT}"
+    http:
+      redirections:
+        entryPoint:
+          to: ${WEB_SECURE_ENTRYPOINT_NAME}
+          scheme: https
+  ${WEB_SECURE_ENTRYPOINT_NAME}:
+    address: ":${WEB_SECURE_ENTRYPOINT_PORT}"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+  file:
+    directory: "/configuration"
+    watch: true

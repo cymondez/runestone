@@ -1,0 +1,59 @@
+tls:
+  certificates:
+    - certFile: /ssl/docker.so.crt
+      keyFile: /ssl/docker.so.key
+    - certFile: /ssl/traefik.me.crt
+      keyFile: /ssl/traefik.me.key
+
+http:
+
+  routers:
+
+    traefik:
+      entryPoints: {{env "WEB_SECURE_ENTRYPOINT_NAME"}}
+      rule: Host(`{{ env "TRAEFIK_HOST" }}`) && (PathPrefix(`/api`) || PathPrefix(`/`))
+      service: api@internal
+      tls: true
+
+    mailpit:
+      entryPoints: {{env "WEB_SECURE_ENTRYPOINT_NAME"}}
+      rule: Host(`{{ env "MAILPIT_HOST" }}`)
+      service: mailpit@file
+      tls: true
+
+    catchall:
+      entryPoints:
+        - {{env "WEB_ENTRYPOINT_NAME"}}
+        - {{env "WEB_SECURE_ENTRYPOINT_NAME"}}
+      rule: HostRegexp(`^.+.{{ env "HOST_DOMAIN" }}$`)
+      service: catchall@file
+      tls: true
+      priority: 1
+      middlewares:
+        - error-page@file
+
+  services:
+
+    traefik:
+      loadBalancer:
+        servers:
+          - url: "http://runestone:8080"
+
+    mailpit:
+      loadBalancer:
+        servers:
+          - url: "http://runestone:8025"
+
+    catchall:
+      loadBalancer:
+        servers:
+          - url: "http://runestone:8181"
+
+  middlewares:
+
+    error-page:
+      errors:
+        status:
+          - "400-599"
+        service: catchall@file
+        query: "/index.html"
