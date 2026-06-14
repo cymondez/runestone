@@ -2,24 +2,17 @@
 
 > 純 Node.js 實作的跨平台 CLI 工具，直接呼叫 Docker CLI（**不依賴 Make**），完整實現 Runestone 所有功能。
 
+專案資源預設位置： `~/.runestone` (docker compose 的 project-directory 位置)
+.env, compose.yaml 都會在此目錄下建立。
+
 ## 一、專案定位
 
 | 項目         | 說明                                                                    |
 | ------------ | ----------------------------------------------------------------------- |
-| **名稱**     | `@druidfi/runestone-cli` (暫定)                                         |
+| **名稱**     | `@developers-homelab/runestone-cli`                                     |
 | **類型**     | npm Global CLI Tool                                                     |
 | **語言**     | TypeScript → JavaScript (CommonJS)                                      |
 | **核心策略** | **獨立實作**：所有邏輯由 Node.js 直接呼叫 Docker CLI，完全繞過 Makefile |
-
-### 與其他工具的關係
-
-```text
-runestone Monorepo
-├── compose.yaml       ← Docker Compose 定義（共用）
-├── traefik/           ← Traefik 設定（共用）
-└── runestone-cli/          ← ⭐ 本專案：npm global CLI 工具
-    └── 直接讀取 compose.yaml，透過 docker compose CLI 執行
-```
 
 ---
 
@@ -36,6 +29,7 @@ runestone Monorepo
 | **路徑處理**           | Node.js `path` / `os` 內建模組         | 跨平台路徑、Home 目錄偵測                            |
 | **JSON 解析**          | `--format json` + `JSON.parse()`       | Docker CLI JSON 輸出                                 |
 | **TypeScript**         | `tsc` + `tsconfig.json`                | 開發期型別安全，Compile 後發佈 JS                    |
+| **本地自簽憑證**       | `@mkcert/node`                         | 產生/安裝本地自簽憑證                                |
 
 ### Node.js 版本要求
 
@@ -117,7 +111,6 @@ Commands:
 Options:
   -V, --version                  顯示版本號碼
   -h, --help                     顯示幫助資訊
-  --env <path>                   指定 .env 路徑 (預設: ./)
 ```
 
 ### 命令別名
@@ -125,7 +118,7 @@ Options:
 | 主命令         | 別名                   | 說明          |
 | -------------- | ---------------------- | ------------- |
 | `certs remove` | `certs rm`, `cert del` | 刪除憑證      |
-| `keys ls`      | `keys list`            | 列出 SSH keys |
+| `keys list`    | `keys ls`              | 列出 SSH keys |
 
 ---
 
