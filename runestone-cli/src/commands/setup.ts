@@ -11,6 +11,7 @@ import { checkDomainResolvesToThisMachine, DomainResolutionCheck } from '../serv
 import { isPortAvailable } from '../services/port-checker';
 import { pathHelpers } from '../utils/path-helpers';
 import { createCommand } from '../utils/command';
+import { loadRunestoneLogo } from '../utils/logo';
 import { createTranslator, initialSetupLocale, languageChoices, Locale, resolveLocale, t as translate } from '../i18n';
 
 export interface SetupOptions {
@@ -207,7 +208,7 @@ async function createDefaultCertificates(projectDir: string, domain: string): Pr
 }
 
 export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv> {
-  p.intro(activeT('setup.intro'));
+  p.intro(loadRunestoneLogo());
 
   let projectDir = pathHelpers.resolveProjectDir(options.project);
   let envPath = setupEnvPath(projectDir, options.envPath);
