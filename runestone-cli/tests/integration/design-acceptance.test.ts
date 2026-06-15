@@ -42,6 +42,7 @@ describe('DESIGNE.md functional acceptance', () => {
     expect(packageJson.dependencies).toEqual(
       expect.objectContaining({
         '@clack/prompts': expect.any(String),
+        '@clack/core': expect.any(String),
         '@mkcert/node': expect.any(String),
         commander: expect.any(String),
         dotenv: expect.any(String),
@@ -146,6 +147,7 @@ describe('DESIGNE.md functional acceptance', () => {
       .join('\n');
 
     expect(setup).toContain("@clack/prompts");
+    expect(setup).toContain("@clack/core");
     expect(setup).not.toContain('enquirer');
     expect(allSource).toContain("@mkcert/node");
     expect(allSource).toContain('mkcert.generate');
@@ -156,16 +158,23 @@ describe('DESIGNE.md functional acceptance', () => {
   it('keeps setup prompts aligned with the expected interactive flow', () => {
     const setup = read('src/commands/setup.ts');
     const up = read('src/commands/up.ts');
-    const explanationBeforePrompt = (explanation: string, prompt: string) => {
-      expect(setup.indexOf(explanation)).toBeGreaterThanOrEqual(0);
-      expect(setup.indexOf(prompt)).toBeGreaterThanOrEqual(0);
-      expect(setup.indexOf(explanation)).toBeLessThan(setup.indexOf(prompt));
-    };
-
     expect(setup).toContain("activeT('setup.runestonePath.title')");
     expect(setup).toContain("activeT('setup.language.title')");
-    expect(setup).toContain('!options.project && !options.envPath && !existingConfig?.ENV_FILE_EXISTS');
-    expect(setup).toContain('return envLoader.load(envPath, projectDir)');
+    expect(setup).toContain('!options.project && !options.envPath && !initialExistingConfig?.ENV_FILE_EXISTS');
+    expect(setup).toContain('return envLoader.load(draft.envPath, draft.projectDir)');
+    expect(setup).not.toContain('promptNavigation');
+    expect(setup).not.toContain('setup.navigation');
+    expect(setup).toContain("const BACK_KEY = '\\x1b'");
+    expect(setup).toContain('function promptFooter');
+    expect(setup).toContain("activeT('setup.hotkey.back')");
+    expect(setup).toContain("activeT('setup.hotkey.next')");
+    expect(setup).toContain("activeT('setup.hotkey.cancel')");
+    expect(setup).toContain("key?.name === 'escape'");
+    expect(setup).toContain("promptInternal.value = STEP_BACK");
+    expect(setup).toContain("promptInternal.emit?.('finalize')");
+    expect(setup).toContain("promptInternal.close?.()");
+    expect(setup).toContain('const reviewAction = await promptReview(draft)');
+    expect(setup.indexOf('const reviewAction = await promptReview(draft)')).toBeLessThan(setup.indexOf('envLoader.write(draft.envPath, configToWrite)'));
     expect(up).toContain('config = await runSetup()');
     expect(up).not.toContain('options.env');
     expect(up).not.toContain('project: config.PROJECT_DIR');
@@ -184,17 +193,19 @@ describe('DESIGNE.md functional acceptance', () => {
     expect(setup).toContain("activeT('setup.httpGroup.title')");
     expect(setup).toContain("activeT('setup.httpsGroup.title')");
     expect(setup).toContain('childPrompt');
-    expect(setup).toContain('`${title}\\n${descriptions.map((line) => `  - ${line}`).join');
-    explanationBeforePrompt("activeT('setup.runestonePath.description')", "promptText(activeT('setup.runestonePath.title')");
-    explanationBeforePrompt("activeT('setup.dockerDomain.description')", "promptText(activeT('setup.dockerDomain.title')");
-    explanationBeforePrompt("activeT('setup.projectPrefix.description')", "promptText(activeT('setup.projectPrefix.title')");
-    explanationBeforePrompt("activeT('setup.httpGroup.title')", "childPrompt(activeT('setup.httpName.prompt'))");
-    explanationBeforePrompt("activeT('setup.httpGroup.title')", "childPrompt(activeT('setup.httpPort.prompt'))");
-    explanationBeforePrompt("activeT('setup.httpsGroup.title')", "childPrompt(activeT('setup.httpsName.prompt'))");
-    explanationBeforePrompt("activeT('setup.httpsGroup.title')", "childPrompt(activeT('setup.httpsPort.prompt'))");
-    explanationBeforePrompt("activeT('setup.mailpit.description')", "childPrompt(activeT('setup.mailpit.prompt'))");
-    explanationBeforePrompt("activeT('setup.localCa.description')", "message: activeT('setup.localCa.prompt')");
-    expect(setup).toContain("initialValue: existingConfig ? existingConfig.MKCERT_INSTALLED === 'true' : true");
+    expect(setup).toContain('function promptHeader');
+    expect(setup).toContain('function promptDescription');
+    expect(setup.indexOf('promptDescription(frame?.description)')).toBeLessThan(setup.indexOf('const value = this.value ? this.valueWithCursor'));
+    expect(setup).toContain("{ description: activeT('setup.runestonePath.description') }");
+    expect(setup).toContain("{ description: activeT('setup.dockerDomain.description') }");
+    expect(setup).toContain("{ description: activeT('setup.projectPrefix.description') }");
+    expect(setup).toContain("activeT('setup.httpGroup.description1')");
+    expect(setup).toContain("activeT('setup.httpGroup.description2')");
+    expect(setup).toContain("activeT('setup.httpsGroup.description1')");
+    expect(setup).toContain("activeT('setup.httpsGroup.description2')");
+    expect(setup).toContain("{ description: activeT('setup.mailpit.description') }");
+    expect(setup).toContain("{ description: activeT('setup.localCa.description') }");
+    expect(setup).toContain("draft.existingConfig ? draft.existingConfig.MKCERT_INSTALLED === 'true' : true");
     expect(setup).not.toContain('Port mapping');
     expect(setup).not.toContain('Project directory:');
   });

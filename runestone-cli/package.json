@@ -30,6 +30,7 @@
     "LICENSE"
   ],
   "dependencies": {
+    "@clack/core": "^0.3.5",
     "@clack/prompts": "^0.7.0",
     "@mkcert/node": "^0.1.3",
     "commander": "^12.0.0",
