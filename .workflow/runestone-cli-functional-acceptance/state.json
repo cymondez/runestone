@@ -1,0 +1,62 @@
+{
+  "title": "Runestone CLI functional acceptance",
+  "slug": "runestone-cli-functional-acceptance",
+  "status": "completed",
+  "approval": {
+    "required": [],
+    "granted": [],
+    "notes": "Acceptance avoids live Docker, mkcert installation, npm publish/link, and destructive teardown."
+  },
+  "packets": [
+    { "id": "A1", "status": "completed" },
+    { "id": "A2", "status": "completed" },
+    { "id": "A3", "status": "completed" },
+    { "id": "A4", "status": "completed" },
+    { "id": "A5", "status": "completed" }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "typescript build",
+        "command": "node node_modules/typescript/bin/tsc --project tsconfig.json",
+        "status": "passed"
+      },
+      {
+        "name": "unit tests",
+        "command": "node node_modules/jest/bin/jest.js tests/services tests/utils tests/commands --runInBand",
+        "status": "passed",
+        "result": "5 suites, 19 tests"
+      },
+      {
+        "name": "integration tests",
+        "command": "node node_modules/jest/bin/jest.js tests/integration --runInBand",
+        "status": "passed",
+        "result": "3 suites, 9 tests"
+      },
+      {
+        "name": "full jest suite",
+        "command": "node node_modules/jest/bin/jest.js --runInBand",
+        "status": "passed",
+        "result": "8 suites, 28 tests"
+      },
+      {
+        "name": "workflow verifier",
+        "command": "python C:\\Users\\cymondez\\.agents\\skills\\codex-dynamic-workflows\\scripts\\verify_workflow.py .workflow\\runestone-cli-functional-acceptance",
+        "status": "passed"
+      },
+      {
+        "name": "live docker acceptance",
+        "command": "node bin/runestone up/status/down --project %USERPROFILE%\\.runestone with RUNESTONE_SKIP_SSH_KEYS=1 and default cymondez/runstone:5.2",
+        "status": "passed",
+        "result": "~/.runestone created and cleaned; compose service started; status showed running container/network/volume; no remaining filtered Docker resources"
+      },
+      {
+        "name": "wsl linux default-port acceptance",
+        "command": "WSL: RUNESTONE_SKIP_SSH_KEYS=1 node bin/runestone up/status --project ~/.runestone",
+        "status": "passed",
+        "result": "runestone-wslaccept left running on default ports 80, 443, and 1025 for user inspection"
+      }
+    ]
+  }
+}

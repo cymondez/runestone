@@ -1,0 +1,21 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260614213000
+Username: RAIDER-A18HX\cymondez
+RunAs User: RAIDER-A18HX\cymondez
+Configuration Name: 
+Machine: RAIDER-A18HX (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File D:\projects\side-project\runestone\.workflow\runestone-cli-functional-acceptance\run-windows-interactive-setup.ps1
+Process ID: 38568
+PSVersion: 5.1.26100.8655
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.8655
+BuildVersion: 10.0.26100.8655
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is D:\projects\side-project\runestone\.workflow\runestone-cli-functional-acceptance\results\windows-interactive-setup.log
+
+=== ACTUAL COMMAND: node .\bin\runestone setup ===

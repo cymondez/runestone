@@ -1,0 +1,10 @@
+src/
+tests/
+*.ts
+tsconfig.json
+jest.config.js
+.runestone/
+.env*
+node_modules/
+coverage/
+DESIGNE.md

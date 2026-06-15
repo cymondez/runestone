@@ -1,0 +1,51 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260614213310
+Username: RAIDER-A18HX\cymondez
+RunAs User: RAIDER-A18HX\cymondez
+Configuration Name: 
+Machine: RAIDER-A18HX (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File D:\projects\side-project\runestone\.workflow\runestone-cli-functional-acceptance\run-windows-interactive-setup-live.ps1
+Process ID: 35432
+PSVersion: 5.1.26100.8655
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.8655
+BuildVersion: 10.0.26100.8655
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is D:\projects\side-project\runestone\.workflow\runestone-cli-functional-acceptance\results\windows-interactive-setup-live.log
+
+=== ACTUAL COMMAND: node .\bin\runestone setup ===
+T  runestone setup
+|
+o  Docker domain
+|  docker.so
+|
+o  Project prefix
+|  runestone
+|
+o  Install local CA for SSL certificates?
+|  Yes
+|
+o  Port mapping
+|  Default
+|
+o  Configuration written to C:\Users\cymondez\.runestone\.env
+|
+o  Local CA installed and default certificates generated
+|
+*  Project directory: C:\Users\cymondez\.runestone
+|
+*  Compose file: C:\Users\cymondez\.runestone\compose.yml
+|
+*  Domain: docker.so
+|
+—  Setup complete. Run `runestone up` to start the environment.
+=== SETUP_EXIT=0 ===
+**********************
+Windows PowerShell transcript end
+End time: 20260614213356
+**********************

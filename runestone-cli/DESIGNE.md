@@ -14,6 +14,10 @@
 | **語言**     | TypeScript → JavaScript (CommonJS)                                      |
 | **核心策略** | **獨立實作**：所有邏輯由 Node.js 直接呼叫 Docker CLI，完全繞過 Makefile |
 
+setup 必須使用@clack/prompts作出openclaw那種設定引導精靈
+certs 必須使用 @mkcert/node來產生本地自簽憑證，而不是另外安裝 mkcert CLI
+必須要能跨平台運行（Linux/macOS/Windows），並處理路徑、環境變數、Docker CLI 差異
+
 ---
 
 ## 二、技術棧

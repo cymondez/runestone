@@ -1,0 +1,4 @@
+node_models
+**/node_modules
+**/dist
+**/lib
