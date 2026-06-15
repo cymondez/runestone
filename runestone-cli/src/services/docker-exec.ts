@@ -1,4 +1,4 @@
-import { spawnSync } from 'child_process';
+import { spawnCommand } from '../utils/spawn';
 
 export interface ExecOptions {
   tty?: boolean;
@@ -26,9 +26,8 @@ export const execService = {
     }
     args.push(containerName, ...command);
 
-    const result = spawnSync('docker', args, {
+    const result = spawnCommand('docker', args, {
       encoding: 'utf8',
-      shell: process.platform === 'win32',
       timeout: 120000
     });
 

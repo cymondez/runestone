@@ -1,11 +1,10 @@
-import { spawnSync } from 'child_process';
+import { spawnCommand } from './spawn';
 
 export const dockerChecker = {
   isInstalled(): boolean {
     try {
-      const result = spawnSync('docker', ['--version'], {
+      const result = spawnCommand('docker', ['--version'], {
         encoding: 'utf8',
-        shell: process.platform === 'win32',
         timeout: 5000
       });
 
@@ -17,9 +16,8 @@ export const dockerChecker = {
 
   composePluginInstalled(): boolean {
     try {
-      const result = spawnSync('docker', ['compose', 'version'], {
+      const result = spawnCommand('docker', ['compose', 'version'], {
         encoding: 'utf8',
-        shell: process.platform === 'win32',
         timeout: 5000
       });
 

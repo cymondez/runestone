@@ -1,4 +1,4 @@
-import { spawnSync } from 'child_process';
+import { spawnCommand } from '../utils/spawn';
 
 export interface RunOptions {
   rm?: boolean;
@@ -48,21 +48,11 @@ export const runService = {
     }
 
     const args = ['run', ...buildArgs(options), image, ...command];
-    let result = spawnSync('docker', args, {
+    const result = spawnCommand('docker', args, {
       input: options?.input,
       encoding: 'utf8',
-      shell: false,
       timeout: 300000
     });
-
-    if (process.platform === 'win32' && result.error && ['EPERM', 'ENOENT'].includes((result.error as NodeJS.ErrnoException).code ?? '')) {
-      result = spawnSync('docker', args, {
-        input: options?.input,
-        encoding: 'utf8',
-        shell: true,
-        timeout: 300000
-      });
-    }
 
     if (result.error) {
       throw result.error;

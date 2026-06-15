@@ -1,4 +1,4 @@
-import { spawnSync } from 'child_process';
+import { spawnCommand } from '../utils/spawn';
 
 function addressHasPort(address: string, port: number): boolean {
   const escapedPort = String(port).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -31,7 +31,7 @@ export function isListeningLineForPort(line: string, port: number): boolean {
 
 function netstatOutput(): string {
   const args = process.platform === 'win32' ? ['-ano'] : ['-an'];
-  const result = spawnSync('netstat', args, { encoding: 'utf8', shell: process.platform === 'win32' });
+  const result = spawnCommand('netstat', args, { encoding: 'utf8' });
 
   if (result.error) {
     throw result.error;

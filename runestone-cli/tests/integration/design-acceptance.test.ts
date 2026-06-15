@@ -90,7 +90,7 @@ describe('DESIGNE.md functional acceptance', () => {
     const sourceFiles = listFiles(srcDir).filter((file) => file.endsWith('.ts'));
     const forbiddenCallers = sourceFiles.filter((file) => {
       const relative = path.relative(srcDir, file).replace(/\\/g, '/');
-      if (relative.startsWith('services/') || relative === 'utils/docker-checker.ts') {
+      if (relative.startsWith('services/') || relative === 'utils/docker-checker.ts' || relative === 'utils/spawn.ts') {
         return false;
       }
 

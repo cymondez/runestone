@@ -1,4 +1,5 @@
-import { spawnSync, SpawnSyncReturns } from 'child_process';
+import { SpawnSyncReturns } from 'child_process';
+import { spawnCommand } from '../utils/spawn';
 
 export interface DockerNetwork {
   Name: string;
@@ -8,9 +9,8 @@ export interface DockerNetwork {
 }
 
 function runDocker(args: string[]): SpawnSyncReturns<string> {
-  const result = spawnSync('docker', args, {
+  const result = spawnCommand('docker', args, {
     encoding: 'utf8',
-    shell: process.platform === 'win32',
     timeout: 30000
   });
 

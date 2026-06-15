@@ -1,5 +1,6 @@
-import { spawnSync, SpawnSyncReturns } from 'child_process';
+import { SpawnSyncReturns } from 'child_process';
 import * as path from 'path';
+import { spawnCommand } from '../utils/spawn';
 
 export interface ComposeOptions {
   wait?: boolean;
@@ -23,9 +24,8 @@ function composeArgs(composePath: string, args: string[]): string[] {
 }
 
 function runCompose(args: string[], composePath: string, timeout = 120000): SpawnSyncReturns<string> {
-  const result = spawnSync('docker', composeArgs(composePath, args), {
+  const result = spawnCommand('docker', composeArgs(composePath, args), {
     encoding: 'utf8',
-    shell: process.platform === 'win32',
     timeout
   });
 
