@@ -8,6 +8,8 @@ import { createSetupCommand } from './commands/setup';
 import { createStatusCommand } from './commands/status';
 import { createStopCommand } from './commands/stop';
 import { createUpCommand } from './commands/up';
+import { t } from './i18n';
+import { createCommand } from './utils/command';
 
 function packageVersion(): string {
   try {
@@ -20,9 +22,9 @@ function packageVersion(): string {
 }
 
 export function createProgram(): Command {
-  return new Command()
+  return createCommand()
     .name('runestone')
-    .description('Cross-platform CLI tool for the runestone Docker development environment')
+    .description(t('cli.description'))
     .version(packageVersion())
     .addCommand(createSetupCommand())
     .addCommand(createUpCommand())

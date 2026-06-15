@@ -3,11 +3,8 @@ import { createDomainCertificate, removeDomainCertificate } from '../services/ce
 import { composeService } from '../services/docker-compose';
 import { envLoader } from '../utils/env-loader';
 import { logger } from '../utils/logger';
-
-interface CertOptions {
-  env?: string;
-  project?: string;
-}
+import { t } from '../i18n';
+import { createCommand } from '../utils/command';
 
 function shouldRestartOnWindows(changed: boolean): boolean {
   return changed && process.platform === 'win32';
@@ -29,20 +26,17 @@ function restartIfRunningOnWindows(composePath: string, changed: boolean): void 
 }
 
 export function createCertsCommand(): Command {
-  const command = new Command('certs')
+  const command = createCommand('certs')
     .alias('cert')
-    .description('SSL certificate management with @mkcert/node')
-    .option('-e, --env <path>', 'Path to .env file')
-    .option('--project <path>', 'Runestone path or compose.yml path');
+    .description(t('commands.certs.description'));
 
   command
-    .command('create')
-    .description('Generate local SSL certificate for a domain')
-    .argument('<domain>', 'Domain to generate certificate for')
+    .addCommand(createCommand('create')
+    .description(t('commands.certs.create.description'))
+    .argument('<domain>', t('arguments.domain.create'))
     .action(async (domain: string) => {
-      const options = command.opts<CertOptions>();
       try {
-        const config = envLoader.load(options.env, options.project);
+        const config = envLoader.load();
         const result = await createDomainCertificate(config.PROJECT_DIR, domain);
         restartIfRunningOnWindows(
           config.COMPOSE_FILE_PATH,
@@ -58,18 +52,17 @@ export function createCertsCommand(): Command {
         logger.error(`Failed to create certificate: ${message}`);
         process.exit(1);
       }
-    });
+    }));
 
   command
-    .command('remove')
+    .addCommand(createCommand('remove')
     .alias('rm')
     .alias('del')
-    .description('Remove certificate for a domain')
-    .argument('<domain>', 'Domain to remove certificate for')
+    .description(t('commands.certs.remove.description'))
+    .argument('<domain>', t('arguments.domain.remove'))
     .action((domain: string) => {
-      const options = command.opts<CertOptions>();
       try {
-        const config = envLoader.load(options.env, options.project);
+        const config = envLoader.load();
         const result = removeDomainCertificate(config.PROJECT_DIR, domain);
         const changed = result.certificateChanged || result.dynamicConfigChanged;
         restartIfRunningOnWindows(config.COMPOSE_FILE_PATH, changed);
@@ -84,7 +77,7 @@ export function createCertsCommand(): Command {
         logger.error(`Failed to remove certificate: ${message}`);
         process.exit(1);
       }
-    });
+    }));
 
   return command;
 }

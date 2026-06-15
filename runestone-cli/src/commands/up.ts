@@ -8,9 +8,10 @@ import { envLoader, RunestoneEnv } from '../utils/env-loader';
 import { ensureProjectFiles } from '../utils/project-files';
 import { logger } from '../utils/logger';
 import { runSetup } from './setup';
+import { t } from '../i18n';
+import { createCommand } from '../utils/command';
 
 interface UpOptions {
-  env?: string;
   forceRecreate?: boolean;
   deps?: boolean;
 }
@@ -26,10 +27,10 @@ function ensureDocker(): void {
 }
 
 async function loadOrSetup(options: UpOptions): Promise<RunestoneEnv> {
-  let config = envLoader.load(options.env);
+  let config = envLoader.load();
   if (!envLoader.hasRequiredVars(config)) {
     logger.warn('Runestone is not configured yet. Starting setup.');
-    config = await runSetup(options.env ? { envPath: config.ENV_PATH } : {});
+    config = await runSetup();
   }
 
   ensureProjectFiles(config);
@@ -37,11 +38,10 @@ async function loadOrSetup(options: UpOptions): Promise<RunestoneEnv> {
 }
 
 export function createUpCommand(): Command {
-  return new Command('up')
-    .description('Start the runestone environment')
-    .option('-e, --env <path>', 'Path to .env file')
-    .option('--force-recreate', 'Force recreate containers')
-    .option('--no-deps', 'Do not start linked services')
+  return createCommand('up')
+    .description(t('commands.up.description'))
+    .option('--force-recreate', t('options.forceRecreate.description'))
+    .option('--no-deps', t('options.noDeps.description'))
     .action(async (options: UpOptions) => {
       try {
         const config = await loadOrSetup(options);

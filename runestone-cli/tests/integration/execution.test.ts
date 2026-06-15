@@ -191,7 +191,7 @@ describe('runestone CLI actual execution integration', () => {
     expect(up.stdout).toContain('runestone is ready');
     expect(fs.existsSync(path.join(projectDir, 'compose.yml'))).toBe(true);
 
-    const status = runCli(['status', '--project', projectDir], env);
+    const status = runCli(['status'], env);
     expectSuccess(status, 'runestone status');
     expect(status.stdout).toContain('runestone');
     if (!status.stdout.includes('id_ed25519')) {
@@ -199,11 +199,11 @@ describe('runestone CLI actual execution integration', () => {
     }
 
     const keyPath = path.join(tempDir, 'home', '.ssh', 'id_ed25519');
-    const keyAdd = runCli(['keys', '--project', projectDir, 'add', keyPath], env);
+    const keyAdd = runCli(['keys', 'add', keyPath], env);
     expectSuccess(keyAdd, 'runestone keys add');
     expect(keyAdd.stdout).toContain('SSH key added successfully');
 
-    const keyList = runCli(['keys', '--project', projectDir, 'ls'], env);
+    const keyList = runCli(['keys', 'ls'], env);
     expectSuccess(keyList, 'runestone keys ls');
     expect(keyList.stdout).toContain('id_ed25519');
 
@@ -218,17 +218,17 @@ describe('runestone CLI actual execution integration', () => {
       'tls:\n  certificates:\n    - certFile: /ssl/example.test.crt\n      keyFile: /ssl/example.test.key\n',
       'utf8'
     );
-    const certRemove = runCli(['cert', '--project', projectDir, 'del', 'example.test'], env);
+    const certRemove = runCli(['cert', 'del', 'example.test'], env);
     expectSuccess(certRemove, 'runestone cert del');
     expect(fs.existsSync(path.join(certDir, 'example.test.crt'))).toBe(false);
     expect(fs.existsSync(path.join(certDir, 'example.test.key'))).toBe(false);
     expect(fs.existsSync(path.join(dynamicDir, 'example.test.ssl.yml'))).toBe(false);
 
-    const stop = runCli(['stop', '--project', projectDir], env);
+    const stop = runCli(['stop'], env);
     expectSuccess(stop, 'runestone stop');
     expect(stop.stdout).toContain('Containers stopped successfully');
 
-    const down = runCli(['down', '--project', projectDir, '--remove-network', '--remove-volumes'], env);
+    const down = runCli(['down', '--remove-network', '--remove-volumes'], env);
     expectSuccess(down, 'runestone down');
     expect(down.stdout).toContain('Teardown complete');
 

@@ -2,20 +2,15 @@ import { Command } from 'commander';
 import { composeService } from '../services/docker-compose';
 import { envLoader } from '../utils/env-loader';
 import { logger } from '../utils/logger';
-
-interface StopOptions {
-  env?: string;
-  project?: string;
-}
+import { t } from '../i18n';
+import { createCommand } from '../utils/command';
 
 export function createStopCommand(): Command {
-  return new Command('stop')
-    .description('Stop containers without deleting them')
-    .option('-e, --env <path>', 'Path to .env file')
-    .option('--project <path>', 'Runestone path or compose.yml path')
-    .action((options: StopOptions) => {
+  return createCommand('stop')
+    .description(t('commands.stop.description'))
+    .action(() => {
       try {
-        const config = envLoader.load(options.env, options.project);
+        const config = envLoader.load();
         composeService.stop(config.COMPOSE_FILE_PATH);
         logger.success('Containers stopped successfully.');
       } catch (error) {

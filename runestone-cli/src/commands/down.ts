@@ -4,10 +4,10 @@ import { networkService } from '../services/docker-network';
 import { volumeService } from '../services/docker-volume';
 import { envLoader } from '../utils/env-loader';
 import { logger } from '../utils/logger';
+import { t } from '../i18n';
+import { createCommand } from '../utils/command';
 
 interface DownOptions {
-  env?: string;
-  project?: string;
   removeNetwork?: boolean;
   removeVolumes?: boolean;
   purge?: boolean;
@@ -19,16 +19,14 @@ function ignoreMissingResource(error: unknown): boolean {
 }
 
 export function createDownCommand(): Command {
-  return new Command('down')
-    .description('Full teardown of the runestone environment')
-    .option('-e, --env <path>', 'Path to .env file')
-    .option('--project <path>', 'Runestone path or compose.yml path')
-    .option('--remove-network', 'Remove the Docker network after teardown')
-    .option('--remove-volumes', 'Remove volumes in addition to compose down')
-    .option('--purge', 'Remove containers, volumes, networks, and images')
+  return createCommand('down')
+    .description(t('commands.down.description'))
+    .option('--remove-network', t('options.removeNetwork.description'))
+    .option('--remove-volumes', t('options.removeVolumes.description'))
+    .option('--purge', t('options.purge.description'))
     .action((options: DownOptions) => {
       try {
-        const config = envLoader.load(options.env, options.project);
+        const config = envLoader.load();
         const removeVolumes = Boolean(options.removeVolumes || options.purge);
         const removeNetwork = Boolean(options.removeNetwork || options.purge);
 

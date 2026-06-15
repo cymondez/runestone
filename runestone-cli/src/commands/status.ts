@@ -6,24 +6,19 @@ import { sshManager } from '../services/ssh-manager';
 import { volumeService } from '../services/docker-volume';
 import { envLoader } from '../utils/env-loader';
 import { logger } from '../utils/logger';
-
-interface StatusOptions {
-  env?: string;
-  project?: string;
-}
+import { t } from '../i18n';
+import { createCommand } from '../utils/command';
 
 function indicator(active: boolean): string {
   return active ? green('running') : red('stopped');
 }
 
 export function createStatusCommand(): Command {
-  return new Command('status')
-    .description('Show environment status')
-    .option('-e, --env <path>', 'Path to .env file')
-    .option('--project <path>', 'Runestone path or compose.yml path')
-    .action((options: StatusOptions) => {
+  return createCommand('status')
+    .description(t('commands.status.description'))
+    .action(() => {
       try {
-        const config = envLoader.load(options.env, options.project);
+        const config = envLoader.load();
         logger.info('Docker containers');
         try {
           const containers = composeService.ps(config.COMPOSE_FILE_PATH);

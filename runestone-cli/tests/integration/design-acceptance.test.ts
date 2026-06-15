@@ -67,8 +67,10 @@ describe('DESIGNE.md functional acceptance', () => {
 
     expect(commandNames).toEqual(expect.arrayContaining(['setup', 'up', 'stop', 'down', 'status', 'certs', 'keys']));
 
-    const up = program.commands.find((command) => command.name() === 'up');
-    expect(up?.options.some((option) => option.long === '--project')).toBe(false);
+    for (const command of program.commands) {
+      expect(command.options.some((option) => option.short === '-e' || option.long === '--env')).toBe(false);
+      expect(command.options.some((option) => option.long === '--project')).toBe(false);
+    }
 
     const certs = program.commands.find((command) => command.name() === 'certs');
     expect(certs?.aliases()).toContain('cert');
@@ -137,6 +139,7 @@ describe('DESIGNE.md functional acceptance', () => {
 
   it('uses clack for setup, mkcert node API for certs, and does not depend on Makefile behavior', () => {
     const setup = read('src/commands/setup.ts');
+    const i18n = read('src/i18n/index.ts');
     const allSource = listFiles(srcDir)
       .filter((file) => file.endsWith('.ts'))
       .map((file) => fs.readFileSync(file, 'utf8'))
@@ -146,6 +149,7 @@ describe('DESIGNE.md functional acceptance', () => {
     expect(setup).not.toContain('enquirer');
     expect(allSource).toContain("@mkcert/node");
     expect(allSource).toContain('mkcert.generate');
+    expect(i18n).not.toMatch(/@mkcert|mkcert/i);
     expect(allSource).not.toMatch(/Makefile|make\s+[a-z]/i);
   });
 
@@ -158,37 +162,38 @@ describe('DESIGNE.md functional acceptance', () => {
       expect(setup.indexOf(explanation)).toBeLessThan(setup.indexOf(prompt));
     };
 
-    expect(setup).toContain('Runestone path');
+    expect(setup).toContain("activeT('setup.runestonePath.title')");
+    expect(setup).toContain("activeT('setup.language.title')");
     expect(setup).toContain('!options.project && !options.envPath && !existingConfig?.ENV_FILE_EXISTS');
     expect(setup).toContain('return envLoader.load(envPath, projectDir)');
-    expect(up).toContain('config = await runSetup(options.env ? { envPath: config.ENV_PATH } : {})');
+    expect(up).toContain('config = await runSetup()');
+    expect(up).not.toContain('options.env');
     expect(up).not.toContain('project: config.PROJECT_DIR');
-    expect(setup).toContain('HTTP entrypoint name');
-    expect(setup).toContain('HTTP entrypoint port');
-    expect(setup).toContain('HTTPS entrypoint name');
-    expect(setup).toContain('HTTPS entrypoint port');
-    expect(setup).toContain('Mailpit SMTP port');
-    expect(setup).toContain('Install local CA for SSL certificates?');
-    expect(setup).toContain('Runestone settings changed. Restart runestone now?');
+    expect(setup).toContain("activeT('setup.httpName.prompt')");
+    expect(setup).toContain("activeT('setup.httpPort.prompt')");
+    expect(setup).toContain("activeT('setup.httpsName.prompt')");
+    expect(setup).toContain("activeT('setup.httpsPort.prompt')");
+    expect(setup).toContain("activeT('setup.mailpit.prompt')");
+    expect(setup).toContain("activeT('setup.localCa.prompt')");
+    expect(setup).toContain("activeT('setup.restart.prompt')");
     expect(setup).toContain('maybeCheckDockerDomain');
     expect(setup).toContain('if (domain === DEFAULT_ENV.HOST_DOMAIN)');
-    expect(setup).toContain('Check whether this Docker domain resolves to this machine?');
-    expect(setup).toContain('Runestone uses hosts under *.${domain}, so the check only verifies wildcard DNS.');
-    expect(setup).toContain('runestone-wildcard-check.${domain}');
-    expect(setup).toContain('Docker domain check failed. Ignore and continue?');
-    expect(setup).toContain('HTTP entrypoint & HTTP entrypoint port');
-    expect(setup).toContain('HTTPS entrypoint & HTTPS entrypoint port');
+    expect(setup).toContain("activeT('setup.domainCheck.prompt')");
+    expect(setup).toContain("activeT('setup.domainCheck.description1'");
+    expect(setup).toContain("activeT('setup.domainCheck.failContinue')");
+    expect(setup).toContain("activeT('setup.httpGroup.title')");
+    expect(setup).toContain("activeT('setup.httpsGroup.title')");
     expect(setup).toContain('childPrompt');
     expect(setup).toContain('`${title}\\n${descriptions.map((line) => `  - ${line}`).join');
-    explanationBeforePrompt('Runestone stores its .env', "promptText('Runestone path'");
-    explanationBeforePrompt('This base domain is used', "promptText('Docker domain'");
-    explanationBeforePrompt('The prefix is used for Docker resource names', "promptText('Project prefix'");
-    explanationBeforePrompt('HTTP entrypoint & HTTP entrypoint port', "childPrompt('HTTP entrypoint name')");
-    explanationBeforePrompt('HTTP entrypoint & HTTP entrypoint port', "childPrompt('HTTP entrypoint port')");
-    explanationBeforePrompt('HTTPS entrypoint & HTTPS entrypoint port', "childPrompt('HTTPS entrypoint name')");
-    explanationBeforePrompt('HTTPS entrypoint & HTTPS entrypoint port', "childPrompt('HTTPS entrypoint port')");
-    explanationBeforePrompt('Defaults to 1025. Applications use this host port', "childPrompt('Mailpit SMTP port')");
-    explanationBeforePrompt('This trusts the local mkcert CA', "message: 'Install local CA for SSL certificates?'");
+    explanationBeforePrompt("activeT('setup.runestonePath.description')", "promptText(activeT('setup.runestonePath.title')");
+    explanationBeforePrompt("activeT('setup.dockerDomain.description')", "promptText(activeT('setup.dockerDomain.title')");
+    explanationBeforePrompt("activeT('setup.projectPrefix.description')", "promptText(activeT('setup.projectPrefix.title')");
+    explanationBeforePrompt("activeT('setup.httpGroup.title')", "childPrompt(activeT('setup.httpName.prompt'))");
+    explanationBeforePrompt("activeT('setup.httpGroup.title')", "childPrompt(activeT('setup.httpPort.prompt'))");
+    explanationBeforePrompt("activeT('setup.httpsGroup.title')", "childPrompt(activeT('setup.httpsName.prompt'))");
+    explanationBeforePrompt("activeT('setup.httpsGroup.title')", "childPrompt(activeT('setup.httpsPort.prompt'))");
+    explanationBeforePrompt("activeT('setup.mailpit.description')", "childPrompt(activeT('setup.mailpit.prompt'))");
+    explanationBeforePrompt("activeT('setup.localCa.description')", "message: activeT('setup.localCa.prompt')");
     expect(setup).toContain("initialValue: existingConfig ? existingConfig.MKCERT_INSTALLED === 'true' : true");
     expect(setup).not.toContain('Port mapping');
     expect(setup).not.toContain('Project directory:');
