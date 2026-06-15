@@ -9,9 +9,9 @@ services:
     command: |-
       --providers.docker.network="${PREFIX}-network"
     environment:
-      HOST_DOMAIN: ${HOST_DOMAIN:-docker.so}
-      MAILPIT_HOST: mailpit.${HOST_DOMAIN:-docker.so}
-      TRAEFIK_HOST: traefik.${HOST_DOMAIN:-docker.so}
+      HOST_DOMAIN: ${HOST_DOMAIN:-local.developers-homelab.net}
+      MAILPIT_HOST: mailpit.${HOST_DOMAIN:-local.developers-homelab.net}
+      TRAEFIK_HOST: traefik.${HOST_DOMAIN:-local.developers-homelab.net}
       WEB_ENTRYPOINT_NAME: ${WEB_ENTRYPOINT_NAME:-web}
       WEB_ENTRYPOINT_PORT: ${WEB_ENTRYPOINT_PORT:-80}
       WEB_SECURE_ENTRYPOINT_NAME: ${WEB_SECURE_ENTRYPOINT_NAME:-websecure}

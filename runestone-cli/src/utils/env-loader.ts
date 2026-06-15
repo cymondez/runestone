@@ -48,7 +48,7 @@ export type EnvInput = Partial<
 >;
 
 export const DEFAULT_ENV: Required<EnvInput> = {
-  HOST_DOMAIN: 'docker.so',
+  HOST_DOMAIN: 'local.developers-homelab.net',
   PREFIX: 'runestone',
   HTTPS_PORT: '443',
   HTTP_PORT: '80',

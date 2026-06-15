@@ -167,7 +167,7 @@ export const composeService = {
 | 1    | Command-line `--env`        | 手動指定 `.env` 路徑                          |
 | 2    | 當前工作目錄 `.env`         | `process.cwd()/.env`                          |
 | 3    | runestone 專案根目錄 `.env` | 透過 `package.json` 中的 `runestoneRoot` 定位 |
-| 4    | 內建預設值                  | `HOST_DOMAIN=docker.so`, `PREFIX=runestone`   |
+| 4    | 內建預設值                  | `HOST_DOMAIN=local.developers-homelab.net`, `PREFIX=runestone`   |
 
 ### 3. 錯誤處理層級
 
@@ -350,8 +350,8 @@ export async function runSetup() {
     {
       type: 'input',
       name: 'domain',
-      message: 'Docker domain (e.g., docker.so)',
-      initial: 'docker.so',
+      message: 'Docker domain (e.g., local.developers-homelab.net)',
+      initial: 'local.developers-homelab.net',
     },
     {
       type: 'input',
@@ -385,7 +385,7 @@ export async function runSetup() {
 
 ```bash
 # runestone Configuration
-HOST_DOMAIN=docker.so
+HOST_DOMAIN=local.developers-homelab.net
 PREFIX=runestone
 HTTPS_PORT=443
 HTTP_PORT=80

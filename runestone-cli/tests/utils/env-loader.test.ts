@@ -22,7 +22,7 @@ describe('env and project helpers', () => {
   it('loads defaults but marks missing env as not configured', () => {
     const config = envLoader.load(undefined, tempDir);
 
-    expect(config.HOST_DOMAIN).toBe('docker.so');
+    expect(config.HOST_DOMAIN).toBe('local.developers-homelab.net');
     expect(config.PREFIX).toBe('runestone');
     expect(envLoader.hasRequiredVars(config)).toBe(false);
   });
