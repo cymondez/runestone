@@ -32,6 +32,7 @@ export function createCertsCommand(): Command {
 
   command
     .addCommand(createCommand('create')
+    .alias('c')
     .description(t('commands.certs.create.description'))
     .argument('<domain>', t('arguments.domain.create'))
     .action(async (domain: string) => {
