@@ -1,0 +1,63 @@
+{
+  "name": "@developers-homelab/runestone-cli",
+  "version": "1.0.0",
+  "description": "Cross-platform CLI tool for the runestone Docker development environment",
+  "author": "cymondez",
+  "url": "https://github.com/cymondez/runestone",
+  "homepage": "https://github.com/cymondez/runestone#readme",
+  "bugs": {
+    "url": "https://github.com/cymondez/runestone/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cymondez/runestone.git"
+  },
+  "main": "dist/cli.js",
+  "types": "dist/cli.d.ts",
+  "bin": {
+    "runestone": "bin/runestone"
+  },
+  "scripts": {
+    "sync:readme": "node scripts/sync-readme.js",
+    "build": "npm run sync:readme && tsc --project tsconfig.json",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build",
+    "test": "jest",
+    "test:unit": "jest tests/services tests/utils tests/commands",
+    "test:integration": "jest tests/integration",
+    "watch": "tsc --watch --project tsconfig.json"
+  },
+  "keywords": [
+    "runestone",
+    "docker",
+    "cli",
+    "traefik",
+    "mailpit",
+    "mkcert"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@clack/core": "^0.3.5",
+    "@clack/prompts": "^0.7.0",
+    "@mkcert/node": "^0.1.3",
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.0",
+    "kleur": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.4.0"
+  }
+}

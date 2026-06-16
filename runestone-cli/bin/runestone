@@ -1,0 +1,17 @@
+#!/usr/bin/env node
+
+const { resolve } = require('path');
+
+// Suppress experimental warnings
+process.env.NODE_ENV = process.env.NODE_ENV || 'production';
+
+try {
+  require(resolve(__dirname, '../dist/cli.js')).run();
+} catch (error) {
+  if (error.code === 'MODULE_NOT_FOUND') {
+    console.error('Error: dist/ directory not found. Run `npm run build` first.');
+  } else {
+    console.error('Error:', error.message);
+  }
+  process.exit(1);
+}

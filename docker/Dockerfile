@@ -1,5 +1,5 @@
 ARG MAILPIT_VERSION=1.28.0
-ARG TRAEFIK_VERSION=3.6.5
+ARG TRAEFIK_VERSION=3.7.5
 #
 # Mailpit binary
 #
@@ -45,7 +45,7 @@ RUN apk --update --no-cache add bind-tools nginx openssh socat sudo tzdata envsu
     chmod +x /usr/local/bin/mkcert && \
     mkdir ${CAROOT} && \
     mkcert -install && \
-    mkcert -cert-file ${CAROOT}/docker.so.crt -key-file ${CAROOT}/docker.so.key "*.docker.so" && \
+    mkcert -cert-file ${CAROOT}/local.developers-homelab.net.crt -key-file ${CAROOT}/local.developers-homelab.net.key "*.local.developers-homelab.net" && \
     mkcert -cert-file ${CAROOT}/traefik.me.crt -key-file ${CAROOT}/traefik.me.key "*.traefik.me"
 
 # Traefik general configuration

@@ -1,0 +1,40 @@
+{
+  "title": "runestone-cli certs and setup rework",
+  "slug": "runestone-cli-certs-and-setup-rework",
+  "created_at": "2026-06-15T02:23:23+00:00",
+  "status": "completed",
+  "approval": {
+    "required": true,
+    "granted": true,
+    "notes": "User previously approved mkcert trust-store work and real SSH key injection; escalated commands were used for live ~/.runestone and Docker checks."
+  },
+  "packets": [
+    {
+      "id": "discovery",
+      "status": "completed"
+    },
+    {
+      "id": "implementation",
+      "status": "completed"
+    },
+    {
+      "id": "tests",
+      "status": "completed"
+    },
+    {
+      "id": "windows-acceptance",
+      "status": "completed"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "node node_modules/typescript/bin/tsc --project tsconfig.json",
+      "node node_modules/jest/bin/jest.js --runInBand",
+      "runestone up --project C:\\Users\\cymondez\\.runestone",
+      "runestone cert --project C:\\Users\\cymondez\\.runestone create acceptance-20260615.docker.so",
+      "X509Certificate SAN check: DNS:*.acceptance-20260615.docker.so",
+      "runestone cert --project C:\\Users\\cymondez\\.runestone remove acceptance-20260615.docker.so"
+    ]
+  }
+}

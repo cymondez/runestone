@@ -1,7 +1,7 @@
 tls:
   certificates:
-    - certFile: /ssl/docker.so.crt
-      keyFile: /ssl/docker.so.key
+    - certFile: /ssl/{{env "HOST_DOMAIN"}}.crt
+      keyFile: /ssl/{{env "HOST_DOMAIN"}}.key
     - certFile: /ssl/traefik.me.crt
       keyFile: /ssl/traefik.me.key
 

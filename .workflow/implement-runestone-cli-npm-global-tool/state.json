@@ -1,0 +1,49 @@
+{
+  "title": "Implement runestone-cli npm global tool",
+  "slug": "implement-runestone-cli-npm-global-tool",
+  "created_at": "2026-06-14T12:24:37+00:00",
+  "status": "completed",
+  "approval": {
+    "required": [],
+    "granted": [],
+    "notes": "No risky external or destructive steps planned."
+  },
+  "packets": [
+    { "id": "P1", "status": "completed" },
+    { "id": "P2", "status": "completed" },
+    { "id": "P3", "status": "completed" },
+    { "id": "P4", "status": "completed" },
+    { "id": "P5", "status": "completed" }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "typescript build",
+        "command": "node node_modules/typescript/bin/tsc --project tsconfig.json",
+        "status": "passed"
+      },
+      {
+        "name": "unit tests",
+        "command": "node node_modules/jest/bin/jest.js tests/services tests/utils tests/commands --runInBand",
+        "status": "passed"
+      },
+      {
+        "name": "integration tests",
+        "command": "node node_modules/jest/bin/jest.js tests/integration --runInBand",
+        "status": "passed"
+      },
+      {
+        "name": "full jest suite",
+        "command": "node node_modules/jest/bin/jest.js --runInBand",
+        "status": "passed",
+        "result": "6 suites, 23 tests"
+      },
+      {
+        "name": "workflow verifier",
+        "command": "python C:\\Users\\cymondez\\.agents\\skills\\codex-dynamic-workflows\\scripts\\verify_workflow.py .workflow\\implement-runestone-cli-npm-global-tool",
+        "status": "passed"
+      }
+    ]
+  }
+}
