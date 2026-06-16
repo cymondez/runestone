@@ -66,7 +66,7 @@ describe('DESIGNE.md functional acceptance', () => {
     const program = createProgram();
     const commandNames = program.commands.map((command) => command.name());
 
-    expect(commandNames).toEqual(expect.arrayContaining(['setup', 'up', 'stop', 'down', 'status', 'certs', 'keys']));
+    expect(commandNames).toEqual(expect.arrayContaining(['setup', 'docs', 'up', 'stop', 'down', 'status', 'certs', 'keys']));
 
     for (const command of program.commands) {
       expect(command.options.some((option) => option.short === '-e' || option.long === '--env')).toBe(false);

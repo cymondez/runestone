@@ -1,4 +1,6 @@
 import { spawnSync } from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 const root = path.resolve(__dirname, '..', '..');
@@ -34,6 +36,7 @@ describe('runestone CLI integration', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('setup');
+    expect(result.stdout).toContain('docs');
     expect(result.stdout).toContain('up');
     expect(result.stdout).toContain('status');
     expect(result.stdout).toContain('certs');
@@ -50,6 +53,7 @@ describe('runestone CLI integration', () => {
   it('does not expose or accept test-only env/project options on any command', () => {
     const commands = [
       ['setup'],
+      ['docs'],
       ['up'],
       ['stop'],
       ['down'],
@@ -102,6 +106,11 @@ describe('runestone CLI integration', () => {
   });
 
   it('keeps the options section for commands with real options', () => {
+    const docs = runCli(['docs', '--help']);
+    expect(docs.status).toBe(0);
+    expect(docs.stdout).toContain('Options:');
+    expect(docs.stdout).toContain('--ai-context');
+
     const up = runCli(['up', '--help']);
     expect(up.status).toBe(0);
     expect(up.stdout).toContain('Options:');
@@ -130,6 +139,68 @@ describe('runestone CLI integration', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('List injected SSH keys');
+  });
+
+  it('prints AI compose context with current Runestone setup values', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-cli-docs-'));
+    const homeDir = path.join(tempDir, 'home');
+    const projectDir = path.join(homeDir, '.runestone');
+
+    try {
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDir, '.env'),
+        [
+          'HOST_DOMAIN=example.test',
+          'PREFIX=mylab',
+          'WEB_ENTRYPOINT_NAME=plain',
+          'WEB_SECURE_ENTRYPOINT_NAME=secure'
+        ].join('\n') + '\n',
+        'utf8'
+      );
+
+      const result = runCli(['docs', '--ai-context'], {
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        RUNESTONE_TOOL_STATE_PATH: path.join(tempDir, 'runestone.config.json')
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toContain('# Runestone AI Compose Context');
+      expect(result.stdout).toContain('External Docker network: mylab-network');
+      expect(result.stdout).toContain('Host domain suffix: example.test');
+      expect(result.stdout).toContain('HTTPS entrypoint name: secure');
+      expect(result.stdout).toContain('Optional HTTP entrypoint name: plain');
+      expect(result.stdout).toContain('traefik.http.routers.<router-id>.entrypoints=secure');
+      expect(result.stdout).toContain('traefik.http.routers.<router-id>.rule=Host(`<host-prefix>.example.test`)');
+      expect(result.stdout).toContain('traefik.docker.network=mylab-network');
+      expect(result.stdout).not.toContain('${RUNESTONE_');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('requires setup before printing AI compose context', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-cli-docs-unconfigured-'));
+    const homeDir = path.join(tempDir, 'home');
+
+    try {
+      fs.mkdirSync(homeDir, { recursive: true });
+
+      const result = runCli(['docs', '--ai-context'], {
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        RUNESTONE_TOOL_STATE_PATH: path.join(tempDir, 'runestone.config.json')
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain('Runestone is not configured yet');
+      expect(result.stderr).toContain('runestone setup');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('localizes command descriptions for zh-TW and ja-JP', () => {

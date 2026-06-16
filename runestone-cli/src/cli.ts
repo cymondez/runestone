@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createCertsCommand } from './commands/certs';
 import { createDownCommand } from './commands/down';
+import { createDocsCommand } from './commands/docs';
 import { createKeysCommand } from './commands/keys';
 import { createSetupCommand } from './commands/setup';
 import { createStatusCommand } from './commands/status';
@@ -27,6 +28,7 @@ export function createProgram(): Command {
     .description(t('cli.description'))
     .version(packageVersion())
     .addCommand(createSetupCommand())
+    .addCommand(createDocsCommand())
     .addCommand(createUpCommand())
     .addCommand(createStopCommand())
     .addCommand(createDownCommand())

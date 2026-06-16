@@ -42,6 +42,7 @@
   "files": [
     "bin/",
     "dist/",
+    "tool-docs/",
     "README.md",
     "LICENSE"
   ],
