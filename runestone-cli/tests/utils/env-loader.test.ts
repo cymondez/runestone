@@ -4,18 +4,27 @@ import * as path from 'path';
 import { envLoader } from '../../src/utils/env-loader';
 import { pathHelpers } from '../../src/utils/path-helpers';
 import { buildComposeFile, ensureProjectFiles } from '../../src/utils/project-files';
+import { toolState } from '../../src/utils/tool-state';
 
 describe('env and project helpers', () => {
   let tempDir: string;
   let cwd: string;
+  let originalToolStatePath: string | undefined;
 
   beforeEach(() => {
     cwd = process.cwd();
+    originalToolStatePath = process.env.RUNESTONE_TOOL_STATE_PATH;
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-cli-env-'));
+    process.env.RUNESTONE_TOOL_STATE_PATH = path.join(tempDir, 'tool', 'runestone.config.json');
   });
 
   afterEach(() => {
     process.chdir(cwd);
+    if (originalToolStatePath === undefined) {
+      delete process.env.RUNESTONE_TOOL_STATE_PATH;
+    } else {
+      process.env.RUNESTONE_TOOL_STATE_PATH = originalToolStatePath;
+    }
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
@@ -39,13 +48,36 @@ describe('env and project helpers', () => {
     expect(envLoader.hasRequiredVars(config)).toBe(true);
   });
 
-  it('uses cwd .env before the runestone project .env', () => {
-    const projectDir = path.join(tempDir, 'project');
-    fs.mkdirSync(projectDir);
-    fs.writeFileSync(path.join(projectDir, '.env'), 'HOST_DOMAIN=cwd.test\nPREFIX=cwd\n');
-    process.chdir(projectDir);
+  it('uses the tool-level Runestone path pointer instead of cwd .env', () => {
+    const configuredDir = path.join(tempDir, 'configured-runestone');
+    const cwdDir = path.join(tempDir, 'cwd-project');
+    fs.mkdirSync(configuredDir);
+    fs.mkdirSync(cwdDir);
+    fs.writeFileSync(path.join(configuredDir, '.env'), 'HOST_DOMAIN=configured.test\nPREFIX=configured\n');
+    fs.writeFileSync(path.join(cwdDir, '.env'), 'HOST_DOMAIN=cwd.test\nPREFIX=cwd\n');
+    toolState.writeRunestonePath(configuredDir);
+    process.chdir(cwdDir);
 
-    expect(envLoader.load().HOST_DOMAIN).toBe('cwd.test');
+    const config = envLoader.load();
+    expect(config.HOST_DOMAIN).toBe('configured.test');
+    expect(config.PROJECT_DIR).toBe(path.resolve(configuredDir));
+    expect(config.ENV_PATH).toBe(path.join(path.resolve(configuredDir), '.env'));
+  });
+
+  it('stores Runestone path and locale in tool state instead of .env', () => {
+    const projectDir = path.join(tempDir, 'custom-runestone');
+    const envPath = path.join(projectDir, '.env');
+    toolState.writeSetupState({ runestonePath: projectDir, locale: 'zh-TW' });
+    envLoader.write(envPath, { HOST_DOMAIN: 'custom.test', PREFIX: 'custom' });
+
+    expect(toolState.readRunestonePath()).toBe(path.resolve(projectDir));
+    expect(toolState.readLocale()).toBe('zh-TW');
+    expect(JSON.parse(fs.readFileSync(toolState.stateFilePath(), 'utf8'))).toEqual({
+      runestonePath: path.resolve(projectDir),
+      locale: 'zh-TW'
+    });
+    expect(fs.readFileSync(envPath, 'utf8')).not.toMatch(/RUNESTONE_PATH|RUNESTONE_LANG|PROJECT_DIR|ENV_PATH|COMPOSE_FILE_PATH/i);
+    expect(envLoader.load(envPath, projectDir).RUNESTONE_LANG).toBe('zh-TW');
   });
 
   it('writes compose and project directories', () => {

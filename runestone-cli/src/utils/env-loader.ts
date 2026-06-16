@@ -2,6 +2,7 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { pathHelpers } from './path-helpers';
+import { toolState } from './tool-state';
 
 export interface RunestoneEnv {
   HOST_DOMAIN: string;
@@ -39,7 +40,6 @@ export type EnvInput = Partial<
     | 'RUNESTONE_TAG'
     | 'MKCERT_INSTALLED'
     | 'RUNESTONE_VERSION'
-    | 'RUNESTONE_LANG'
     | 'WEB_ENTRYPOINT_PORT'
     | 'WEB_ENTRYPOINT_NAME'
     | 'WEB_SECURE_ENTRYPOINT_PORT'
@@ -57,7 +57,6 @@ export const DEFAULT_ENV: Required<EnvInput> = {
   RUNESTONE_TAG: '5.2',
   MKCERT_INSTALLED: 'false',
   RUNESTONE_VERSION: '5',
-  RUNESTONE_LANG: 'en',
   WEB_ENTRYPOINT_PORT: '80',
   WEB_ENTRYPOINT_NAME: 'web',
   WEB_SECURE_ENTRYPOINT_PORT: '443',
@@ -91,7 +90,7 @@ export const envLoader = {
       RUNESTONE_TAG: merged.RUNESTONE_TAG || DEFAULT_ENV.RUNESTONE_TAG,
       MKCERT_INSTALLED: merged.MKCERT_INSTALLED || DEFAULT_ENV.MKCERT_INSTALLED,
       RUNESTONE_VERSION: merged.RUNESTONE_VERSION || DEFAULT_ENV.RUNESTONE_VERSION,
-      RUNESTONE_LANG: merged.RUNESTONE_LANG || DEFAULT_ENV.RUNESTONE_LANG,
+      RUNESTONE_LANG: toolState.readLocale() || 'en',
       WEB_ENTRYPOINT_PORT: merged.WEB_ENTRYPOINT_PORT || merged.HTTP_PORT || DEFAULT_ENV.WEB_ENTRYPOINT_PORT,
       WEB_ENTRYPOINT_NAME: merged.WEB_ENTRYPOINT_NAME || DEFAULT_ENV.WEB_ENTRYPOINT_NAME,
       WEB_SECURE_ENTRYPOINT_PORT:

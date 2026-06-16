@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { toolState } from './tool-state';
 
 function maybeComposeFile(projectOrFile: string): string {
   const resolved = path.resolve(projectOrFile);
@@ -20,7 +21,7 @@ function maybeComposeFile(projectOrFile: string): string {
 
 export const pathHelpers = {
   runestoneDir(): string {
-    return path.join(os.homedir(), '.runestone');
+    return toolState.readRunestonePath() ?? path.join(os.homedir(), '.runestone');
   },
 
   resolveProjectDir(projectArg?: string): string {
@@ -48,11 +49,6 @@ export const pathHelpers = {
   resolveEnvPath(cliArg?: string, projectDir?: string): string {
     if (cliArg) {
       return path.resolve(cliArg);
-    }
-
-    const cwdEnv = path.resolve(process.cwd(), '.env');
-    if (fs.existsSync(cwdEnv)) {
-      return cwdEnv;
     }
 
     return path.join(projectDir ?? this.runestoneDir(), '.env');

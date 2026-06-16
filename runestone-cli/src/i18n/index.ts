@@ -1,7 +1,5 @@
-import * as dotenv from 'dotenv';
-import * as fs from 'fs';
 import * as os from 'os';
-import * as path from 'path';
+import { toolState } from '../utils/tool-state';
 
 export const SUPPORTED_LOCALES = ['en', 'zh-TW', 'ja-JP'] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -365,27 +363,13 @@ function osLocale(): Locale | undefined {
   return undefined;
 }
 
-function readEnvLocale(envPath: string): Locale | undefined {
-  if (!fs.existsSync(envPath)) {
-    return undefined;
-  }
-
-  try {
-    const parsed = dotenv.parse(fs.readFileSync(envPath));
-    return normalizeLocale(parsed.RUNESTONE_LANG);
-  } catch {
-    return undefined;
-  }
-}
-
 function persistedLocale(): Locale | undefined {
   const envLocale = normalizeLocale(process.env.RUNESTONE_LANG);
   if (envLocale) {
     return envLocale;
   }
 
-  const cwdEnv = path.resolve(process.cwd(), '.env');
-  return readEnvLocale(cwdEnv) ?? readEnvLocale(path.join(os.homedir(), '.runestone', '.env'));
+  return normalizeLocale(toolState.readLocale());
 }
 
 export function resolveLocale(userLocale?: string): Locale {

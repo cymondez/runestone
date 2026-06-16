@@ -14,6 +14,7 @@ import { isPortAvailable } from '../services/port-checker';
 import { pathHelpers } from '../utils/path-helpers';
 import { createCommand } from '../utils/command';
 import { loadRunestoneLogo } from '../utils/logo';
+import { toolState } from '../utils/tool-state';
 import { createTranslator, initialSetupLocale, languageChoices, Locale, resolveLocale, t as translate } from '../i18n';
 
 export interface SetupOptions {
@@ -208,7 +209,6 @@ function setupConfigInput(draft: SetupDraft): EnvInput {
     RUNESTONE_IMAGE: 'cymondez/runstone',
     RUNESTONE_TAG: '5.2',
     MKCERT_INSTALLED: String(Boolean(draft.installMkcert)),
-    RUNESTONE_LANG: draft.selectedLocale,
     WEB_ENTRYPOINT_NAME: draft.webEntrypointName,
     WEB_SECURE_ENTRYPOINT_NAME: draft.webSecureEntrypointName
   };
@@ -745,6 +745,7 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
   envLoader.write(draft.envPath, configToWrite);
   const config = envLoader.load(draft.envPath, draft.projectDir);
   ensureProjectFiles(config, { overwriteCompose: true });
+  toolState.writeSetupState({ runestonePath: draft.projectDir, locale: draft.selectedLocale });
   spinner.stop(activeT('setup.configurationWritten', { envPath: draft.envPath }));
 
   if (draft.installMkcert) {
