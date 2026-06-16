@@ -75,7 +75,7 @@ describe('DESIGNE.md functional acceptance', () => {
 
     const certs = program.commands.find((command) => command.name() === 'certs');
     expect(certs?.aliases()).toContain('cert');
-    expect(certs?.commands.map((command) => command.name())).toEqual(expect.arrayContaining(['create', 'remove']));
+    expect(certs?.commands.map((command) => command.name())).toEqual(expect.arrayContaining(['create', 'list', 'remove']));
 
     const remove = certs?.commands.find((command) => command.name() === 'remove');
     expect(remove?.aliases()).toEqual(expect.arrayContaining(['rm', 'del']));

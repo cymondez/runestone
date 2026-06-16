@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { X509Certificate } from 'crypto';
 import * as mkcert from '@mkcert/node';
 import { pathHelpers } from '../utils/path-helpers';
 
@@ -20,6 +21,18 @@ export interface CertificateChangeResult {
 export interface RootCaAliasResult {
   copied: string[];
   warnings: string[];
+}
+
+export interface CertificateListItem {
+  status: '✓' | '✗';
+  sans: string[];
+  issuer: string;
+  validUntil: string;
+  expiry: string;
+  certFile: string;
+  keyFile: string;
+  dynamicConfigFile: string;
+  error?: string;
 }
 
 const domainLabel = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
@@ -191,4 +204,86 @@ export function removeDomainCertificate(projectDir: string, domain: string): Cer
     certificateChanged,
     dynamicConfigChanged
   };
+}
+
+function parseSubjectAltName(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .map((entry) => entry.replace(/^DNS:/i, '').replace(/^IP Address:/i, ''))
+    .filter(Boolean);
+}
+
+function parseIssuer(value: string): string {
+  const parts = value.split('\n').map((part) => part.trim()).filter(Boolean);
+  const organization = parts.find((part) => part.startsWith('O='));
+  if (organization) {
+    return organization.slice(2);
+  }
+
+  const commonName = parts.find((part) => part.startsWith('CN='));
+  return commonName ? commonName.slice(3) : parts.join(', ');
+}
+
+function formatDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function formatExpiry(validTo: Date, now: Date): string {
+  const milliseconds = validTo.getTime() - now.getTime();
+  if (milliseconds < 0) {
+    return 'expired';
+  }
+
+  return `${Math.ceil(milliseconds / 86_400_000)}d`;
+}
+
+export function listDomainCertificates(projectDir: string, now = new Date()): CertificateListItem[] {
+  const certsDir = path.join(projectDir, 'certs');
+  if (!fs.existsSync(certsDir)) {
+    return [];
+  }
+
+  return fs.readdirSync(certsDir)
+    .filter((fileName) => fileName.endsWith('.crt') && fileName !== 'rootCA.crt')
+    .sort((left, right) => left.localeCompare(right))
+    .map((fileName) => {
+      const domain = path.basename(fileName, '.crt');
+      const artifacts = certificateArtifacts(projectDir, domain);
+
+      try {
+        const certificate = new X509Certificate(fs.readFileSync(artifacts.certFile));
+        const validTo = new Date(certificate.validTo);
+        const keyExists = fs.existsSync(artifacts.keyFile);
+        const isValid = keyExists && validTo.getTime() >= now.getTime();
+
+        return {
+          status: isValid ? '✓' : '✗',
+          sans: parseSubjectAltName(certificate.subjectAltName),
+          issuer: parseIssuer(certificate.issuer),
+          validUntil: formatDate(validTo),
+          expiry: formatExpiry(validTo, now),
+          certFile: artifacts.certFile,
+          keyFile: artifacts.keyFile,
+          dynamicConfigFile: artifacts.dynamicConfigFile
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          status: '✗',
+          sans: [],
+          issuer: '-',
+          validUntil: '-',
+          expiry: 'invalid',
+          certFile: artifacts.certFile,
+          keyFile: artifacts.keyFile,
+          dynamicConfigFile: artifacts.dynamicConfigFile,
+          error: message
+        };
+      }
+    });
 }

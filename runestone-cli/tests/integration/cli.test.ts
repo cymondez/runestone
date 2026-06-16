@@ -56,6 +56,7 @@ describe('runestone CLI integration', () => {
       ['status'],
       ['certs'],
       ['certs', 'create'],
+      ['certs', 'list'],
       ['certs', 'remove'],
       ['keys'],
       ['keys', 'ls'],
@@ -119,6 +120,7 @@ describe('runestone CLI integration', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('create');
+    expect(result.stdout).toContain('list');
     expect(result.stdout).toContain('remove');
     expect(result.stdout).not.toContain('help [command]');
   });

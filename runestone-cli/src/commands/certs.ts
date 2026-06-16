@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { createDomainCertificate, removeDomainCertificate } from '../services/cert-manager';
+import { CertificateListItem, createDomainCertificate, listDomainCertificates, removeDomainCertificate } from '../services/cert-manager';
 import { composeService } from '../services/docker-compose';
 import { envLoader } from '../utils/env-loader';
 import { logger } from '../utils/logger';
@@ -23,6 +23,26 @@ function restartIfRunningOnWindows(composePath: string, changed: boolean): void 
 
   logger.info('Restarting runestone container so Docker Desktop picks up certificate/config changes');
   composeService.restart(composePath);
+}
+
+function formatCertificateTable(items: CertificateListItem[], options: { header: boolean }): string {
+  const rows = items.map((item) => [
+    item.status,
+    item.sans.length > 0 ? item.sans.join(', ') : '-',
+    item.issuer || '-',
+    item.validUntil || '-',
+    item.expiry || '-'
+  ]);
+
+  const allRows = options.header ? [['Status', 'SANs', 'Issuer', 'Valid Until', 'Expiry'], ...rows] : rows;
+  const widths = allRows.reduce<number[]>(
+    (next, row) => row.map((cell, index) => Math.max(next[index] ?? 0, cell.length)),
+    []
+  );
+
+  return allRows
+    .map((row) => row.map((cell, index) => cell.padEnd(widths[index])).join('  ').trimEnd())
+    .join('\n');
 }
 
 export function createCertsCommand(): Command {
@@ -51,6 +71,25 @@ export function createCertsCommand(): Command {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to create certificate: ${message}`);
+        process.exit(1);
+      }
+    }));
+
+  command
+    .addCommand(createCommand('list')
+    .alias('ls')
+    .description(t('commands.certs.list.description'))
+    .option('--no-header', t('options.noHeader.description'))
+    .action((options: { header: boolean }) => {
+      try {
+        const config = envLoader.load();
+        const table = formatCertificateTable(listDomainCertificates(config.PROJECT_DIR), { header: options.header });
+        if (table) {
+          console.log(table);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to list certificates: ${message}`);
         process.exit(1);
       }
     }));
