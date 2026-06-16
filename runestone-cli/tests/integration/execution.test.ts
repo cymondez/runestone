@@ -175,6 +175,7 @@ describe('runestone CLI actual execution integration', () => {
       PATH: `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ''}`,
       HOME: homeDir,
       USERPROFILE: homeDir,
+      RUNESTONE_TOOL_STATE_PATH: path.join(tempDir, 'runestone.config.json'),
       RUNESTONE_DOCKER_LOG: dockerLog,
       RUNESTONE_FAKE_DOCKER_STATE: stateDir,
       FORCE_COLOR: '0'

@@ -6,7 +6,7 @@ import { pathHelpers } from './path-helpers';
 export function buildComposeFile(): string {
   return `services:
   runestone:
-    image: \${RUNESTONE_IMAGE:-cymondez/runstone}:\${RUNESTONE_TAG:-5.2}
+    image: \${RUNESTONE_IMAGE:-cymondez/runestone}:\${RUNESTONE_TAG:-5.2}
     container_name: \${PREFIX:-runestone}
     restart: unless-stopped
     command: |-

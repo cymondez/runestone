@@ -53,7 +53,7 @@ export const DEFAULT_ENV: Required<EnvInput> = {
   HTTPS_PORT: '443',
   HTTP_PORT: '80',
   SMTP_PORT: '1025',
-  RUNESTONE_IMAGE: 'cymondez/runstone',
+  RUNESTONE_IMAGE: 'cymondez/runestone',
   RUNESTONE_TAG: '5.2',
   MKCERT_INSTALLED: 'false',
   RUNESTONE_VERSION: '5',
