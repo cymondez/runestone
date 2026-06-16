@@ -1,6 +1,2 @@
 node_models
-**/node_modules
-**/dist
-**/lib
-runestone-cli/runestone.config.json
 .runestone

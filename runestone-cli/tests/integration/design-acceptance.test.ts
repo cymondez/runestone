@@ -177,6 +177,7 @@ describe('DESIGNE.md functional acceptance', () => {
     expect(setup.indexOf('const reviewAction = await promptReview(draft)')).toBeLessThan(setup.indexOf('envLoader.write(draft.envPath, configToWrite)'));
     expect(setup).toContain('toolState.writeSetupState({ runestonePath: draft.projectDir, locale: draft.selectedLocale })');
     expect(setup).not.toContain('RUNESTONE_LANG: draft.selectedLocale');
+    expect(setup).not.toContain('initialExistingConfig.RUNESTONE_LANG');
     expect(read('src/utils/env-loader.ts')).not.toContain("| 'RUNESTONE_LANG'");
     expect(read('src/i18n/index.ts')).not.toContain('readEnvLocale');
     expect(read('src/utils/path-helpers.ts')).toContain('toolState.readRunestonePath()');

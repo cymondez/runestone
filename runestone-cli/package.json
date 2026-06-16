@@ -2,13 +2,26 @@
   "name": "@developers-homelab/runestone-cli",
   "version": "1.0.0",
   "description": "Cross-platform CLI tool for the runestone Docker development environment",
+  "author": "cymondez",
+  "url":"https://github.com/cymondez/runestone",
+  "homepage": "https://github.com/cymondez/runestone#readme",
+  "bugs": {
+    "url": "https://github.com/cymondez/runestone/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cymondez/runestone"
+  },
   "main": "dist/cli.js",
   "types": "dist/cli.d.ts",
   "bin": {
     "runestone": "./bin/runestone"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "sync:readme": "node scripts/sync-readme.js",
+    "build": "npm run sync:readme && tsc --project tsconfig.json",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build",
     "test": "jest",
     "test:unit": "jest tests/services tests/utils tests/commands",
     "test:integration": "jest tests/integration",
@@ -17,7 +30,10 @@
   "keywords": [
     "runestone",
     "docker",
-    "cli"
+    "cli",
+    "traefik",
+    "mailpit",
+    "mkcert"
   ],
   "license": "MIT",
   "engines": {

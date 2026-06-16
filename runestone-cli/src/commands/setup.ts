@@ -501,7 +501,7 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
     projectDir: initialProjectDir,
     envPath: initialEnvPath,
     existingConfig: initialExistingConfig,
-    selectedLocale: initialSetupLocale(initialExistingConfig?.ENV_FILE_EXISTS ? initialExistingConfig.RUNESTONE_LANG : undefined)
+    selectedLocale: initialSetupLocale(toolState.readLocale())
   };
   setActiveLocale(draft.selectedLocale);
 
