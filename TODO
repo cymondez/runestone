@@ -1,0 +1,21 @@
+# TODO
+
+## features
+
+1. docs ai context 需要更多資訊提示
+    - 可用domain清單
+    - 已使用的route、service名稱
+2. 快速加入外部服務
+    - 新增 service command
+    - service list|ls 顯示已加入的服務
+    - service remove|rm \<service-name> 移除已加入的服務
+    - service add|a \<service-name>  加入新的服務 ，以互動式為主，但也可以用參數直接帶入 --domain --target-url ； service-name 跟 domain 需檢查是否已被使用
+
+## bug fix
+
+- [ ] macOS上 cert 內的 .key檔案都無法進入 container
+- [ ] libnss3-tools 需要安裝，否則無法使用 certbot
+- [ ] @mkcert/node 在 linux/macos 上的install script 會失敗，導致無法使用 mkcert 產生本地憑證
+- [ ] runestone.config.json 的路徑問題，應該放在 ~/.runestone/ 下,這個不提供使用者設定
+- [ ] runestone 預設安裝路徑應該放在 ~/.runestone/runestone/
+- [ ] setup 權限問題，如果用sudo安裝，會導致安裝路徑的問題，但是certs install又需要sudo權限，這部分需要調整安裝流程，讓使用者在安裝 runestone 時不需要 sudo，但在安裝 certs 時才需要 sudo
