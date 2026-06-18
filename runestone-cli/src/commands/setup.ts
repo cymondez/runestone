@@ -8,8 +8,10 @@ import { cyan, dim, gray, green, hidden, inverse, red, strikethrough, yellow } f
 import { DEFAULT_ENV, EnvInput, RunestoneEnv, envLoader } from '../utils/env-loader';
 import { ensureProjectFiles } from '../utils/project-files';
 import { composeService } from '../services/docker-compose';
-import { ensureRootCaAliases, ensureWildcardCertificate } from '../services/cert-manager';
+import { ensureWildcardCertificate } from '../services/cert-manager';
+import { installRootCa } from '../services/root-ca-installer';
 import { checkDomainResolvesToThisMachine, DomainResolutionCheck } from '../services/domain-checker';
+import { checkEnvironment, DoctorReport, formatDoctorCheck } from '../services/environment-doctor';
 import { isPortAvailable } from '../services/port-checker';
 import { pathHelpers } from '../utils/path-helpers';
 import { createCommand } from '../utils/command';
@@ -227,6 +229,19 @@ function reviewLines(draft: SetupDraft): string[] {
     `${activeT('setup.mailpit.prompt')}: ${draft.smtpPort}`,
     `${activeT('setup.localCa.prompt')} ${draft.installMkcert ? activeT('common.yes') : activeT('common.no')}`
   ];
+}
+
+function environmentCheckDescription(report: DoctorReport): string[] {
+  const lines = report.checks.map(formatDoctorCheck);
+  if (!report.passed) {
+    lines.push(activeT('setup.environment.failed'));
+    lines.push(activeT('setup.environment.doctor'));
+  }
+  return lines;
+}
+
+function logPromptDescription(message: string, description: string[]): void {
+  console.log(promptHeader('initial', message, { description }).trimEnd());
 }
 
 function validatePort(value: string): string | undefined {
@@ -483,10 +498,10 @@ async function createDefaultCertificates(projectDir: string, domain: string): Pr
   const certsDir = path.join(projectDir, 'certs');
   pathHelpers.ensureDir(certsDir);
 
-  await ensureWildcardCertificate(projectDir, domain, { installLocalCa: true });
-  await ensureWildcardCertificate(projectDir, 'traefik.me', { installLocalCa: true });
-  const aliasResult = ensureRootCaAliases(certsDir);
-  for (const warning of aliasResult.warnings) {
+  const installResult = await installRootCa(projectDir);
+  await ensureWildcardCertificate(projectDir, domain);
+  await ensureWildcardCertificate(projectDir, 'traefik.me');
+  for (const warning of installResult.aliasResult.warnings) {
     p.log.warn(warning);
   }
 }
@@ -514,6 +529,15 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
   };
 
   const steps: SetupStep[] = [
+    async () => {
+      const report = checkEnvironment();
+      logPromptDescription(activeT('setup.environment.prompt'), environmentCheckDescription(report));
+      if (!report.passed) {
+        p.cancel(activeT('setup.environment.cancelled'));
+        process.exit(1);
+      }
+      return 'next';
+    },
     async (canBack) => {
       const selectedLocale = await promptSelect<Locale>({
         message: activeT('setup.language.prompt'),
@@ -606,8 +630,7 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
         {
           description: [
             activeT('setup.httpGroup.title'),
-            activeT('setup.httpGroup.description1'),
-            activeT('setup.httpGroup.description2')
+            activeT('setup.httpGroup.description1')
           ]
         }
       );
@@ -627,7 +650,6 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
         frame: {
           description: [
             activeT('setup.httpGroup.title'),
-            activeT('setup.httpGroup.description1'),
             activeT('setup.httpGroup.description2')
           ]
         }
@@ -648,8 +670,7 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
         {
           description: [
             activeT('setup.httpsGroup.title'),
-            activeT('setup.httpsGroup.description1'),
-            activeT('setup.httpsGroup.description2')
+            activeT('setup.httpsGroup.description1')
           ]
         }
       );
@@ -672,7 +693,6 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
         frame: {
           description: [
             activeT('setup.httpsGroup.title'),
-            activeT('setup.httpsGroup.description1'),
             activeT('setup.httpsGroup.description2')
           ]
         }
@@ -708,7 +728,13 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
           draft.installMkcert ??
           (draft.existingConfig ? draft.existingConfig.MKCERT_INSTALLED === 'true' : true),
         canBack,
-        frame: { description: activeT('setup.localCa.description') }
+        frame: {
+          description: [
+            activeT('setup.localCa.description'),
+            activeT('setup.localCa.descriptionSystem'),
+            activeT('setup.localCa.descriptionNss')
+          ]
+        }
       });
       if (isStepBack(installMkcert)) {
         return 'back';

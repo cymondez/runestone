@@ -36,6 +36,7 @@ describe('runestone CLI integration', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('setup');
+    expect(result.stdout).toContain('doctor');
     expect(result.stdout).toContain('docs');
     expect(result.stdout).toContain('up');
     expect(result.stdout).toContain('status');
@@ -45,14 +46,16 @@ describe('runestone CLI integration', () => {
 
   it('prints package version', () => {
     const result = runCli(['--version']);
+    const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { version: string };
 
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe('1.0.0');
+    expect(result.stdout.trim()).toBe(packageJson.version);
   });
 
   it('does not expose or accept test-only env/project options on any command', () => {
     const commands = [
       ['setup'],
+      ['doctor'],
       ['docs'],
       ['up'],
       ['stop'],
@@ -86,6 +89,7 @@ describe('runestone CLI integration', () => {
   it('hides the options section when help only has the built-in help option', () => {
     const commands = [
       ['setup'],
+      ['doctor'],
       ['stop'],
       ['status'],
       ['certs'],
@@ -211,5 +215,9 @@ describe('runestone CLI integration', () => {
     const ja = runCli(['up', '--help'], { RUNESTONE_LANG: 'ja-JP' });
     expect(ja.status).toBe(0);
     expect(ja.stdout).toContain('Runestone 環境を起動します');
+
+    const doctor = runCli(['doctor', '--help'], { RUNESTONE_LANG: 'zh-TW' });
+    expect(doctor.status).toBe(0);
+    expect(doctor.stdout).toContain('檢查並修復 Runestone 主機環境');
   });
 });

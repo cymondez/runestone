@@ -66,7 +66,7 @@ describe('DESIGNE.md functional acceptance', () => {
     const program = createProgram();
     const commandNames = program.commands.map((command) => command.name());
 
-    expect(commandNames).toEqual(expect.arrayContaining(['setup', 'docs', 'up', 'stop', 'down', 'status', 'certs', 'keys']));
+    expect(commandNames).toEqual(expect.arrayContaining(['setup', 'doctor', 'docs', 'up', 'stop', 'down', 'status', 'certs', 'keys']));
 
     for (const command of program.commands) {
       expect(command.options.some((option) => option.short === '-e' || option.long === '--env')).toBe(false);
@@ -75,7 +75,7 @@ describe('DESIGNE.md functional acceptance', () => {
 
     const certs = program.commands.find((command) => command.name() === 'certs');
     expect(certs?.aliases()).toContain('cert');
-    expect(certs?.commands.map((command) => command.name())).toEqual(expect.arrayContaining(['create', 'list', 'remove']));
+    expect(certs?.commands.map((command) => command.name())).toEqual(expect.arrayContaining(['create', 'install', 'list', 'remove']));
 
     const remove = certs?.commands.find((command) => command.name() === 'remove');
     expect(remove?.aliases()).toEqual(expect.arrayContaining(['rm', 'del']));
@@ -210,7 +210,9 @@ describe('DESIGNE.md functional acceptance', () => {
     expect(setup).toContain("activeT('setup.httpsGroup.description1')");
     expect(setup).toContain("activeT('setup.httpsGroup.description2')");
     expect(setup).toContain("{ description: activeT('setup.mailpit.description') }");
-    expect(setup).toContain("{ description: activeT('setup.localCa.description') }");
+    expect(setup).toContain("activeT('setup.localCa.description')");
+    expect(setup).toContain("activeT('setup.localCa.descriptionSystem')");
+    expect(setup).toContain("activeT('setup.localCa.descriptionNss')");
     expect(setup).toContain("draft.existingConfig ? draft.existingConfig.MKCERT_INSTALLED === 'true' : true");
     expect(setup).not.toContain('Port mapping');
     expect(setup).not.toContain('Project directory:');

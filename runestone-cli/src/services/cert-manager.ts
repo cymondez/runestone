@@ -124,8 +124,7 @@ export function ensureRootCaAliases(certsDir: string): RootCaAliasResult {
 
 export async function ensureWildcardCertificate(
   projectDir: string,
-  domain: string,
-  options: { installLocalCa?: boolean } = {}
+  domain: string
 ): Promise<CertificateChangeResult> {
   const artifacts = certificateArtifacts(projectDir, domain);
   const certExists = fs.existsSync(artifacts.certFile);
@@ -142,7 +141,7 @@ export async function ensureWildcardCertificate(
   let certificateChanged = false;
   if (!certExists && !keyExists) {
     await mkcert.generate({
-      install: Boolean(options.installLocalCa),
+      install: false,
       hosts: [artifacts.wildcardHost],
       certFile: artifacts.certFile,
       keyFile: artifacts.keyFile,
