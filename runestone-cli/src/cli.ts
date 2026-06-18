@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createCertsCommand } from './commands/certs';
 import { createDownCommand } from './commands/down';
+import { createDocsCommand } from './commands/docs';
+import { createDoctorCommand } from './commands/doctor';
 import { createKeysCommand } from './commands/keys';
 import { createSetupCommand } from './commands/setup';
 import { createStatusCommand } from './commands/status';
@@ -30,9 +32,11 @@ export function createProgram(): Command {
     .addCommand(createUpCommand())
     .addCommand(createStopCommand())
     .addCommand(createDownCommand())
-    .addCommand(createStatusCommand())
     .addCommand(createCertsCommand())
-    .addCommand(createKeysCommand());
+    .addCommand(createKeysCommand())
+    .addCommand(createDoctorCommand())
+    .addCommand(createDocsCommand())
+    .addCommand(createStatusCommand());
 }
 
 export function run(argv = process.argv): void {

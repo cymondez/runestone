@@ -4,3 +4,4 @@ lib/
 bin/
 runestone.config.json
 README.md
+.npmrc

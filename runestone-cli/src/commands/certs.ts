@@ -5,6 +5,7 @@ import { envLoader } from '../utils/env-loader';
 import { logger } from '../utils/logger';
 import { t } from '../i18n';
 import { createCommand } from '../utils/command';
+import { installRootCa } from '../services/root-ca-installer';
 
 function shouldRestartOnWindows(changed: boolean): boolean {
   return changed && process.platform === 'win32';
@@ -71,6 +72,39 @@ export function createCertsCommand(): Command {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to create certificate: ${message}`);
+        process.exit(1);
+      }
+    }));
+
+  command
+    .addCommand(createCommand('install')
+    .alias('i')
+    .description(t('commands.certs.install.description'))
+    .action(async () => {
+      try {
+        const config = envLoader.load();
+        const result = await installRootCa(config.PROJECT_DIR);
+        logger.success('Root CA installed with mkcert');
+        console.log(`  Certificate: ${result.rootCaPath}`);
+        for (const warning of result.aliasResult.warnings) {
+          logger.warn(warning);
+        }
+
+        if (!result.nss) {
+          logger.info('Windows uses the system trust store through mkcert; no NSS database install is required.');
+          return;
+        }
+
+        logger.success(`Root CA imported into ${result.nss.imported.length} NSS database(s)`);
+        for (const db of result.nss.imported) {
+          console.log(`  Imported: ${db.dir}`);
+        }
+        for (const db of result.nss.skipped) {
+          console.log(`  Already installed: ${db.dir}`);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to install root CA: ${message}`);
         process.exit(1);
       }
     }));

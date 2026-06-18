@@ -1,4 +1,24 @@
-import { spawnCommand } from '../utils/spawn';
+import * as fs from 'fs';
+import * as net from 'net';
+import * as os from 'os';
+
+interface NodeNetstatAddress {
+  address?: string | null;
+  port?: number;
+}
+
+interface NodeNetstatItem {
+  protocol?: string;
+  local?: NodeNetstatAddress;
+  state?: string;
+}
+
+type NodeNetstatHandler = (item: NodeNetstatItem) => boolean | void;
+type NodeNetstatDone = (error?: NodeJS.ErrnoException | null) => void;
+type NodeNetstat = (
+  options: { sync?: boolean; done?: NodeNetstatDone },
+  handler: NodeNetstatHandler
+) => void;
 
 function addressHasPort(address: string, port: number): boolean {
   const escapedPort = String(port).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -29,23 +49,153 @@ export function isListeningLineForPort(line: string, port: number): boolean {
   return Boolean(localAddress && addressHasPort(localAddress, port));
 }
 
-function netstatOutput(): string {
-  const args = process.platform === 'win32' ? ['-ano'] : ['-an'];
-  const result = spawnCommand('netstat', args, { encoding: 'utf8' });
+export function isNodeNetstatItemListeningForPort(item: NodeNetstatItem, port: number): boolean {
+  const protocol = item.protocol?.toLowerCase() ?? '';
+  const state = item.state ?? '';
+  return protocol.startsWith('tcp') && /^LISTEN(?:ING)?$/i.test(state) && item.local?.port === port;
+}
 
-  if (result.error) {
-    throw result.error;
+function loadNodeNetstat(): NodeNetstat | undefined {
+  try {
+    return require('node-netstat') as NodeNetstat;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'MODULE_NOT_FOUND') {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+function shouldFallbackFromNodeNetstat(error: NodeJS.ErrnoException | undefined | null): boolean {
+  return error?.code === 'ENOENT';
+}
+
+async function nodeNetstatHasListeningPort(port: number): Promise<boolean | undefined> {
+  const nodeNetstat = loadNodeNetstat();
+  if (!nodeNetstat) {
+    return undefined;
   }
 
-  if (result.status !== 0) {
-    throw new Error(result.stderr?.trim() || 'netstat failed');
+  return new Promise((resolve, reject) => {
+    let found = false;
+    try {
+      nodeNetstat(
+        {
+          sync: true,
+          done: (error) => {
+            if (shouldFallbackFromNodeNetstat(error)) {
+              resolve(undefined);
+              return;
+            }
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve(found);
+          }
+        },
+        (item) => {
+          if (isNodeNetstatItemListeningForPort(item, port)) {
+            found = true;
+            return false;
+          }
+          return undefined;
+        }
+      );
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+export function isProcNetTcpListeningLineForPort(line: string, port: number): boolean {
+  const parts = line.trim().split(/\s+/);
+  if (parts.length < 4 || !/^\d+:$/.test(parts[0])) {
+    return false;
   }
 
-  return result.stdout ?? '';
+  const localAddress = parts[1];
+  const state = parts[3];
+  const portHex = localAddress.split(':').pop();
+  if (!portHex || state.toUpperCase() !== '0A') {
+    return false;
+  }
+
+  return Number.parseInt(portHex, 16) === port;
+}
+
+function procNetHasListeningPort(port: number): boolean | undefined {
+  const files = ['/proc/net/tcp', '/proc/net/tcp6'];
+  let readAny = false;
+  let found = false;
+
+  for (const file of files) {
+    try {
+      const content = fs.readFileSync(file, 'utf8');
+      readAny = true;
+      found = found || content.split(/\r?\n/).some((line) => isProcNetTcpListeningLineForPort(line, port));
+    } catch {
+      continue;
+    }
+  }
+
+  return readAny ? found : undefined;
+}
+
+function localProbeHosts(): string[] {
+  const hosts = new Set<string>(['127.0.0.1', '::1']);
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.internal) {
+        continue;
+      }
+      hosts.add(entry.address);
+    }
+  }
+  return [...hosts];
+}
+
+function canConnect(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port });
+    let settled = false;
+
+    const finish = (connected: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      socket.destroy();
+      resolve(connected);
+    };
+
+    socket.setTimeout(250);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
 }
 
 export async function isPortAvailable(port: number): Promise<boolean> {
-  return !netstatOutput()
-    .split(/\r?\n/)
-    .some((line) => isListeningLineForPort(line, port));
+  const nodeNetstatListening = await nodeNetstatHasListeningPort(port);
+  if (nodeNetstatListening !== undefined) {
+    return !nodeNetstatListening;
+  }
+
+  if (process.platform === 'linux') {
+    const listening = procNetHasListeningPort(port);
+    if (listening !== undefined) {
+      return !listening;
+    }
+  }
+
+  for (const host of localProbeHosts()) {
+    if (await canConnect(host, port)) {
+      return false;
+    }
+  }
+
+  return true;
 }

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 interface ToolState {
@@ -11,7 +12,7 @@ function packageRoot(): string {
 }
 
 function stateFilePath(): string {
-  return process.env.RUNESTONE_TOOL_STATE_PATH || path.join(packageRoot(), 'runestone.config.json');
+  return process.env.RUNESTONE_TOOL_STATE_PATH || path.join(os.homedir(), '.runestone', 'runestone.config.json');
 }
 
 function readState(): ToolState {

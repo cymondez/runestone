@@ -36,6 +36,16 @@ describe('env and project helpers', () => {
     expect(envLoader.hasRequiredVars(config)).toBe(false);
   });
 
+  it('stores the default tool state file under ~/.runestone', () => {
+    delete process.env.RUNESTONE_TOOL_STATE_PATH;
+
+    try {
+      expect(toolState.stateFilePath()).toBe(path.join(os.homedir(), '.runestone', 'runestone.config.json'));
+    } finally {
+      process.env.RUNESTONE_TOOL_STATE_PATH = path.join(tempDir, 'tool', 'runestone.config.json');
+    }
+  });
+
   it('prefers explicit env path and derives resource names', () => {
     const envPath = path.join(tempDir, 'custom.env');
     fs.writeFileSync(envPath, 'HOST_DOMAIN=local.test\nPREFIX=stone\n');
