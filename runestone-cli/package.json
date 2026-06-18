@@ -1,6 +1,6 @@
 {
   "name": "@developers-homelab/runestone-cli",
-  "version": "1.0.1-beta.4",
+  "version": "1.0.1",
   "description": "Cross-platform CLI tool for the runestone Docker development environment",
   "author": "cymondez",
   "url": "https://github.com/cymondez/runestone",
@@ -44,6 +44,7 @@
     "dist/",
     "tool-docs/",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "dependencies": {
