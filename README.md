@@ -35,6 +35,15 @@ If you like this project, please also support the original idea by starring [dru
 npm install -g @developers-homelab/runestone-cli
 ```
 
+### Check Host Environment
+
+Runestone needs Docker, Docker Compose, and platform certificate tools to be available on the host machine.
+You can check the environment before setup, or let `runestone doctor` help with supported fixes when setup reports missing tools.
+
+```bash
+runestone doctor
+```
+
 ### Start
 
 The first time you run it, an interactive setup wizard will appear. To change settings later, run `runestone setup`.
@@ -84,6 +93,30 @@ Removes the certificate from the `.runestone/certs` directory and deletes the ma
 ```bash
 runestone certs remove <domain>
 ```
+
+## Project Integration
+
+When asking an AI agent to connect a project to Runestone, tell it to call `runestone docs --ai-context` before editing Compose files.
+The command prints the local Runestone network name, host domain, and Traefik entrypoint names that the agent needs.
+
+```bash
+runestone docs --ai-context
+```
+
+Example prompts:
+
+```text
+Create a compose.yml for traefik/whoami that works in my Runestone environment.
+For the Runestone settings, call `runestone docs --ai-context` directly.
+```
+
+```text
+Add a compose.override.yml and update the `app` service with Traefik labels and network settings for Runestone.
+For the Runestone settings, call `runestone docs --ai-context` directly.
+```
+
+The generated AI context is rendered from [runestone-cli/tool-docs/ai-prompt-context.tmp.md](runestone-cli/tool-docs/ai-prompt-context.tmp.md).
+You can review this template before sharing the generated context with an AI agent.
 
 ## More Help
 
