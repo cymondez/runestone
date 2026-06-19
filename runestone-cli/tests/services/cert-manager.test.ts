@@ -80,6 +80,7 @@ describe('cert-manager', () => {
     );
     expect(result.certificateChanged).toBe(true);
     expect(result.dynamicConfigChanged).toBe(true);
+    expect(result.artifacts.dynamicConfigFile).toBe(path.join(tempDir, 'configuration', 'certs', 'example.test.ssl.yml'));
     expect(fs.readFileSync(result.artifacts.certFile, 'utf8')).toContain('*.example.test');
     expect(fs.readFileSync(result.artifacts.dynamicConfigFile, 'utf8')).toBe(buildTlsDynamicConfig('example.test'));
     expect(fs.existsSync(path.join(tempDir, 'certs', 'rootCA.crt'))).toBe(true);

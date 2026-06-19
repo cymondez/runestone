@@ -14,8 +14,8 @@
 ## bug fix
 
 - [ ] macOS上 cert 內的 .key檔案都無法進入 container
-- [ ] libnss3-tools 需要安裝，否則無法使用 certbot
-- [ ] @mkcert/node 在 linux/macos 上的install script 會失敗，導致無法使用 mkcert 產生本地憑證
-- [ ] runestone.config.json 的路徑問題，應該放在 ~/.runestone/ 下,這個不提供使用者設定
-- [ ] runestone 預設安裝路徑應該放在 ~/.runestone/runestone/
-- [ ] setup 權限問題，如果用sudo安裝，會導致安裝路徑的問題，但是certs install又需要sudo權限，這部分需要調整安裝流程，讓使用者在安裝 runestone 時不需要 sudo，但在安裝 certs 時才需要 sudo
+- [x] libnss3-tools 需要安裝，否則無法使用 certbot
+- [x] @mkcert/node 在 linux/macos 上的install script 會失敗，導致無法使用 mkcert 產生本地憑證
+- [x] runestone.config.json 的路徑問題，應該放在 ~/.runestone/ 下,這個不提供使用者設定
+- [x] runestone 預設安裝路徑應該放在 ~/.runestone/runestone/
+- [x] setup 權限問題，如果用sudo安裝，會導致安裝路徑的問題，但是certs install又需要sudo權限，這部分需要調整安裝流程，讓使用者在安裝 runestone 時不需要 sudo，但在安裝 certs 時才需要 sudo

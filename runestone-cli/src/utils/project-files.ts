@@ -52,6 +52,8 @@ export function ensureProjectFiles(config: RunestoneEnv, options?: { overwriteCo
   pathHelpers.ensureDir(config.PROJECT_DIR);
   pathHelpers.ensureDir(path.join(config.PROJECT_DIR, 'certs'));
   pathHelpers.ensureDir(path.join(config.PROJECT_DIR, 'configuration'));
+  pathHelpers.ensureDir(path.join(config.PROJECT_DIR, 'configuration', 'certs'));
+  pathHelpers.ensureDir(path.join(config.PROJECT_DIR, 'configuration', 'services'));
 
   if (!fs.existsSync(config.ENV_PATH)) {
     envLoader.write(config.ENV_PATH, defaultEnvInput());

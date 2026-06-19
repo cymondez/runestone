@@ -43,7 +43,7 @@ describe('certs command', () => {
         expiry: '3650d',
         certFile: '/runestone/certs/example.test.crt',
         keyFile: '/runestone/certs/example.test.key',
-        dynamicConfigFile: '/runestone/configuration/traefik/dynamic/example.test.ssl.yml'
+        dynamicConfigFile: '/runestone/configuration/certs/example.test.ssl.yml'
       }
     ]);
   });

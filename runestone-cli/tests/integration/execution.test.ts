@@ -209,7 +209,7 @@ describe('runestone CLI actual execution integration', () => {
     expect(keyList.stdout).toContain('id_ed25519');
 
     const certDir = path.join(projectDir, 'certs');
-    const dynamicDir = path.join(projectDir, 'configuration', 'traefik', 'dynamic');
+    const dynamicDir = path.join(projectDir, 'configuration', 'certs');
     fs.mkdirSync(certDir, { recursive: true });
     fs.mkdirSync(dynamicDir, { recursive: true });
     fs.writeFileSync(path.join(certDir, 'example.test.crt'), 'cert');

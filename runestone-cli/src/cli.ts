@@ -6,6 +6,7 @@ import { createDownCommand } from './commands/down';
 import { createDocsCommand } from './commands/docs';
 import { createDoctorCommand } from './commands/doctor';
 import { createKeysCommand } from './commands/keys';
+import { createServiceCommand } from './commands/service';
 import { createSetupCommand } from './commands/setup';
 import { createStatusCommand } from './commands/status';
 import { createStopCommand } from './commands/stop';
@@ -34,6 +35,7 @@ export function createProgram(): Command {
     .addCommand(createDownCommand())
     .addCommand(createCertsCommand())
     .addCommand(createKeysCommand())
+    .addCommand(createServiceCommand())
     .addCommand(createDoctorCommand())
     .addCommand(createDocsCommand())
     .addCommand(createStatusCommand());

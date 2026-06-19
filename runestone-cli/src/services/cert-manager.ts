@@ -3,6 +3,7 @@ import * as path from 'path';
 import { X509Certificate } from 'crypto';
 import * as mkcert from '@mkcert/node';
 import { pathHelpers } from '../utils/path-helpers';
+import { DynamicConfigRuntime, removeDynamicConfigFile, writeDynamicConfigFile } from './dynamic-config-manager';
 
 export interface CertificateArtifacts {
   domain: string;
@@ -62,7 +63,7 @@ export function normalizeDomain(domain: string): string {
 export function certificateArtifacts(projectDir: string, domain: string): CertificateArtifacts {
   const normalized = normalizeDomain(domain);
   const certsDir = path.join(projectDir, 'certs');
-  const dynamicDir = path.join(projectDir, 'configuration', 'traefik', 'dynamic');
+  const dynamicDir = path.join(projectDir, 'configuration', 'certs');
 
   return {
     domain: normalized,
@@ -160,18 +161,23 @@ export async function ensureWildcardCertificate(
   };
 }
 
-export async function createDomainCertificate(projectDir: string, domain: string): Promise<CertificateChangeResult> {
+export async function createDomainCertificate(
+  projectDir: string,
+  domain: string,
+  runtime?: DynamicConfigRuntime
+): Promise<CertificateChangeResult> {
   const certificateResult = await ensureWildcardCertificate(projectDir, domain);
   const { artifacts } = certificateResult;
-
-  pathHelpers.ensureDir(path.dirname(artifacts.dynamicConfigFile));
 
   let dynamicConfigChanged = false;
   if (fs.existsSync(artifacts.dynamicConfigFile)) {
     ensureExpectedDynamicConfig(artifacts.dynamicConfigFile, artifacts.domain);
   } else {
-    fs.writeFileSync(artifacts.dynamicConfigFile, buildTlsDynamicConfig(artifacts.domain), 'utf8');
-    dynamicConfigChanged = true;
+    dynamicConfigChanged = writeDynamicConfigFile(
+      artifacts.dynamicConfigFile,
+      buildTlsDynamicConfig(artifacts.domain),
+      runtime
+    );
   }
 
   return {
@@ -181,7 +187,11 @@ export async function createDomainCertificate(projectDir: string, domain: string
   };
 }
 
-export function removeDomainCertificate(projectDir: string, domain: string): CertificateChangeResult {
+export function removeDomainCertificate(
+  projectDir: string,
+  domain: string,
+  runtime?: DynamicConfigRuntime
+): CertificateChangeResult {
   const artifacts = certificateArtifacts(projectDir, domain);
   let certificateChanged = false;
   let dynamicConfigChanged = false;
@@ -193,10 +203,7 @@ export function removeDomainCertificate(projectDir: string, domain: string): Cer
     }
   }
 
-  if (fs.existsSync(artifacts.dynamicConfigFile)) {
-    fs.unlinkSync(artifacts.dynamicConfigFile);
-    dynamicConfigChanged = true;
-  }
+  dynamicConfigChanged = removeDynamicConfigFile(artifacts.dynamicConfigFile, runtime);
 
   return {
     artifacts,

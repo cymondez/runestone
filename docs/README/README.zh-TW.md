@@ -35,6 +35,15 @@
 npm install -g @developers-homelab/runestone-cli
 ```
 
+### 檢查主機環境
+
+Runestone 需要主機上有 Docker、Docker Compose 與平台對應的憑證工具。
+您可以在 setup 前先檢查環境；如果 setup 提示缺少工具，也可以讓 `runestone doctor` 協助處理支援的修復項目。
+
+```bash
+runestone doctor
+```
+
 ### 啟動
 
 第一次啟動會進入初始化設定，之後要修改設定請使用 `runestone setup`。
@@ -84,6 +93,57 @@ runestone certs create <domain>
 ```bash
 runestone certs remove <domain>
 ```
+
+## Service 管理
+
+### 新增 Service
+
+新增 routed service，並建立對應的 Traefik 動態設定檔。
+當必要參數缺少或不合法時，Runestone 會進入互動模式補齊。
+
+```bash
+runestone service add <service name> --route <domain> --url <url with port> --group <group name>
+```
+
+### Service 清單
+
+顯示已設定的 routed services。
+
+```bash
+runestone service list
+```
+
+### 移除 Service
+
+移除 routed service，並刪除對應的 Traefik 動態設定檔。
+
+```bash
+runestone service remove <service name>
+```
+
+## 專案整合
+
+當您要請 AI agent 將其他專案接入 Runestone 時，請告訴它在修改 Compose 檔案前先呼叫 `runestone docs --ai-context`。
+這個指令會輸出 AI agent 需要的本機 Runestone network name、host domain 與 Traefik entrypoint names。
+
+```bash
+runestone docs --ai-context
+```
+
+範例 prompt：
+
+```text
+給我 traefik/whoami 且能在 Runestone 環境下運作的 compose.yml。
+Runestone 設定方法請直接呼叫 `runestone docs --ai-context`。
+```
+
+```text
+幫我加上 compose.override.yml，並替 `app` service 補上符合 Runestone 環境的 Traefik labels 與 network 設定。
+Runestone 設定方法請直接呼叫 `runestone docs --ai-context`。
+```
+
+產生的 AI context 來自 [runestone-cli/tool-docs/ai-prompt-context.tmp.md](../../runestone-cli/tool-docs/ai-prompt-context.tmp.md)。
+您可以在分享產生的 context 給 AI agent 前，先檢閱這個 template。
 
 ## 詳細說明
 
