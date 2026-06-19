@@ -62,7 +62,7 @@ export function normalizeDomain(domain: string): string {
 export function certificateArtifacts(projectDir: string, domain: string): CertificateArtifacts {
   const normalized = normalizeDomain(domain);
   const certsDir = path.join(projectDir, 'certs');
-  const dynamicDir = path.join(projectDir, 'configuration', 'traefik', 'dynamic');
+  const dynamicDir = path.join(projectDir, 'configuration', 'certs');
 
   return {
     domain: normalized,
