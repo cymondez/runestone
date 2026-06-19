@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.1.0 - 2026-06-19
+
+### Added
+
+- Added `runestone service` for exposing local services through Runestone:
+  - `add` creates a routed service and prompts for missing values.
+  - `list|ls` shows group, service name, route, URL, and config status.
+  - `remove|rm`, `modify|m`, and `repair` manage existing services.
+- Added `runestone service group` for organizing services:
+  - `list|ls` can show names, tree view, or detailed tree view.
+  - `move|mv` moves a service to another group.
+  - `clean` removes services in a group or keeps them ungrouped.
+- Added service setup checks:
+  - Detects Traefik router/service name conflicts across providers.
+  - Detects route Host conflicts before writing config.
+  - Checks wildcard certificate coverage.
+  - Warns when loopback URLs would point to the Runestone container.
+
+### Changed
+
+- Certificate dynamic configs are stored under `configuration/certs`.
+
 ## 1.0.1 - 2026-06-18
 
 ### Added
