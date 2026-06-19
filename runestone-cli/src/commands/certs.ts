@@ -1,30 +1,10 @@
 import { Command } from 'commander';
 import { CertificateListItem, createDomainCertificate, listDomainCertificates, removeDomainCertificate } from '../services/cert-manager';
-import { composeService } from '../services/docker-compose';
 import { envLoader } from '../utils/env-loader';
 import { logger } from '../utils/logger';
 import { t } from '../i18n';
 import { createCommand } from '../utils/command';
 import { installRootCa } from '../services/root-ca-installer';
-
-function shouldRestartOnWindows(changed: boolean): boolean {
-  return changed && process.platform === 'win32';
-}
-
-function restartIfRunningOnWindows(composePath: string, changed: boolean): void {
-  if (!shouldRestartOnWindows(changed)) {
-    return;
-  }
-
-  const running = composeService.ps(composePath).some((container) => container.State === 'running');
-  if (!running) {
-    logger.warn('Certificate files changed, but no runestone container is running to restart.');
-    return;
-  }
-
-  logger.info('Restarting runestone container so Docker Desktop picks up certificate/config changes');
-  composeService.restart(composePath);
-}
 
 function formatCertificateTable(items: CertificateListItem[], options: { header: boolean }): string {
   const rows = items.map((item) => [
@@ -59,11 +39,7 @@ export function createCertsCommand(): Command {
     .action(async (domain: string) => {
       try {
         const config = envLoader.load();
-        const result = await createDomainCertificate(config.PROJECT_DIR, domain);
-        restartIfRunningOnWindows(
-          config.COMPOSE_FILE_PATH,
-          result.certificateChanged || result.dynamicConfigChanged
-        );
+        const result = await createDomainCertificate(config.PROJECT_DIR, domain, { composeFilePath: config.COMPOSE_FILE_PATH });
 
         logger.success(`Certificate configuration ready for '${result.artifacts.domain}'`);
         console.log(`  Certificate: ${result.artifacts.certFile}`);
@@ -137,9 +113,8 @@ export function createCertsCommand(): Command {
     .action((domain: string) => {
       try {
         const config = envLoader.load();
-        const result = removeDomainCertificate(config.PROJECT_DIR, domain);
+        const result = removeDomainCertificate(config.PROJECT_DIR, domain, { composeFilePath: config.COMPOSE_FILE_PATH });
         const changed = result.certificateChanged || result.dynamicConfigChanged;
-        restartIfRunningOnWindows(config.COMPOSE_FILE_PATH, changed);
 
         if (changed) {
           logger.success(`Certificate configuration removed for '${result.artifacts.domain}'`);

@@ -5,6 +5,14 @@ import * as path from 'path';
 interface ToolState {
   runestonePath?: string;
   locale?: string;
+  services?: RunestoneServiceRecord[];
+}
+
+export interface RunestoneServiceRecord {
+  group: string | null;
+  name: string;
+  route: string;
+  url: string;
 }
 
 function packageRoot(): string {
@@ -65,5 +73,16 @@ export const toolState = {
       runestonePath: path.resolve(state.runestonePath),
       locale: state.locale
     });
+  },
+
+  readServices(): RunestoneServiceRecord[] {
+    return (readState().services ?? []).map((service) => ({
+      ...service,
+      group: service.group && service.group !== 'none' ? service.group : null
+    }));
+  },
+
+  writeServices(services: RunestoneServiceRecord[]): void {
+    writeState({ ...readState(), services });
   }
 };
