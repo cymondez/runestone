@@ -34,12 +34,14 @@ jest.mock('@clack/prompts', () => ({
   confirm: jest.fn(),
   isCancel: jest.fn(() => false),
   cancel: jest.fn(),
+  select: jest.fn(),
   text: jest.fn()
 }));
 
 const readTraefikSnapshotMock = readTraefikSnapshot as jest.MockedFunction<typeof readTraefikSnapshot>;
 const listDomainCertificatesMock = listDomainCertificates as jest.MockedFunction<typeof listDomainCertificates>;
 const confirmMock = p.confirm as jest.MockedFunction<typeof p.confirm>;
+const selectMock = p.select as jest.MockedFunction<typeof p.select>;
 const textMock = p.text as jest.MockedFunction<typeof p.text>;
 const restartMock = composeService.restart as jest.MockedFunction<typeof composeService.restart>;
 
@@ -81,6 +83,7 @@ describe('service command', () => {
     (envLoader.load as jest.Mock).mockReturnValue(config(tempDir));
     readTraefikSnapshotMock.mockResolvedValue({ routers: [], services: [] });
     confirmMock.mockResolvedValue(true);
+    selectMock.mockResolvedValue('none');
     listDomainCertificatesMock.mockReturnValue([
       {
         status: '✓',
@@ -238,11 +241,13 @@ describe('service command', () => {
     textMock
       .mockResolvedValueOnce('api')
       .mockResolvedValueOnce('apps');
+    selectMock.mockResolvedValueOnce('__runestone_create_group__');
     const program = createProgram();
 
     await program.parseAsync(['node', 'runestone', 'service', 'group', 'mv']);
 
     expect(textMock.mock.calls[0][0]).toMatchObject({ message: 'Service name' });
+    expect(selectMock.mock.calls[0][0]).toMatchObject({ message: 'Group' });
     expect(textMock.mock.calls[1][0]).toMatchObject({ message: 'Group' });
     const state = JSON.parse(fs.readFileSync(statePath, 'utf8')) as {
       services: Array<{ name: string; group: string | null }>;
@@ -346,24 +351,90 @@ describe('service command', () => {
   it('checks localhost upstream URLs before asking for group in interactive add', async () => {
     textMock
       .mockResolvedValueOnce('ollama')
-      .mockResolvedValueOnce('http://127.0.0.1:11434')
-      .mockResolvedValueOnce('apps');
+      .mockResolvedValueOnce('http://127.0.0.1:11434');
     const program = createProgram();
 
     await program.parseAsync(['node', 'runestone', 'service', 'add', 'ollama']);
 
     expect(textMock.mock.calls[0][0]).toMatchObject({ message: 'Route domain' });
     expect(textMock.mock.calls[1][0]).toMatchObject({ message: 'Service URL' });
-    expect(textMock.mock.calls[2][0]).toMatchObject({ message: 'Group' });
-    expect(confirmMock.mock.invocationCallOrder[0]).toBeLessThan(textMock.mock.invocationCallOrder[2]);
+    expect(selectMock.mock.calls[0][0]).toMatchObject({ message: 'Group' });
+    expect(confirmMock.mock.invocationCallOrder[0]).toBeLessThan(selectMock.mock.invocationCallOrder[0]);
+  });
+
+  it('lets interactive service add choose an existing group from a select menu', async () => {
+    const statePath = path.join(tempDir, 'runestone.config.json');
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({
+        services: [
+          { name: 'api', group: 'apps', route: 'api.example.test', url: 'http://localhost:3000' }
+        ]
+      }),
+      'utf8'
+    );
+    textMock
+      .mockResolvedValueOnce('ollama')
+      .mockResolvedValueOnce('http://host.docker.internal:11434');
+    selectMock.mockResolvedValueOnce('apps');
+    const program = createProgram();
+
+    await program.parseAsync(['node', 'runestone', 'service', 'add', 'ollama']);
+
+    expect(selectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Group',
+        options: expect.arrayContaining([
+          expect.objectContaining({ value: 'none' }),
+          expect.objectContaining({ value: 'apps', label: 'apps' }),
+          expect.objectContaining({ value: '__runestone_create_group__' })
+        ])
+      })
+    );
+    expect(textMock).toHaveBeenCalledTimes(2);
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8')) as {
+      services: Array<{ name: string; group: string | null }>;
+    };
+    expect(state.services).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'ollama', group: 'apps' })
+    ]));
+  });
+
+  it('does not show existing group options when only ungrouped services exist', async () => {
+    const statePath = path.join(tempDir, 'runestone.config.json');
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({
+        services: [
+          { name: 'api', group: null, route: 'api.example.test', url: 'http://localhost:3000' },
+          { name: 'web', group: 'none', route: 'web.example.test', url: 'http://localhost:3001' }
+        ]
+      }),
+      'utf8'
+    );
+    textMock
+      .mockResolvedValueOnce('ollama')
+      .mockResolvedValueOnce('http://host.docker.internal:11434');
+    selectMock.mockResolvedValueOnce('none');
+    const program = createProgram();
+
+    await program.parseAsync(['node', 'runestone', 'service', 'add', 'ollama']);
+
+    expect(selectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: [
+          expect.objectContaining({ value: 'none' }),
+          expect.objectContaining({ value: '__runestone_create_group__' })
+        ]
+      })
+    );
   });
 
   it('keeps the URL prompt active when URL validation fails', async () => {
     textMock
       .mockResolvedValueOnce('ollama')
       .mockResolvedValueOnce('http://')
-      .mockResolvedValueOnce('http://host.docker.internal:11434')
-      .mockResolvedValueOnce('apps');
+      .mockResolvedValueOnce('http://host.docker.internal:11434');
     const program = createProgram();
 
     await program.parseAsync(['node', 'runestone', 'service', 'add', 'ollama']);
@@ -371,7 +442,7 @@ describe('service command', () => {
     expect(textMock.mock.calls[0][0]).toMatchObject({ message: 'Route domain' });
     expect(textMock.mock.calls[1][0]).toMatchObject({ message: 'Service URL' });
     expect(textMock.mock.calls[2][0]).toMatchObject({ message: 'Service URL' });
-    expect(textMock.mock.calls[3][0]).toMatchObject({ message: 'Group' });
+    expect(selectMock.mock.calls[0][0]).toMatchObject({ message: 'Group' });
     const warnings = warnSpy.mock.calls.map((call) => call.join(' ')).join('\n');
     expect(warnings).toContain('URL must be in the form http://host:port or https://host:port');
   });
@@ -388,8 +459,7 @@ describe('service command', () => {
     textMock
       .mockResolvedValueOnce('app.ollama.example.test')
       .mockResolvedValueOnce('ollama')
-      .mockResolvedValueOnce('http://host.docker.internal:11434')
-      .mockResolvedValueOnce('apps');
+      .mockResolvedValueOnce('http://host.docker.internal:11434');
     const program = createProgram();
 
     await program.parseAsync(['node', 'runestone', 'service', 'add', 'ollama']);
@@ -397,6 +467,7 @@ describe('service command', () => {
     expect(textMock.mock.calls[0][0]).toMatchObject({ message: 'Route domain' });
     expect(textMock.mock.calls[1][0]).toMatchObject({ message: 'Route domain' });
     expect(textMock.mock.calls[2][0]).toMatchObject({ message: 'Service URL' });
+    expect(selectMock.mock.calls[0][0]).toMatchObject({ message: 'Group' });
     const warnings = warnSpy.mock.calls.map((call) => call.join(' ')).join('\n');
     expect(warnings).toContain('Host(`app.ollama.example.test`)');
     expect(warnings).toContain('other@docker');
@@ -508,6 +579,7 @@ describe('service command', () => {
       .mockResolvedValueOnce('ollama')
       .mockResolvedValueOnce('http://host.docker.internal:11434')
       .mockResolvedValueOnce('apps');
+    selectMock.mockResolvedValueOnce('__runestone_create_group__');
     const program = createProgram();
 
     await program.parseAsync(['node', 'runestone', 'service', 'add', 'ollama']);

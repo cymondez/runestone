@@ -54,6 +54,8 @@ interface GroupListOptions {
   detail?: boolean;
 }
 
+const GROUP_CREATE_VALUE = '__runestone_create_group__';
+
 function traefikApiBaseUrl(config: RunestoneEnv): string {
   return `https://traefik.${config.HOST_DOMAIN}`;
 }
@@ -103,6 +105,16 @@ async function promptConfirm(message: string, initialValue = true): Promise<bool
   }
 
   return Boolean(result);
+}
+
+async function promptSelect(message: string, options: Array<{ value: string; label: string }>, initialValue?: string): Promise<string> {
+  const result = await p.select({ message, options, initialValue });
+  if (p.isCancel(result)) {
+    p.cancel(t('service.cancelled'));
+    process.exit(0);
+  }
+
+  return String(result);
 }
 
 async function maybeReplaceLoopbackUrl(service: RunestoneServiceRecord): Promise<RunestoneServiceRecord> {
@@ -215,6 +227,28 @@ async function promptForServiceUrl(initialUrl: string, forcePromptOption?: boole
 async function promptForGroupName(initialGroup: string | null | undefined, forcePromptOption?: boolean): Promise<string | null> {
   let group = initialGroup ?? '';
   let forcePrompt = forcePromptOption || !group;
+
+  if (forcePrompt) {
+    const existingGroups = Array.from(new Set(toolState.readServices()
+      .map((service) => service.group)
+      .filter((value): value is string => Boolean(value))))
+      .sort((left, right) => left.localeCompare(right));
+    const selected = await promptSelect(
+      t('service.prompt.group'),
+      [
+        { value: 'none', label: t('service.group.option.none') },
+        ...existingGroups.map((value) => ({ value, label: value })),
+        { value: GROUP_CREATE_VALUE, label: t('service.group.option.createNew') }
+      ],
+      group || 'none'
+    );
+
+    if (selected !== GROUP_CREATE_VALUE) {
+      return validateGroupName(selected);
+    }
+
+    group = '';
+  }
 
   while (true) {
     const candidate = forcePrompt ? await promptText(t('service.prompt.group'), group || '') : group;
