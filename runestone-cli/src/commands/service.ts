@@ -28,6 +28,7 @@ import { logger } from '../utils/logger';
 import { toolState, RunestoneServiceRecord } from '../utils/tool-state';
 import { createCommand } from '../utils/command';
 import { t } from '../i18n';
+import { runInDynamicConfigBatch } from '../services/dynamic-config-manager';
 
 interface AddOptions {
   route?: string;
@@ -350,7 +351,10 @@ async function handleAdd(name: string | undefined, options: AddOptions): Promise
   if (!loopbackCheckedDuringInput) {
     input = await maybeReplaceLoopbackUrl(input);
   }
-  await createService(config, input);
+  await runInDynamicConfigBatch(
+    { composeFilePath: config.COMPOSE_FILE_PATH },
+    () => createService(config, input)
+  );
   logger.success(t('service.success.created', { name: input.name }));
 }
 
@@ -368,16 +372,18 @@ async function handleModify(name: string): Promise<void> {
   });
   next.name = service.name;
   const adjusted = next;
-  await ensureCertificateCoverage(config, adjusted.route, () =>
-    promptConfirm(
-      t('service.certificate.createWildcard.prompt', {
-        route: adjusted.route,
-        wildcard: `*.${certificateBaseDomainForRoute(adjusted.route)}`
-      })
-    )
-  );
-  updateServiceRecord(adjusted);
-  writeServiceDynamicConfig(config, adjusted);
+  await runInDynamicConfigBatch({ composeFilePath: config.COMPOSE_FILE_PATH }, async () => {
+    await ensureCertificateCoverage(config, adjusted.route, () =>
+      promptConfirm(
+        t('service.certificate.createWildcard.prompt', {
+          route: adjusted.route,
+          wildcard: `*.${certificateBaseDomainForRoute(adjusted.route)}`
+        })
+      )
+    );
+    updateServiceRecord(adjusted);
+    writeServiceDynamicConfig(config, adjusted);
+  });
   logger.success(t('service.success.updated', { name: adjusted.name }));
 }
 
@@ -417,18 +423,21 @@ async function handleRemove(name: string, options: RemoveOptions): Promise<void>
     return;
   }
 
-  if (hasMetadata) {
-    removeServiceRecord(normalized);
-  } else if (!isManagedServiceDynamicConfig(config, normalized)) {
-    throw new Error(t('service.error.unmanagedDynamicConfig', { name: normalized }));
-  } else {
-    logger.warn(t('service.warn.removingManagedConfigOnly', { name: normalized }));
-  }
-  const changed = removeServiceDynamicConfig(config, normalized);
+  let changed = false;
+  await runInDynamicConfigBatch({ composeFilePath: config.COMPOSE_FILE_PATH }, () => {
+    if (hasMetadata) {
+      removeServiceRecord(normalized);
+    } else if (!isManagedServiceDynamicConfig(config, normalized)) {
+      throw new Error(t('service.error.unmanagedDynamicConfig', { name: normalized }));
+    } else {
+      logger.warn(t('service.warn.removingManagedConfigOnly', { name: normalized }));
+    }
+    changed = removeServiceDynamicConfig(config, normalized);
+  });
   logger.success(changed || hasMetadata ? t('service.success.removed', { name: normalized }) : t('service.success.metadataRemoved', { name: normalized }));
 }
 
-function handleRepair(name: string): void {
+async function handleRepair(name: string): Promise<void> {
   const config = envLoader.load();
   const normalized = validateServiceName(name);
   const service = toolState.readServices().find((item) => item.name === normalized);
@@ -436,7 +445,10 @@ function handleRepair(name: string): void {
     throw new Error(t('service.error.notFound', { name: normalized }));
   }
 
-  writeServiceDynamicConfig(config, service);
+  await runInDynamicConfigBatch(
+    { composeFilePath: config.COMPOSE_FILE_PATH },
+    () => writeServiceDynamicConfig(config, service)
+  );
   logger.success(t('service.success.repaired', { name: normalized }));
 }
 
@@ -482,10 +494,12 @@ async function handleGroupClean(groupName: string, options: GroupCleanOptions): 
     return;
   }
 
-  toolState.writeServices(services.filter((service) => service.group !== group));
-  for (const service of targets) {
-    removeServiceDynamicConfig(config, service.name);
-  }
+  await runInDynamicConfigBatch({ composeFilePath: config.COMPOSE_FILE_PATH }, () => {
+    toolState.writeServices(services.filter((service) => service.group !== group));
+    for (const service of targets) {
+      removeServiceDynamicConfig(config, service.name);
+    }
+  });
   logger.success(t('service.group.success.removed', { group: displayGroupName(group), count: targets.length }));
 }
 

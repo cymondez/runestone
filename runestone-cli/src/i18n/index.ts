@@ -71,8 +71,6 @@ const messages = {
     'service.certificate.createWildcard.prompt':
       'No wildcard certificate covers {route}. Create wildcard certificate {wildcard}?',
     'service.cancelled': 'Service command cancelled.',
-    'service.restart.notRunning': 'Service dynamic config changed, but no runestone container is running to restart.',
-    'service.restart.info': 'Restarting runestone container so Docker Desktop picks up service dynamic config changes',
     'service.traefik.unavailable': 'Traefik API is not available. Run `runestone up` or check Docker status.',
     'service.traefik.nameConflict':
       "Traefik name '{name}' conflicts with {summary}. If the conflict is a Runestone-managed file provider config, run `runestone service rm {name} --force` and try again. Otherwise remove or rename the conflicting Traefik resource at its source.",
@@ -281,8 +279,6 @@ const messages = {
     'service.certificate.createWildcard.prompt':
       '找不到可套用於 {route} 的萬用字元憑證。是否建立 {wildcard} 憑證？',
     'service.cancelled': 'Service 指令已取消。',
-    'service.restart.notRunning': 'Service dynamic config 已變更，但找不到正在執行的 runestone container 可 restart。',
-    'service.restart.info': '正在 restart runestone container，讓 Docker Desktop 同步 service dynamic config 變更',
     'service.traefik.unavailable': '無法連線 Traefik API。請執行 `runestone up`，或檢查 Docker 狀態。',
     'service.traefik.nameConflict':
       "Traefik 名稱 '{name}' 與 {summary} 衝突。如果衝突來源是 Runestone 管理的 file provider config，請執行 `runestone service rm {name} --force` 後重試；否則請到來源移除或重新命名該 Traefik 資源。",
@@ -484,8 +480,6 @@ const messages = {
     'service.certificate.createWildcard.prompt':
       '{route} をカバーするワイルドカード証明書がありません。{wildcard} 証明書を作成しますか？',
     'service.cancelled': 'Service コマンドをキャンセルしました。',
-    'service.restart.notRunning': 'Service dynamic config は変更されましたが、restart できる実行中の runestone container がありません。',
-    'service.restart.info': 'Docker Desktop が service dynamic config の変更を反映できるように runestone container を restart しています',
     'service.traefik.unavailable': 'Traefik API に接続できません。`runestone up` を実行するか Docker の状態を確認してください。',
     'service.traefik.nameConflict':
       "Traefik name '{name}' は {summary} と競合しています。競合元が Runestone 管理の file provider config の場合は `runestone service rm {name} --force` を実行してから再試行してください。それ以外の場合は、競合している Traefik resource を元の場所で削除またはリネームしてください。",

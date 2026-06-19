@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 import { t } from '../i18n';
 import { createCommand } from '../utils/command';
 import { installRootCa } from '../services/root-ca-installer';
+import { runInDynamicConfigBatch } from '../services/dynamic-config-manager';
 
 function formatCertificateTable(items: CertificateListItem[], options: { header: boolean }): string {
   const rows = items.map((item) => [
@@ -39,7 +40,10 @@ export function createCertsCommand(): Command {
     .action(async (domain: string) => {
       try {
         const config = envLoader.load();
-        const result = await createDomainCertificate(config.PROJECT_DIR, domain, { composeFilePath: config.COMPOSE_FILE_PATH });
+        const result = await runInDynamicConfigBatch(
+          { composeFilePath: config.COMPOSE_FILE_PATH },
+          () => createDomainCertificate(config.PROJECT_DIR, domain, { composeFilePath: config.COMPOSE_FILE_PATH })
+        );
 
         logger.success(`Certificate configuration ready for '${result.artifacts.domain}'`);
         console.log(`  Certificate: ${result.artifacts.certFile}`);
@@ -110,10 +114,13 @@ export function createCertsCommand(): Command {
     .alias('del')
     .description(t('commands.certs.remove.description'))
     .argument('<domain>', t('arguments.domain.remove'))
-    .action((domain: string) => {
+    .action(async (domain: string) => {
       try {
         const config = envLoader.load();
-        const result = removeDomainCertificate(config.PROJECT_DIR, domain, { composeFilePath: config.COMPOSE_FILE_PATH });
+        const result = await runInDynamicConfigBatch(
+          { composeFilePath: config.COMPOSE_FILE_PATH },
+          () => removeDomainCertificate(config.PROJECT_DIR, domain, { composeFilePath: config.COMPOSE_FILE_PATH })
+        );
         const changed = result.certificateChanged || result.dynamicConfigChanged;
 
         if (changed) {
