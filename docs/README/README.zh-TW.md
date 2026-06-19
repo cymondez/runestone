@@ -94,6 +94,33 @@ runestone certs create <domain>
 runestone certs remove <domain>
 ```
 
+## Service 管理
+
+### 新增 Service
+
+新增 routed service，並建立對應的 Traefik 動態設定檔。
+當必要參數缺少或不合法時，Runestone 會進入互動模式補齊。
+
+```bash
+runestone service add <service name> --route <domain> --url <url with port> --group <group name>
+```
+
+### Service 清單
+
+顯示已設定的 routed services。
+
+```bash
+runestone service list
+```
+
+### 移除 Service
+
+移除 routed service，並刪除對應的 Traefik 動態設定檔。
+
+```bash
+runestone service remove <service name>
+```
+
 ## 專案整合
 
 當您要請 AI agent 將其他專案接入 Runestone 時，請告訴它在修改 Compose 檔案前先呼叫 `runestone docs --ai-context`。

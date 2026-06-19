@@ -94,6 +94,33 @@ Removes the certificate from the `.runestone/certs` directory and deletes the ma
 runestone certs remove <domain>
 ```
 
+## Service Management
+
+### Add Service
+
+Adds a routed service and creates the matching dynamic Traefik configuration.
+When required arguments are missing or invalid, Runestone enters interactive mode to complete them.
+
+```bash
+runestone service add <service name> --route <domain> --url <url with port> --group <group name>
+```
+
+### List Services
+
+Shows configured routed services.
+
+```bash
+runestone service list
+```
+
+### Remove Service
+
+Removes a routed service and deletes its matching dynamic Traefik configuration.
+
+```bash
+runestone service remove <service name>
+```
+
 ## Project Integration
 
 When asking an AI agent to connect a project to Runestone, tell it to call `runestone docs --ai-context` before editing Compose files.
