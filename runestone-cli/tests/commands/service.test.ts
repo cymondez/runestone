@@ -348,6 +348,32 @@ describe('service command', () => {
     expect(state.services[0].url).toBe('http://host.docker.internal:11434');
   });
 
+  it('preserves upstream URL paths when replacing localhost during add', async () => {
+    const program = createProgram();
+
+    await program.parseAsync([
+      'node',
+      'runestone',
+      'service',
+      'add',
+      'ollama',
+      '--route',
+      'ollama',
+      '--url',
+      'http://127.0.0.1:11434/v1'
+    ]);
+
+    expect(confirmMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('host.docker.internal')
+      })
+    );
+    const state = JSON.parse(fs.readFileSync(path.join(tempDir, 'runestone.config.json'), 'utf8')) as {
+      services: Array<{ url: string }>;
+    };
+    expect(state.services[0].url).toBe('http://host.docker.internal:11434/v1');
+  });
+
   it('checks localhost upstream URLs before asking for group in interactive add', async () => {
     textMock
       .mockResolvedValueOnce('ollama')
@@ -443,8 +469,9 @@ describe('service command', () => {
     expect(textMock.mock.calls[1][0]).toMatchObject({ message: 'Service URL' });
     expect(textMock.mock.calls[2][0]).toMatchObject({ message: 'Service URL' });
     expect(selectMock.mock.calls[0][0]).toMatchObject({ message: 'Group' });
-    const warnings = warnSpy.mock.calls.map((call) => call.join(' ')).join('\n');
-    expect(warnings).toContain('URL must be in the form http://host:port or https://host:port');
+    expect(textMock.mock.calls[2][0]).toMatchObject({
+      frame: { description: 'URL must be in the form http://host:port or https://host:port' }
+    });
   });
 
   it('checks route host conflicts before asking for URL in interactive add', async () => {
@@ -468,9 +495,180 @@ describe('service command', () => {
     expect(textMock.mock.calls[1][0]).toMatchObject({ message: 'Route domain' });
     expect(textMock.mock.calls[2][0]).toMatchObject({ message: 'Service URL' });
     expect(selectMock.mock.calls[0][0]).toMatchObject({ message: 'Group' });
-    const warnings = warnSpy.mock.calls.map((call) => call.join(' ')).join('\n');
-    expect(warnings).toContain('Host(`app.ollama.example.test`)');
-    expect(warnings).toContain('other@docker');
+    expect(textMock.mock.calls[1][0]).toMatchObject({
+      frame: { description: expect.stringContaining('Host(`app.ollama.example.test`)') }
+    });
+    expect((textMock.mock.calls[1][0] as unknown as { frame: { description: string } }).frame.description).toContain('other@docker');
+  });
+
+  it('uses a route base domain select when a route cannot create a wildcard certificate', async () => {
+    textMock
+      .mockResolvedValueOnce('app.ollam')
+      .mockResolvedValueOnce('http://host.docker.internal:11434');
+    selectMock
+      .mockResolvedValueOnce('example.test')
+      .mockResolvedValueOnce('none');
+    const program = createProgram();
+
+    await program.parseAsync(['node', 'runestone', 'service', 'add', 'ollama']);
+
+    expect(selectMock.mock.calls[0][0]).toMatchObject({
+      message: 'Route base domain',
+      frame: { description: "Cannot create a wildcard certificate for 'app.ollam'. Use a route with at least three labels." },
+      options: [
+        expect.objectContaining({ value: 'example.test', label: 'app.ollam.example.test', hint: '*.example.test' }),
+        expect.objectContaining({ value: '__runestone_manual_route__', label: 'Enter full route manually' })
+      ]
+    });
+    expect(textMock.mock.calls[1][0]).toMatchObject({ message: 'Service URL' });
+    expect(selectMock.mock.calls[1][0]).toMatchObject({ message: 'Group' });
+    const state = JSON.parse(fs.readFileSync(path.join(tempDir, 'runestone.config.json'), 'utf8')) as {
+      services: Array<{ route: string }>;
+    };
+    expect(state.services[0].route).toBe('app.ollam.example.test');
+  });
+
+  it('merges route suffix with overlapping certificate base domain labels', async () => {
+    listDomainCertificatesMock.mockReturnValue([
+      {
+        status: '✓',
+        sans: ['*.ollama.docker.so', '*.docker.so'],
+        issuer: 'Runestone',
+        validUntil: '2030-01-01',
+        expiry: '100d',
+        certFile: '',
+        keyFile: '',
+        dynamicConfigFile: ''
+      }
+    ]);
+    textMock
+      .mockResolvedValueOnce('app.ollama')
+      .mockResolvedValueOnce('http://host.docker.internal:11434');
+    selectMock
+      .mockResolvedValueOnce('ollama.docker.so')
+      .mockResolvedValueOnce('none');
+    const program = createProgram();
+
+    await program.parseAsync(['node', 'runestone', 'service', 'add', 'ollama']);
+
+    expect(selectMock.mock.calls[0][0]).toMatchObject({
+      message: 'Route base domain',
+      options: [
+        expect.objectContaining({ value: 'ollama.docker.so', label: 'app.ollama.docker.so', hint: '*.ollama.docker.so' }),
+        expect.objectContaining({ value: '__runestone_manual_route__', label: 'Enter full route manually' })
+      ]
+    });
+    expect(selectMock.mock.calls[0][0].options).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 'docker.so', label: 'app.ollama.docker.so' })
+    ]));
+    const state = JSON.parse(fs.readFileSync(path.join(tempDir, 'runestone.config.json'), 'utf8')) as {
+      services: Array<{ route: string }>;
+    };
+    expect(state.services[0].route).toBe('app.ollama.docker.so');
+  });
+
+  it('uses the route base domain select during service modify', async () => {
+    const statePath = path.join(tempDir, 'runestone.config.json');
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({
+        services: [
+          { name: 'ollama', group: 'apps', route: 'old.ollama.example.test', url: 'http://host.docker.internal:11434' }
+        ]
+      }),
+      'utf8'
+    );
+    textMock
+      .mockResolvedValueOnce('app.ollama')
+      .mockResolvedValueOnce('http://host.docker.internal:11434');
+    selectMock
+      .mockResolvedValueOnce('example.test')
+      .mockResolvedValueOnce('none');
+    const program = createProgram();
+
+    await program.parseAsync(['node', 'runestone', 'service', 'modify', 'ollama']);
+
+    expect(selectMock.mock.calls[0][0]).toMatchObject({
+      message: 'Route base domain',
+      frame: { description: "Cannot create a wildcard certificate for 'app.ollama'. Use a route with at least three labels." },
+      options: [
+        expect.objectContaining({ value: 'example.test', label: 'app.ollama.example.test', hint: '*.example.test' }),
+        expect.objectContaining({ value: '__runestone_manual_route__', label: 'Enter full route manually' })
+      ]
+    });
+    expect(textMock.mock.calls[1][0]).toMatchObject({ message: 'Service URL' });
+    expect(selectMock.mock.calls[1][0]).toMatchObject({ message: 'Group' });
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8')) as {
+      services: Array<{ name: string; group: string | null; route: string; url: string }>;
+    };
+    expect(state.services).toEqual([
+      expect.objectContaining({
+        name: 'ollama',
+        group: null,
+        route: 'app.ollama.example.test',
+        url: 'http://host.docker.internal:11434'
+      })
+    ]);
+  });
+
+  it('preserves upstream URL paths during service modify', async () => {
+    const statePath = path.join(tempDir, 'runestone.config.json');
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({
+        services: [
+          { name: 'ollama', group: 'apps', route: 'app.ollama.example.test', url: 'http://host.docker.internal:11434' }
+        ]
+      }),
+      'utf8'
+    );
+    textMock
+      .mockResolvedValueOnce('app.ollama.example.test')
+      .mockResolvedValueOnce('http://127.0.0.1:11434/v1?debug=true');
+    selectMock.mockResolvedValueOnce('apps');
+    const program = createProgram();
+
+    await program.parseAsync(['node', 'runestone', 'service', 'modify', 'ollama']);
+
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8')) as {
+      services: Array<{ url: string }>;
+    };
+    expect(state.services[0].url).toBe('http://host.docker.internal:11434/v1?debug=true');
+  });
+
+  it('keeps route host conflict feedback in the route prompt during service modify', async () => {
+    const statePath = path.join(tempDir, 'runestone.config.json');
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({
+        services: [
+          { name: 'ollama', group: 'apps', route: 'old.ollama.example.test', url: 'http://host.docker.internal:11434' }
+        ]
+      }),
+      'utf8'
+    );
+    readTraefikSnapshotMock
+      .mockResolvedValueOnce({
+        routers: [{ name: 'other@docker', rule: 'Host(`api.example.test`)' }],
+        services: []
+      })
+      .mockResolvedValueOnce({ routers: [], services: [] });
+    textMock
+      .mockResolvedValueOnce('api.example.test')
+      .mockResolvedValueOnce('web.example.test')
+      .mockResolvedValueOnce('http://host.docker.internal:11434');
+    selectMock.mockResolvedValueOnce('none');
+    const program = createProgram();
+
+    await program.parseAsync(['node', 'runestone', 'service', 'modify', 'ollama']);
+
+    expect(textMock.mock.calls[0][0]).toMatchObject({ message: 'Route domain' });
+    expect(textMock.mock.calls[1][0]).toMatchObject({
+      message: 'Route domain',
+      frame: { description: expect.stringContaining('Host(`api.example.test`)') }
+    });
+    expect((textMock.mock.calls[1][0] as unknown as { frame: { description: string } }).frame.description).toContain('other@docker');
+    expect(textMock.mock.calls[2][0]).toMatchObject({ message: 'Service URL' });
   });
 
   it('localizes wildcard certificate prompts and names the certificate that will be created', async () => {
@@ -586,9 +784,8 @@ describe('service command', () => {
 
     expect(textMock.mock.calls[0][0]).toMatchObject({ message: 'Service name' });
     expect(textMock.mock.calls[1][0]).toMatchObject({ message: 'Route domain' });
-    const warnings = warnSpy.mock.calls.map((call) => call.join(' ')).join('\n');
-    expect(warnings).toContain('ollama@docker');
-    expect(warnings).toContain('docker provider');
+    expect((textMock.mock.calls[0][0] as unknown as { frame: { description: string } }).frame.description).toContain('ollama@docker');
+    expect((textMock.mock.calls[0][0] as unknown as { frame: { description: string } }).frame.description).toContain('docker provider');
     const state = JSON.parse(fs.readFileSync(path.join(tempDir, 'runestone.config.json'), 'utf8')) as {
       services: Array<{ name: string; route: string; url: string; group: string | null }>;
     };

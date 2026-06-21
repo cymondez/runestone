@@ -95,11 +95,10 @@ export function normalizeServiceUrl(url: string): string {
   if (!parsed.hostname) {
     throw new Error(t('service.validation.urlHostRequired'));
   }
-  if (parsed.pathname !== '/' || parsed.search || parsed.hash) {
-    throw new Error(t('service.validation.urlNoPath'));
-  }
 
-  return parsed.port ? `${parsed.protocol}//${parsed.hostname}:${parsed.port}` : `${parsed.protocol}//${parsed.hostname}`;
+  const origin = `${parsed.protocol}//${parsed.host}`;
+  const pathAndQuery = `${parsed.pathname}${parsed.search}`;
+  return pathAndQuery === '/' ? origin : `${origin}${pathAndQuery}`;
 }
 
 function normalizeLoopbackHost(hostname: string): string {
@@ -114,7 +113,9 @@ export function isContainerLoopbackUrl(url: string): boolean {
 export function replaceServiceUrlHost(url: string, nextHost: string): string {
   const parsed = new URL(url);
   parsed.hostname = nextHost;
-  return parsed.port ? `${parsed.protocol}//${parsed.hostname}:${parsed.port}` : `${parsed.protocol}//${parsed.hostname}`;
+  const origin = `${parsed.protocol}//${parsed.host}`;
+  const pathAndQuery = `${parsed.pathname}${parsed.search}`;
+  return pathAndQuery === '/' ? origin : `${origin}${pathAndQuery}`;
 }
 
 export function serviceDynamicConfigFile(projectDir: string, serviceName: string): string {
@@ -282,6 +283,10 @@ export function certificateBaseDomainForRoute(domain: string): string {
   }
 
   return base;
+}
+
+export function assertRouteCanCreateWildcardCertificate(domain: string): void {
+  certificateBaseDomainForRoute(domain);
 }
 
 export async function ensureCertificateCoverage(
