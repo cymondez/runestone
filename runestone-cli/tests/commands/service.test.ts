@@ -119,7 +119,7 @@ describe('service command', () => {
       'add',
       'api',
       '--route',
-      'api',
+      'api.example.test',
       '--url',
       'http://host.docker.internal:3000',
       '--group',
@@ -332,7 +332,7 @@ describe('service command', () => {
       'add',
       'ollama',
       '--route',
-      'ollama',
+      'ollama.example.test',
       '--url',
       'http://127.0.0.1:11434'
     ]);
@@ -358,7 +358,7 @@ describe('service command', () => {
       'add',
       'ollama',
       '--route',
-      'ollama',
+      'ollama.example.test',
       '--url',
       'http://127.0.0.1:11434/v1'
     ]);
@@ -374,9 +374,65 @@ describe('service command', () => {
     expect(state.services[0].url).toBe('http://host.docker.internal:11434/v1');
   });
 
+  it('uses the route base domain select for one-label interactive routes', async () => {
+    textMock
+      .mockResolvedValueOnce('api')
+      .mockResolvedValueOnce('http://host.docker.internal:3000');
+    selectMock
+      .mockResolvedValueOnce('example.test')
+      .mockResolvedValueOnce('none');
+    const program = createProgram();
+
+    await program.parseAsync(['node', 'runestone', 'service', 'add', 'api']);
+
+    expect(selectMock.mock.calls[0][0]).toMatchObject({
+      message: 'Route base domain',
+      frame: { description: "Cannot create a wildcard certificate for 'api'. Use a route with at least three labels." },
+      options: [
+        expect.objectContaining({ value: 'example.test', label: 'api.example.test', hint: '*.example.test' }),
+        expect.objectContaining({ value: '__runestone_manual_route__', label: 'Enter full route manually' })
+      ]
+    });
+    const state = JSON.parse(fs.readFileSync(path.join(tempDir, 'runestone.config.json'), 'utf8')) as {
+      services: Array<{ route: string }>;
+    };
+    expect(state.services[0].route).toBe('api.example.test');
+  });
+
+  it('uses the route base domain select for one-label direct route options', async () => {
+    selectMock
+      .mockResolvedValueOnce('example.test')
+      .mockResolvedValueOnce('none');
+    const program = createProgram();
+
+    await program.parseAsync([
+      'node',
+      'runestone',
+      'service',
+      'add',
+      'api',
+      '--route',
+      'api',
+      '--url',
+      'http://host.docker.internal:3000'
+    ]);
+
+    expect(selectMock.mock.calls[0][0]).toMatchObject({
+      message: 'Route base domain',
+      options: [
+        expect.objectContaining({ value: 'example.test', label: 'api.example.test', hint: '*.example.test' }),
+        expect.objectContaining({ value: '__runestone_manual_route__', label: 'Enter full route manually' })
+      ]
+    });
+    const state = JSON.parse(fs.readFileSync(path.join(tempDir, 'runestone.config.json'), 'utf8')) as {
+      services: Array<{ route: string }>;
+    };
+    expect(state.services[0].route).toBe('api.example.test');
+  });
+
   it('checks localhost upstream URLs before asking for group in interactive add', async () => {
     textMock
-      .mockResolvedValueOnce('ollama')
+      .mockResolvedValueOnce('ollama.example.test')
       .mockResolvedValueOnce('http://127.0.0.1:11434');
     const program = createProgram();
 
@@ -400,7 +456,7 @@ describe('service command', () => {
       'utf8'
     );
     textMock
-      .mockResolvedValueOnce('ollama')
+      .mockResolvedValueOnce('ollama.example.test')
       .mockResolvedValueOnce('http://host.docker.internal:11434');
     selectMock.mockResolvedValueOnce('apps');
     const program = createProgram();
@@ -439,7 +495,7 @@ describe('service command', () => {
       'utf8'
     );
     textMock
-      .mockResolvedValueOnce('ollama')
+      .mockResolvedValueOnce('ollama.example.test')
       .mockResolvedValueOnce('http://host.docker.internal:11434');
     selectMock.mockResolvedValueOnce('none');
     const program = createProgram();
@@ -458,7 +514,7 @@ describe('service command', () => {
 
   it('keeps the URL prompt active when URL validation fails', async () => {
     textMock
-      .mockResolvedValueOnce('ollama')
+      .mockResolvedValueOnce('ollama.example.test')
       .mockResolvedValueOnce('http://')
       .mockResolvedValueOnce('http://host.docker.internal:11434');
     const program = createProgram();
@@ -485,7 +541,7 @@ describe('service command', () => {
       .mockResolvedValueOnce({ routers: [], services: [] });
     textMock
       .mockResolvedValueOnce('app.ollama.example.test')
-      .mockResolvedValueOnce('ollama')
+      .mockResolvedValueOnce('ollama.example.test')
       .mockResolvedValueOnce('http://host.docker.internal:11434');
     const program = createProgram();
 
@@ -752,7 +808,7 @@ describe('service command', () => {
       'add',
       'ollama',
       '--route',
-      'ollama',
+      'ollama.example.test',
       '--url',
       'http://host.docker.internal:11434'
     ]);
@@ -774,7 +830,7 @@ describe('service command', () => {
       .mockResolvedValueOnce({ routers: [], services: [] });
     textMock
       .mockResolvedValueOnce('ollama2')
-      .mockResolvedValueOnce('ollama')
+      .mockResolvedValueOnce('ollama.example.test')
       .mockResolvedValueOnce('http://host.docker.internal:11434')
       .mockResolvedValueOnce('apps');
     selectMock.mockResolvedValueOnce('__runestone_create_group__');
@@ -816,7 +872,7 @@ describe('service command', () => {
       'add',
       'api',
       '--route',
-      'api',
+      'api.example.test',
       '--url',
       'http://host.docker.internal:3000'
     ]);
@@ -846,7 +902,7 @@ describe('service command', () => {
       'add',
       'api',
       '--route',
-      'api',
+      'api.example.test',
       '--url',
       'http://127.0.0.1:3000'
     ]);

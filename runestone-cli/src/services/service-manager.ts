@@ -63,7 +63,7 @@ export function validateGroupName(group?: string | null): string | null {
   return normalized === 'none' ? null : normalized;
 }
 
-export function normalizeRouteDomain(route: string, hostDomain: string): string {
+export function normalizeRouteDomain(route: string, _hostDomain: string): string {
   const value = route.trim().toLowerCase();
   if (!value) {
     throw new Error(t('service.validation.routeRequired'));
@@ -72,13 +72,12 @@ export function normalizeRouteDomain(route: string, hostDomain: string): string 
     throw new Error(t('service.validation.routeNoProtocol'));
   }
 
-  const domain = value.includes('.') ? value : `${value}.${hostDomain.toLowerCase()}`;
-  const labels = domain.split('.');
-  if (labels.length < 2 || labels.some((label) => !domainLabel.test(label))) {
+  const labels = value.split('.');
+  if (labels.some((label) => !domainLabel.test(label))) {
     throw new Error(t('service.validation.routeInvalid', { route }));
   }
 
-  return domain;
+  return value;
 }
 
 export function normalizeServiceUrl(url: string): string {

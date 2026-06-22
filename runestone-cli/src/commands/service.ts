@@ -581,6 +581,7 @@ async function handleAdd(name: string | undefined, options: AddOptions): Promise
   if (name && options.route && options.url) {
     try {
       directInput = prepareServiceInput({ name, route: options.route, url: options.url, group: options.group }, config);
+      assertRouteCertificateReady(config, directInput.route);
     } catch {
       directInput = undefined;
     }
@@ -593,6 +594,7 @@ async function handleAdd(name: string | undefined, options: AddOptions): Promise
     const serviceName = await promptForAvailableServiceName(config, name);
     try {
       input = prepareServiceInput({ name: serviceName, route: options.route ?? '', url: options.url ?? '', group: options.group }, config);
+      assertRouteCertificateReady(config, input.route);
     } catch {
       input = await promptForServiceInput(config, { name: serviceName, route: options.route, url: options.url, group: options.group }, { includeName: false });
       input.name = serviceName;
