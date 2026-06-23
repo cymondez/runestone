@@ -1,11 +1,15 @@
 import { Command } from 'commander';
+import { SelectPrompt, TextPrompt } from '@clack/core';
 import * as p from '@clack/prompts';
+import { cyan, dim, gray, green, hidden, inverse, red, strikethrough, yellow } from 'kleur';
 import {
   addServiceRecord,
+  assertRouteCanCreateWildcardCertificate,
   assertNoTraefikHostConflict,
   assertNoTraefikNameConflict,
   certificateBaseDomainForRoute,
   ensureCertificateCoverage,
+  findCoveringCertificate,
   isContainerLoopbackUrl,
   isManagedServiceDynamicConfig,
   listServices,
@@ -22,6 +26,7 @@ import {
   validateServiceName,
   writeServiceDynamicConfig
 } from '../services/service-manager';
+import { listDomainCertificates } from '../services/cert-manager';
 import { readTraefikSnapshot } from '../services/traefik-api';
 import { envLoader, RunestoneEnv } from '../utils/env-loader';
 import { logger } from '../utils/logger';
@@ -55,6 +60,23 @@ interface GroupListOptions {
 }
 
 const GROUP_CREATE_VALUE = '__runestone_create_group__';
+const ROUTE_MANUAL_VALUE = '__runestone_manual_route__';
+
+interface PromptFrame {
+  description?: string | string[];
+}
+
+interface SelectOption {
+  value: string;
+  label: string;
+  hint?: string;
+}
+
+interface RoutePromptResult {
+  route: string;
+  forcePrompt: boolean;
+  description?: string;
+}
 
 function traefikApiBaseUrl(config: RunestoneEnv): string {
   return `https://traefik.${config.HOST_DOMAIN}`;
@@ -82,8 +104,73 @@ function displayGroupName(group: string | null | undefined): string {
   return group || 'none';
 }
 
-async function promptText(message: string, initialValue = ''): Promise<string> {
-  const result = await p.text({ message, initialValue });
+function promptDescription(description?: string | string[]): string {
+  if (!description) {
+    return '';
+  }
+
+  const lines = Array.isArray(description) ? description : [description];
+  return `${lines.map((line) => `${gray('│')}  ${dim(`- ${line}`)}`).join('\n')}\n`;
+}
+
+function promptSymbol(state: string): string {
+  switch (state) {
+    case 'submit':
+      return green('◇');
+    case 'cancel':
+      return red('■');
+    case 'error':
+      return yellow('▲');
+    default:
+      return cyan('◆');
+  }
+}
+
+function promptHeader(state: string, message: string, frame?: PromptFrame): string {
+  return `${gray('│')}\n${promptSymbol(state)}  ${message}\n${promptDescription(frame?.description)}`;
+}
+
+function optionLabel(option: SelectOption, state: 'active' | 'inactive' | 'selected' | 'cancelled'): string {
+  const hint = option.hint ? ` ${dim(`(${option.hint})`)}` : '';
+  if (state === 'active') {
+    return `${green('●')} ${option.label}${hint}`;
+  }
+  if (state === 'selected') {
+    return dim(option.label);
+  }
+  if (state === 'cancelled') {
+    return strikethrough(dim(option.label));
+  }
+  return `${dim('○')} ${dim(option.label)}${hint}`;
+}
+
+async function promptText(message: string, initialValue = '', frame?: PromptFrame): Promise<string> {
+  if (process.env.JEST_WORKER_ID) {
+    const result = await p.text({ message, initialValue, frame } as Parameters<typeof p.text>[0] & { frame?: PromptFrame });
+    if (p.isCancel(result)) {
+      p.cancel(t('service.cancelled'));
+      process.exit(0);
+    }
+
+    return String(result);
+  }
+
+  const prompt = new TextPrompt({
+    initialValue,
+    render() {
+      const header = promptHeader(this.state, message, frame);
+      const value = this.value ? this.valueWithCursor : inverse(hidden('_'));
+      switch (this.state) {
+        case 'submit':
+          return `${header}${gray('│')}  ${dim(this.value || initialValue)}`;
+        case 'cancel':
+          return `${header}${gray('│')}  ${strikethrough(dim(this.value ?? ''))}`;
+        default:
+          return `${header}${cyan('│')}  ${value}`;
+      }
+    }
+  });
+  const result = await prompt.prompt();
   if (p.isCancel(result)) {
     p.cancel(t('service.cancelled'));
     process.exit(0);
@@ -107,8 +194,35 @@ async function promptConfirm(message: string, initialValue = true): Promise<bool
   return Boolean(result);
 }
 
-async function promptSelect(message: string, options: Array<{ value: string; label: string }>, initialValue?: string): Promise<string> {
-  const result = await p.select({ message, options, initialValue });
+async function promptSelect(message: string, options: SelectOption[], initialValue?: string, frame?: PromptFrame): Promise<string> {
+  if (process.env.JEST_WORKER_ID) {
+    const result = await p.select({ message, options, initialValue, frame } as Parameters<typeof p.select>[0] & { frame?: PromptFrame });
+    if (p.isCancel(result)) {
+      p.cancel(t('service.cancelled'));
+      process.exit(0);
+    }
+
+    return String(result);
+  }
+
+  const prompt = new SelectPrompt<SelectOption>({
+    options,
+    initialValue,
+    render() {
+      const header = promptHeader(this.state, message, frame);
+      switch (this.state) {
+        case 'submit':
+          return `${header}${gray('│')}  ${optionLabel(this.options[this.cursor], 'selected')}`;
+        case 'cancel':
+          return `${header}${gray('│')}  ${optionLabel(this.options[this.cursor], 'cancelled')}`;
+        default:
+          return `${header}${cyan('│')}  ${this.options
+            .map((option, index) => optionLabel(option, index === this.cursor ? 'active' : 'inactive'))
+            .join(`\n${cyan('│')}  `)}`;
+      }
+    }
+  });
+  const result = await prompt.prompt();
   if (p.isCancel(result)) {
     p.cancel(t('service.cancelled'));
     process.exit(0);
@@ -163,6 +277,95 @@ async function assertRouteHostAvailable(config: RunestoneEnv, route: string, ign
   assertNoTraefikHostConflict(route, snapshotWithoutRouteOwner(snapshot, ignoredRouteOwnerName));
 }
 
+function certificateBaseDomains(config: RunestoneEnv): string[] {
+  return Array.from(new Set(
+    listDomainCertificates(config.PROJECT_DIR)
+      .filter((certificate) => certificate.status === '✓')
+      .flatMap((certificate) => certificate.sans)
+      .map((san) => san.trim().toLowerCase())
+      .filter((san) => san.startsWith('*.'))
+      .map((san) => san.slice(2))
+  )).sort((left, right) => left.localeCompare(right));
+}
+
+function routeCertificateError(config: RunestoneEnv, route: string): string | undefined {
+  if (findCoveringCertificate(route, listDomainCertificates(config.PROJECT_DIR))) {
+    return undefined;
+  }
+
+  try {
+    assertRouteCanCreateWildcardCertificate(route);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+function assertRouteCertificateReady(config: RunestoneEnv, route: string): void {
+  const error = routeCertificateError(config, route);
+  if (error) {
+    throw new Error(error);
+  }
+}
+
+function mergeRouteWithBaseDomain(route: string, baseDomain: string): string {
+  const routeLabels = route.split('.');
+  const baseLabels = baseDomain.split('.');
+  const maxOverlap = Math.min(routeLabels.length, baseLabels.length);
+
+  for (let size = maxOverlap; size > 0; size -= 1) {
+    const routeSuffix = routeLabels.slice(routeLabels.length - size).join('.');
+    const basePrefix = baseLabels.slice(0, size).join('.');
+    if (routeSuffix === basePrefix) {
+      return [...routeLabels, ...baseLabels.slice(size)].join('.');
+    }
+  }
+
+  return [...routeLabels, ...baseLabels].join('.');
+}
+
+function routeBaseOptions(config: RunestoneEnv, route: string): SelectOption[] {
+  const byRoute = new Map<string, { option: SelectOption; baseLabelCount: number }>();
+
+  for (const baseDomain of certificateBaseDomains(config)) {
+    const label = mergeRouteWithBaseDomain(route, baseDomain);
+    const candidate = {
+      option: {
+        value: baseDomain,
+        label,
+        hint: `*.${baseDomain}`
+      },
+      baseLabelCount: baseDomain.split('.').length
+    };
+    const existing = byRoute.get(label);
+    if (!existing || candidate.baseLabelCount > existing.baseLabelCount) {
+      byRoute.set(label, candidate);
+    }
+  }
+
+  return Array.from(byRoute.values())
+    .map((item) => item.option)
+    .sort((left, right) => left.label.localeCompare(right.label) || left.value.localeCompare(right.value));
+}
+
+async function promptForRouteBaseDomain(config: RunestoneEnv, route: string, description: string): Promise<RoutePromptResult> {
+  const selected = await promptSelect(
+    t('service.routeBase.prompt'),
+    [
+      ...routeBaseOptions(config, route),
+      { value: ROUTE_MANUAL_VALUE, label: t('service.routeBase.option.manual') }
+    ],
+    ROUTE_MANUAL_VALUE,
+    { description }
+  );
+
+  if (selected === ROUTE_MANUAL_VALUE) {
+    return { route, forcePrompt: true, description };
+  }
+
+  return { route: mergeRouteWithBaseDomain(route, selected), forcePrompt: false };
+}
+
 async function promptForRouteDomain(
   config: RunestoneEnv,
   initialRoute: string,
@@ -170,16 +373,27 @@ async function promptForRouteDomain(
 ): Promise<string> {
   let route = initialRoute;
   let forcePrompt = options.forcePrompt || !route;
+  let description: string | undefined;
 
   while (true) {
-    const candidate = forcePrompt ? await promptText(t('service.prompt.route'), route) : route;
+    const candidate = forcePrompt ? await promptText(t('service.prompt.route'), route, { description }) : route;
+    description = undefined;
     let normalized: string;
     try {
       normalized = normalizeRouteDomain(candidate, config.HOST_DOMAIN);
     } catch (error) {
-      logger.warn(error instanceof Error ? error.message : String(error));
+      description = error instanceof Error ? error.message : String(error);
       route = candidate;
       forcePrompt = true;
+      continue;
+    }
+
+    const certificateError = routeCertificateError(config, normalized);
+    if (certificateError) {
+      const next = await promptForRouteBaseDomain(config, normalized, certificateError);
+      route = next.route;
+      forcePrompt = next.forcePrompt;
+      description = next.description;
       continue;
     }
 
@@ -188,7 +402,7 @@ async function promptForRouteDomain(
       return normalized;
     }
 
-    logger.warn(availabilityError);
+    description = availabilityError;
     route = normalized;
     forcePrompt = true;
   }
@@ -198,14 +412,16 @@ async function promptForServiceUrl(initialUrl: string, forcePromptOption?: boole
   let url = initialUrl;
   let forcePrompt = forcePromptOption || !url;
   let loopbackPromptedUrl = '';
+  let description: string | undefined;
 
   while (true) {
-    const candidate = forcePrompt ? await promptText(t('service.prompt.url'), url) : url;
+    const candidate = forcePrompt ? await promptText(t('service.prompt.url'), url, { description }) : url;
+    description = undefined;
     let normalized: string;
     try {
       normalized = normalizeServiceUrl(candidate);
     } catch (error) {
-      logger.warn(error instanceof Error ? error.message : String(error));
+      description = error instanceof Error ? error.message : String(error);
       url = candidate;
       forcePrompt = true;
       continue;
@@ -227,6 +443,7 @@ async function promptForServiceUrl(initialUrl: string, forcePromptOption?: boole
 async function promptForGroupName(initialGroup: string | null | undefined, forcePromptOption?: boolean): Promise<string | null> {
   let group = initialGroup ?? '';
   let forcePrompt = forcePromptOption || !group;
+  let description: string | undefined;
 
   if (forcePrompt) {
     const existingGroups = Array.from(new Set(toolState.readServices()
@@ -251,11 +468,12 @@ async function promptForGroupName(initialGroup: string | null | undefined, force
   }
 
   while (true) {
-    const candidate = forcePrompt ? await promptText(t('service.prompt.group'), group || '') : group;
+    const candidate = forcePrompt ? await promptText(t('service.prompt.group'), group || '', { description }) : group;
+    description = undefined;
     try {
       return validateGroupName(candidate);
     } catch (error) {
-      logger.warn(error instanceof Error ? error.message : String(error));
+      description = error instanceof Error ? error.message : String(error);
       group = candidate;
       forcePrompt = true;
     }
@@ -282,16 +500,18 @@ async function promptForServiceInput(
   return { name, route, url, group };
 }
 
-async function promptForServiceName(initialName?: string, options: { forcePrompt?: boolean } = {}): Promise<string> {
+async function promptForServiceName(initialName?: string, options: { forcePrompt?: boolean; description?: string } = {}): Promise<string> {
   let value = initialName ?? '';
   let forcePrompt = options.forcePrompt || !value;
+  let description = options.description;
 
   while (true) {
-    const candidate = forcePrompt ? await promptText(t('service.prompt.name'), value) : value;
+    const candidate = forcePrompt ? await promptText(t('service.prompt.name'), value, { description }) : value;
+    description = undefined;
     try {
       return validateServiceName(candidate);
     } catch (error) {
-      logger.warn(error instanceof Error ? error.message : String(error));
+      description = error instanceof Error ? error.message : String(error);
       value = candidate;
       forcePrompt = true;
     }
@@ -319,15 +539,17 @@ async function serviceNameAvailabilityError(config: RunestoneEnv, name: string):
 async function promptForAvailableServiceName(config: RunestoneEnv, initialName?: string): Promise<string> {
   let name = initialName;
   let forcePrompt = !name;
+  let description: string | undefined;
 
   while (true) {
-    const candidate = await promptForServiceName(name, { forcePrompt });
+    const candidate = await promptForServiceName(name, { forcePrompt, description });
+    description = undefined;
     const availabilityError = await serviceNameAvailabilityError(config, candidate);
     if (!availabilityError) {
       return candidate;
     }
 
-    logger.warn(availabilityError);
+    description = availabilityError;
     name = candidate;
     forcePrompt = true;
   }
@@ -359,6 +581,7 @@ async function handleAdd(name: string | undefined, options: AddOptions): Promise
   if (name && options.route && options.url) {
     try {
       directInput = prepareServiceInput({ name, route: options.route, url: options.url, group: options.group }, config);
+      assertRouteCertificateReady(config, directInput.route);
     } catch {
       directInput = undefined;
     }
@@ -371,6 +594,7 @@ async function handleAdd(name: string | undefined, options: AddOptions): Promise
     const serviceName = await promptForAvailableServiceName(config, name);
     try {
       input = prepareServiceInput({ name: serviceName, route: options.route ?? '', url: options.url ?? '', group: options.group }, config);
+      assertRouteCertificateReady(config, input.route);
     } catch {
       input = await promptForServiceInput(config, { name: serviceName, route: options.route, url: options.url, group: options.group }, { includeName: false });
       input.name = serviceName;
@@ -382,6 +606,7 @@ async function handleAdd(name: string | undefined, options: AddOptions): Promise
   if (!routeCheckedDuringInput) {
     await assertRouteHostAvailable(config, input.route);
   }
+  assertRouteCertificateReady(config, input.route);
   if (!loopbackCheckedDuringInput) {
     input = await maybeReplaceLoopbackUrl(input);
   }
@@ -540,14 +765,16 @@ async function handleGroupClean(groupName: string, options: GroupCleanOptions): 
 async function promptForExistingServiceName(initialName?: string): Promise<string> {
   let name = initialName;
   let forcePrompt = !name;
+  let description: string | undefined;
 
   while (true) {
-    const candidate = await promptForServiceName(name, { forcePrompt });
+    const candidate = await promptForServiceName(name, { forcePrompt, description });
+    description = undefined;
     if (serviceExists(candidate)) {
       return candidate;
     }
 
-    logger.warn(t('service.error.notFound', { name: candidate }));
+    description = t('service.error.notFound', { name: candidate });
     name = candidate;
     forcePrompt = true;
   }

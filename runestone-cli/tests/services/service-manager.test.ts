@@ -78,7 +78,7 @@ describe('service-manager', () => {
     jest.clearAllMocks();
   });
 
-  it('normalizes service input and short route domains', () => {
+  it('normalizes service input without adding a default route domain', () => {
     const result = prepareServiceInput(
       { name: 'api', route: 'backend', url: 'https://127.0.0.1:8443', group: 'team-a' },
       config(tempDir)
@@ -86,21 +86,23 @@ describe('service-manager', () => {
 
     expect(result).toEqual({
       name: 'api',
-      route: 'backend.example.test',
+      route: 'backend',
       url: 'https://127.0.0.1:8443',
       group: 'team-a'
     });
     expect(prepareServiceInput({ name: 'web', route: 'web', url: 'http://localhost', group: 'none' }, config(tempDir)).group).toBeNull();
     expect(prepareServiceInput({ name: 'db', route: 'db', url: 'http://localhost' }, config(tempDir)).group).toBeNull();
+    expect(normalizeRouteDomain('api', 'example.test')).toBe('api');
     expect(normalizeRouteDomain('api.test', 'example.test')).toBe('api.test');
     expect(normalizeServiceUrl('http://localhost')).toBe('http://localhost');
+    expect(normalizeServiceUrl('http://localhost:11434/v1')).toBe('http://localhost:11434/v1');
+    expect(normalizeServiceUrl('http://localhost:11434/v1?debug=true')).toBe('http://localhost:11434/v1?debug=true');
   });
 
   it('rejects invalid names, routes, and urls', () => {
     expect(() => prepareServiceInput({ name: 'Bad Name', route: 'api', url: 'http://localhost' }, config(tempDir))).toThrow('lowercase');
     expect(() => prepareServiceInput({ name: 'api', route: 'https://api.test/path', url: 'http://localhost' }, config(tempDir))).toThrow('Route domain');
     expect(() => prepareServiceInput({ name: 'api', route: 'api', url: 'ftp://localhost' }, config(tempDir))).toThrow('protocol');
-    expect(() => normalizeServiceUrl('http://localhost/path')).toThrow('path');
   });
 
   it('detects container loopback URLs and can replace them with host.docker.internal', () => {
@@ -109,11 +111,12 @@ describe('service-manager', () => {
     expect(isContainerLoopbackUrl('http://[::1]:11434')).toBe(true);
     expect(isContainerLoopbackUrl('http://host.docker.internal:11434')).toBe(false);
     expect(replaceServiceUrlHost('http://127.0.0.1:11434', 'host.docker.internal')).toBe('http://host.docker.internal:11434');
+    expect(replaceServiceUrlHost('http://127.0.0.1:11434/v1?debug=true', 'host.docker.internal')).toBe('http://host.docker.internal:11434/v1?debug=true');
   });
 
   it('writes, lists, repairs, and removes service records and dynamic config', () => {
     const runestoneConfig = config(tempDir);
-    const service = prepareServiceInput({ name: 'api', route: 'api', url: 'http://host.docker.internal:3000' }, runestoneConfig);
+    const service = prepareServiceInput({ name: 'api', route: 'api.example.test', url: 'http://host.docker.internal:3000' }, runestoneConfig);
 
     addServiceRecord(service);
     writeServiceDynamicConfig(runestoneConfig, service);

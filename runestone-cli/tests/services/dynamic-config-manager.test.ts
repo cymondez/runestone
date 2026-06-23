@@ -23,7 +23,6 @@ describe('dynamic-config-manager', () => {
   let logSpy: jest.SpyInstance<void, Parameters<typeof console.log>>;
 
   beforeEach(() => {
-    Object.defineProperty(process, 'platform', { value: 'win32' });
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-dynamic-config-'));
     logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   });
@@ -77,5 +76,17 @@ describe('dynamic-config-manager', () => {
     });
 
     expect(restartMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('restarts on non-Windows platforms too', async () => {
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    const composeFilePath = path.join(tempDir, 'compose.yml');
+
+    await runInDynamicConfigBatch({ composeFilePath }, () => {
+      writeDynamicConfigFile(path.join(tempDir, 'configuration', 'linux.yml'), 'linux\n', { composeFilePath });
+    });
+
+    expect(restartMock).toHaveBeenCalledTimes(1);
+    expect(restartMock).toHaveBeenCalledWith(composeFilePath);
   });
 });

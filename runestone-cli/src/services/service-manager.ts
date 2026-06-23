@@ -63,7 +63,7 @@ export function validateGroupName(group?: string | null): string | null {
   return normalized === 'none' ? null : normalized;
 }
 
-export function normalizeRouteDomain(route: string, hostDomain: string): string {
+export function normalizeRouteDomain(route: string, _hostDomain: string): string {
   const value = route.trim().toLowerCase();
   if (!value) {
     throw new Error(t('service.validation.routeRequired'));
@@ -72,13 +72,12 @@ export function normalizeRouteDomain(route: string, hostDomain: string): string 
     throw new Error(t('service.validation.routeNoProtocol'));
   }
 
-  const domain = value.includes('.') ? value : `${value}.${hostDomain.toLowerCase()}`;
-  const labels = domain.split('.');
-  if (labels.length < 2 || labels.some((label) => !domainLabel.test(label))) {
+  const labels = value.split('.');
+  if (labels.some((label) => !domainLabel.test(label))) {
     throw new Error(t('service.validation.routeInvalid', { route }));
   }
 
-  return domain;
+  return value;
 }
 
 export function normalizeServiceUrl(url: string): string {
@@ -95,11 +94,10 @@ export function normalizeServiceUrl(url: string): string {
   if (!parsed.hostname) {
     throw new Error(t('service.validation.urlHostRequired'));
   }
-  if (parsed.pathname !== '/' || parsed.search || parsed.hash) {
-    throw new Error(t('service.validation.urlNoPath'));
-  }
 
-  return parsed.port ? `${parsed.protocol}//${parsed.hostname}:${parsed.port}` : `${parsed.protocol}//${parsed.hostname}`;
+  const origin = `${parsed.protocol}//${parsed.host}`;
+  const pathAndQuery = `${parsed.pathname}${parsed.search}`;
+  return pathAndQuery === '/' ? origin : `${origin}${pathAndQuery}`;
 }
 
 function normalizeLoopbackHost(hostname: string): string {
@@ -114,7 +112,9 @@ export function isContainerLoopbackUrl(url: string): boolean {
 export function replaceServiceUrlHost(url: string, nextHost: string): string {
   const parsed = new URL(url);
   parsed.hostname = nextHost;
-  return parsed.port ? `${parsed.protocol}//${parsed.hostname}:${parsed.port}` : `${parsed.protocol}//${parsed.hostname}`;
+  const origin = `${parsed.protocol}//${parsed.host}`;
+  const pathAndQuery = `${parsed.pathname}${parsed.search}`;
+  return pathAndQuery === '/' ? origin : `${origin}${pathAndQuery}`;
 }
 
 export function serviceDynamicConfigFile(projectDir: string, serviceName: string): string {
@@ -282,6 +282,10 @@ export function certificateBaseDomainForRoute(domain: string): string {
   }
 
   return base;
+}
+
+export function assertRouteCanCreateWildcardCertificate(domain: string): void {
+  certificateBaseDomainForRoute(domain);
 }
 
 export async function ensureCertificateCoverage(
