@@ -17,8 +17,8 @@ interface DynamicConfigBatch {
 
 const batchStorage = new AsyncLocalStorage<DynamicConfigBatch>();
 
-function restartRunestoneOnWindows(runtime: DynamicConfigRuntime | undefined, changed: boolean): void {
-  if (!changed || process.platform !== 'win32' || !runtime?.composeFilePath) {
+function restartRunestoneAfterDynamicConfigChange(runtime: DynamicConfigRuntime | undefined, changed: boolean): void {
+  if (!changed || !runtime?.composeFilePath) {
     return;
   }
 
@@ -35,7 +35,7 @@ function restartRunestoneOnWindows(runtime: DynamicConfigRuntime | undefined, ch
 function markDynamicConfigChanged(runtime?: DynamicConfigRuntime): void {
   const batch = batchStorage.getStore();
   if (!batch) {
-    restartRunestoneOnWindows(runtime, true);
+    restartRunestoneAfterDynamicConfigChange(runtime, true);
     return;
   }
 
@@ -51,7 +51,7 @@ function flushBatch(batch: DynamicConfigBatch): void {
   }
 
   for (const composeFilePath of batch.composeFilePaths) {
-    restartRunestoneOnWindows({ composeFilePath }, true);
+    restartRunestoneAfterDynamicConfigChange({ composeFilePath }, true);
   }
 }
 
