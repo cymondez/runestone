@@ -226,6 +226,8 @@ Runestone CLI 需符合下列使用體驗：
 
 - 訊息簡潔、明確、可執行。
 - 錯誤訊息需包含問題與下一步。
+- 互動式輸入若可由使用者修正，需在同一個 prompt 的說明區顯示錯誤並讓使用者修正，不應在流程最後才回報。
+- 不同欄位需遵守各自語意，不可共用不適用的 validation 規則。例如 route domain 是 host matcher，service URL 是 upstream target。
 - Help output 不顯示內部或測試用選項。
 - 無額外 options 的 command，不顯示只有 help 的 options 區塊。
 - 支援 English、繁體中文、日本語。

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.1 - 2026-06-23
+
+### Changed
+
+- `runestone service add` and `runestone service modify` now ask users to choose a certificate base domain when the route is incomplete, instead of silently appending the default domain.
+- Service URLs now support upstream paths and query strings, such as `http://127.0.0.1:11434/v1`.
+- Runestone now restarts after service or certificate routing changes on all platforms so Traefik reliably reloads dynamic configuration.
+
+### Fixed
+
+- Fixed service route suggestions so partial routes like `api.ollama` keep the full prefix and prefer the most specific matching wildcard certificate.
+- Fixed localhost service URL conversion so paths and query strings are preserved when switching to `host.docker.internal`.
+- Fixed interactive service prompts so input problems are shown immediately before continuing to the next field.
+
 ## 1.1.0 - 2026-06-19
 
 ### Added
