@@ -94,7 +94,6 @@ describe('runestone CLI integration', () => {
       ['status'],
       ['certs'],
       ['certs', 'create'],
-      ['certs', 'remove'],
       ['keys'],
       ['keys', 'ls'],
       ['keys', 'add']
@@ -126,6 +125,11 @@ describe('runestone CLI integration', () => {
     expect(down.stdout).toContain('Options:');
     expect(down.stdout).toContain('--remove-network');
     expect(down.stdout).toContain('--remove-volumes');
+
+    const certRemove = runCli(['certs', 'remove', '--help']);
+    expect(certRemove.status).toBe(0);
+    expect(certRemove.stdout).toContain('Options:');
+    expect(certRemove.stdout).toContain('--force');
   });
 
   it('supports the cert alias for certificate commands', () => {
