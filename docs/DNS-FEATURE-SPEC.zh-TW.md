@@ -395,7 +395,7 @@ Runestone 只做一類動作：**把我方自己的項目插入 `dns` 陣列最�
 | 在我方項目之前插入自己的項目（我方不再是 `dns[0]`） | 依 9.6 的 `DNS_AUTO_REORDER` 決定；無論哪種模式，disable 時都只移除我方那筆，使用者的項目與順序完全保留 |
 | 在其他位置也加入相同的 Target IP | 記錄的 `index` 仍相符 → 只移除我方那筆，使用者的重複項目保留，並警告「daemon dns 仍有指向 Runestone DNS 的項目，dns 服務移除後該項目將無法解析」；記錄的 `index` 已不相符（同時被插隊）→ 所有權衝突，要求 `--assume-index <n>` |
 | 手動移除我方項目 | disable 視為已撤銷：不報錯、不修改檔案內容、清除所有權狀態並告知使用者 |
-| 改掉我方項目的值（例如自行換成別的 IP） | 所有權衝突：中止，顯示 daemon 路徑，要求 `runestone dns disable --assume-entry <ip>` |
+| 改掉我方項目的值（例如自行換成別的 IP） | **與上一列在觀察上無法分辨**：兩者都只是我方的值不在陣列裡了，沒有任何實作能區分「被刪掉」與「被覆寫」。因此由第 4 條規則管轄——視為已撤銷、不改任何東西。輸出必須額外回報現在坐在記錄位置上的值；使用者若確知自己是改名而非刪除，`runestone dns disable --assume-entry <ip>` 仍然可用 |
 | 我方建立了 `dns` key，使用者又加入其他項目 | 移除我方項目後陣列非空 → 保留 `dns` key |
 | 我方建立了 daemon 檔案，使用者又加入其他設定 | 移除我方項目後物件不是 `{}` → 保留檔案 |
 | 透過 Docker Desktop 的 Docker Engine 介面重新格式化過檔案 | 以值比對仍可識別，正常撤銷 |
@@ -601,7 +601,7 @@ DNS 相關共四題，順序固定，第二三四題僅在啟用時出現：
 | 啟用後 DNS 驗證失敗 | 反向還原並停止 dns 服務 | 可 |
 | 反向還原也失敗 | 保留 `phase=prepared`，輸出 daemon 路徑與手動修復步驟 | 手動處理後可 |
 | 停用時所有權狀態遺失 | 中止並提示 `--assume-entry` | 可 |
-| 使用者把我方項目的值換掉 | 所有權衝突，中止並提示 `--assume-entry` | 手動處理後可 |
+| 使用者把我方項目的值換掉 | 視為已撤銷（9.5）：不改檔案、清除狀態，並回報現在坐在記錄位置上的值 | 不適用；若確實是改名則用 `--assume-entry <ip>` |
 | 陣列中有多筆值相符且記錄的 `index` 不符 | 所有權衝突，中止並提示 `--assume-index <n>` | 手動處理後可 |
 | 我方項目已被使用者手動移除 | 視為已撤銷，不改檔案，清除狀態 | 不需重試 |
 | 我方項目已不在最前面 | 依 `DNS_AUTO_REORDER`：`false` 只警告；`true` 只搬移我方自己那些項目並告知下次 Docker 重啟後生效 | 可 |
@@ -699,12 +699,12 @@ privileged 的 `docker:dind` 容器有自己的 `/etc/docker/daemon.json`、自�
 
 ## 15. 待你裁決
 
-以下每一項都有對應的里程碑截止點，見 16.6；其中第 3 項必須在 M1 開始前定案。
+以下每一項都有對應的里程碑截止點，見 16.6。**目前只剩第 1 項未定**，而它在 M6b 之前不阻塞任何事。
 
 1. **`docker desktop restart` 是否可用**：實作時偵測，不可用就走「提示手動重啟 + 輪詢等待」。若你已知結論可直接省略自動路徑。
-2. **runestone-dns image 的建置與發佈方式**：它需要一條多架構（`linux/amd64` + `linux/arm64`）的建置發佈路徑，而 repo 目前沒有這個功能可以依賴的現成機制。請決定這條路徑是什麼——與 image 放在一起的 `docker buildx build --platform` 指令、CI workflow，或其他方式——並確認 image 名稱與起始 tag（暫定 `cymondez/runestone-dns:1.0`）。M2 沒有這個決定無法完成。
+2. **暫定——image 由放在它旁邊的腳本建置與發佈。** `docker/dns/publish.sh` 執行 `docker buildx build --platform linux/amd64,linux/arm64 --push`，發佈 `cymondez/runestone-dns:1.0`，由維護者手動執行。**這明確是一個過渡答案。** 手動發佈出去的 image 不會留下「它是怎麼來的」的紀錄，所以 CI 仍然是目的地；延後的唯一理由是申請 registry token 並把 workflow 跑通需要時間，而 M2 不該等它。`origin` 是自架的 Gitea、GitHub 是鏡像，所以 CI 真的要落地時，Gitea Actions 才是順理成章的第一目標——它的 workflow 語法與 GitHub Actions 足夠接近，檔案兩邊都能搬。在那之前**腳本本身必須進版控**，讓一個已發佈的 image 至少是可以回推出來的；而且腳本必須要求明確給定 tag 才發佈，不得預設成 `latest`。
 3. **已定案——`TODO` 寫的「必須讓使用者設定其他 dns 作為備援」由兩個位置共同回答。** dnsmasq 上游（8.4）是**必要且永不為空**，預設 `1.1.1.1`，因為少了它全機 container 就失去對外名稱解析；setup 提供沿用／更換／追加。daemon `dns` 陣列裡的備援（9.7）則是**選用且預設關閉**，因為實測顯示它會把明確的 DNS 失敗換成 Runestone domain 安靜地解析成 `127.0.0.1`。`insertedEntries` 因此是一個自有項目的陣列，M1 一開始就必須照此實作。
-4. **`compose.yml` 重生策略**：既有使用者升級後自動重生，還是提示使用者執行 `runestone setup`？
+4. **已定案——`compose.yml` 依版本標記自動重生。** `.env` 內的 `COMPOSE_TEMPLATE_VERSION`；與 CLI 自身的模板版本不同時就重生 Compose 檔並告知使用者，而使用者手改過的檔案會先在原地旁邊備份（見第 13 節）。
 
 ## 16. 里程碑與風險管控
 
@@ -770,6 +770,6 @@ dind 載具可以進 CI。這讓「寫 `daemon.json` → 重啟 → 解析」從
 | 裁決項 | 截止 | 原因 |
 | --- | --- | --- |
 | 15.3——備援 DNS 放在 dnsmasq 上游還是 daemon 陣列 | **M1 之前——已定案**：兩者都做，見 8.4 與 9.7 | 它定下了 `insertedEntries` 是自有項目的陣列，M1 一開始就必須照此實作 |
-| 15.2——image 的建置與發佈方式、名稱與起始 tag | M2 之前 | — |
-| 15.4——`compose.yml` 重生策略 | M3 之前 | — |
+| 15.2——image 的建置與發佈方式、名稱與起始 tag | **M2 之前——暫定**：進版控的 buildx 腳本，發佈 `cymondez/runestone-dns:1.0`；CI 延後，落地時以 Gitea Actions 為先 | 手動跑的發佈，只有在跑它的腳本在 repo 裡時才可追溯 |
+| 15.4——`compose.yml` 重生策略 | **M3 之前——已定案**：自動，由 `COMPOSE_TEMPLATE_VERSION` 驅動，並備份手改過的檔案 | — |
 | 15.1——`docker desktop restart` 是否存在 | M6b 之前 | 可以延後；實作本來就會自行偵測 |

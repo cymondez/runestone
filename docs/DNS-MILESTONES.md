@@ -31,13 +31,13 @@ M2 is independent of M1 and can run in parallel with it. Everything else is a ch
 
 ## Decision gate
 
-The four items in spec 15 have milestone deadlines (spec 16.6). A milestone must not start while its blocking decision is open.
+The four items in spec 15 have milestone deadlines (spec 16.6). A milestone must not start while its blocking decision is open. **Only decision 1 is still open, and it blocks nothing before M6b.**
 
 | Decision | Deadline | Status | Cost of deciding late |
 | --- | --- | --- | --- |
 | 3 — fallback DNS in dnsmasq's upstream or in the daemon array | before M1 | **settled: both** — the dnsmasq upstream is mandatory and never empty (spec 8.4), the daemon-array fallback is optional and off by default (spec 9.7) | Settled in time. `insertedEntries` is an array of owned entries, which M1 implements from the start |
-| 2 — how the image is built and published, its name and initial tag | before M2 | open | M2 cannot complete. The repository has no multi-arch build path and no CI workflow today, and `make/` is not a starting point — see "Current state of the repository" |
-| 4 — `compose.yml` regeneration strategy | before M3 | open | M3's compose work would have to be redone |
+| 2 — how the image is built and published, its name and initial tag | before M2 | **settled for now: a committed buildx script**, `cymondez/runestone-dns:1.0`. CI is deferred, not abandoned — the registry token and a green workflow take time M2 should not wait on. `origin` is a self-hosted Gitea and GitHub a mirror, so Gitea Actions is the first target when CI lands | Settled in time. The debt is traceability: a hand-run publish is reconstructable only because the script is in the repository |
+| 4 — `compose.yml` regeneration strategy | before M3 | **settled: automatic**, driven by `COMPOSE_TEMPLATE_VERSION` in `.env`, and a file the user hand-edited is backed up beside the original before being overwritten | Settled in time |
 | 1 — whether `docker desktop restart` exists | before M6b | open | Low. The implementation detects it and falls back to a manual-restart prompt |
 
 ## M0 — Safety rails
@@ -119,13 +119,14 @@ Three things to carry forward:
 
 **Goal.** A published multi-arch image that produces a correct dnsmasq configuration on every start, verified without ever contending for port 53.
 
-**Risk level 1 · Tier T1 · Blocked by decision 2**
+**Risk level 1 · Tier T1**
 
 **Deliverables**
 
 - [ ] `docker/dns/Dockerfile` — Alpine, dnsmasq, pinned webproc selected by `TARGETARCH` (spec 8.1)
 - [ ] `docker/dns/entrypoint.sh` — regenerate `/etc/dnsmasq.conf` and `/etc/dnsmasq.d/managed.conf` on every start, then exec webproc and dnsmasq (spec 8.3)
-- [ ] A multi-arch build and publish path for `linux/amd64` and `linux/arm64`, per decision 2
+- [ ] `docker/dns/publish.sh` — `docker buildx build --platform linux/amd64,linux/arm64 --push`, requiring an explicit tag argument rather than defaulting to `latest` (decision 2, interim)
+- [ ] `docker/dns/test/` — the 14.5 dind harness, so that M6a can be reproduced without a virtual machine
 - [ ] Image verification tests with a fixture `/ssl` directory
 - [ ] webproc 0.4.0's `--config`, `--port` and `--user`/`--pass` flags confirmed against the pinned version (spec 8.1)
 
@@ -135,6 +136,8 @@ Three things to carry forward:
 - [ ] **All verification performed on a port other than 53**, so this milestone never fights the host for port 53
 - [ ] Tamper resistance: editing the two Runestone-owned files inside the container and restarting restores both, and leaves `custom.conf` untouched
 - [ ] Mapping rules: one `address=` per `*.crt`, `rootCA.crt` excluded, invalid domain filenames excluded, empty directory still starts
+
+**Carried debt.** The publish path is a script a maintainer runs, so nothing records what produced a published tag beyond the script being in the repository. CI replaces it later; until then, a published tag and the commit it was built from have to be associated by hand.
 
 **Rollback.** Single revert. An unreferenced published tag is harmless.
 

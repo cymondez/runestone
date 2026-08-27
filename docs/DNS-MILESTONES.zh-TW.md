@@ -31,13 +31,13 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 ## 裁決關卡
 
-規格 15 的四項各有里程碑截止點（規格 16.6）。前置裁決未定案時，該里程碑不得開始。
+規格 15 的四項各有里程碑截止點（規格 16.6）。前置裁決未定案時，該里程碑不得開始。**目前只剩裁決 1 未定，而它在 M6b 之前不阻塞任何事。**
 
 | 裁決 | 截止 | 狀態 | 延後定案的代價 |
 | --- | --- | --- | --- |
 | 3——備援 DNS 放 dnsmasq 上游還是 daemon 陣列 | M1 之前 | **已定案：兩者都做**——dnsmasq 上游為必要且永不為空（規格 8.4），daemon 陣列備援為選用且預設關閉（規格 9.7） | 及時定案。`insertedEntries` 是自有項目的陣列，M1 一開始就照此實作 |
-| 2——image 的建置發佈方式、名稱與起始 tag | M2 之前 | 未定 | M2 無法完成。repo 目前既沒有多架構建置路徑也沒有 CI workflow，且 `make/` 不是起點——見「repo 現況」 |
-| 4——`compose.yml` 重生策略 | M3 之前 | 未定 | M3 的 compose 工作要重做 |
+| 2——image 的建置發佈方式、名稱與起始 tag | M2 之前 | **暫定：進版控的 buildx 腳本**，`cymondez/runestone-dns:1.0`。CI 是延後而非放棄——申請 registry token 與把 workflow 跑通需要時間，M2 不該等。`origin` 是自架 Gitea、GitHub 是鏡像，所以 CI 落地時以 Gitea Actions 為第一目標 | 及時定案。欠下的債是可追溯性：手動跑的發佈之所以還能回推，只因為腳本在 repo 裡 |
+| 4——`compose.yml` 重生策略 | M3 之前 | **已定案：自動重生**，由 `.env` 內的 `COMPOSE_TEMPLATE_VERSION` 驅動；使用者手改過的檔案在被覆寫前先在原地旁邊備份 | 及時定案 |
 | 1——`docker desktop restart` 是否存在 | M6b 之前 | 未定 | 低。實作會自行偵測，並退回「提示手動重啟」 |
 
 ## M0 — 安全鋼索
@@ -119,13 +119,14 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **目標。** 一個已發佈的多架構 image，每次啟動都產生正確的 dnsmasq 設定，且驗證過程全程不爭 53 port。
 
-**風險等級 1 · 層級 T1 · 前置：裁決 2**
+**風險等級 1 · 層級 T1**
 
 **交付項目**
 
 - [ ] `docker/dns/Dockerfile` — Alpine、dnsmasq、依 `TARGETARCH` 選取的釘版 webproc（規格 8.1）
 - [ ] `docker/dns/entrypoint.sh` — 每次啟動重生 `/etc/dnsmasq.conf` 與 `/etc/dnsmasq.d/managed.conf`，然後 exec webproc 與 dnsmasq（規格 8.3）
-- [ ] 依裁決 2 建立 `linux/amd64` 與 `linux/arm64` 的多架構建置發佈路徑
+- [ ] `docker/dns/publish.sh` — `docker buildx build --platform linux/amd64,linux/arm64 --push`，必須明確給定 tag 才發佈，不得預設成 `latest`（裁決 2，過渡）
+- [ ] `docker/dns/test/` — 規格 14.5 的 dind 測試載具，讓 M6a 可以不用 VM 重現
 - [ ] 用 fixture `/ssl` 目錄的 image 驗證測試
 - [ ] webproc 0.4.0 的 `--config`、`--port`、`--user`/`--pass` 旗標對釘定版本確認過（規格 8.1）
 
@@ -135,6 +136,8 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 - [ ] **所有驗證都在非 53 的 port 上進行**，讓這個里程碑全程不與宿主爭 53
 - [ ] 防篡改：在容器內改掉兩個 Runestone 擁有的檔案後重啟，兩者都被還原，且 `custom.conf` 未被動到
 - [ ] mapping 規則：每個 `*.crt` 一條 `address=`、排除 `rootCA.crt`、排除非法 domain 檔名、目錄為空時仍能啟動
+
+**帶著走的債。** 發佈路徑是維護者手動執行的腳本，因此除了「腳本在 repo 裡」以外，沒有任何東西記錄一個已發佈 tag 是怎麼來的。之後由 CI 取代；在那之前，已發佈的 tag 與它建置自哪個 commit 只能靠人工對應。
 
 **回退。** 單一 revert。一個沒有被引用的已發佈 tag 無害。
 
