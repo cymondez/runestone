@@ -17,7 +17,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | # | Milestone | Risk | Tier | Blocked by | Status |
 | --- | --- | --- | --- | --- | --- |
 | M0 | Safety rails | 0 | T0 | — | **done**, one gate item red for a pre-existing reason |
-| M1 | Daemon ownership engine | 0 | T0 | M0 | not started |
+| M1 | Daemon ownership engine | 0 | T0 | M0 | **done** |
 | M2 | runestone-dns image | 1 | T1 | decision 2 | not started |
 | M3 | Service plumbing and `dns status` | 0 | T1 | M1, M2, decision 4 | not started |
 | M4 | `dns disable` | 2 (redirected) | T0 | M1, M3 | not started |
@@ -78,21 +78,40 @@ Two things were left open deliberately:
 
 **Deliverables**
 
-- [ ] Ownership engine (suggested `runestone-cli/src/services/dns/daemon-config.ts`): insert, identify, remove, reorder, atomic write with re-parse validation, indentation detection and preservation — over **`insertedEntries` as a list of owned entries** (spec 7.3), not a single entry
-- [ ] The optional daemon fallback entry (spec 9.7): inserted at `dns[1]`, recorded with its own role, identified independently, and revoked together with the Target IP entry — with one entry in conflict causing neither to be removed
-- [ ] Ownership state read/write in `runestone-cli/src/utils/tool-state.ts` per spec 7.3, including `schemaVersion`
-- [ ] Upstream DNS determination (spec 8.4) — **the result is never empty**, with `1.1.1.1` as the last resort — and Bind IP determination per platform (spec 6.1), both pure and injectable
-- [ ] Tests under `runestone-cli/tests/services/dns/`
+- [x] Ownership engine (suggested `runestone-cli/src/services/dns/daemon-config.ts`): insert, identify, remove, reorder, atomic write with re-parse validation, indentation detection and preservation — over **`insertedEntries` as a list of owned entries** (spec 7.3), not a single entry
+- [x] The optional daemon fallback entry (spec 9.7): inserted at `dns[1]`, recorded with its own role, identified independently, and revoked together with the Target IP entry — with one entry in conflict causing neither to be removed
+- [x] Ownership state read/write in `runestone-cli/src/utils/tool-state.ts` per spec 7.3, including `schemaVersion`
+- [x] Upstream DNS determination (spec 8.4) — **the result is never empty**, with `1.1.1.1` as the last resort — and Bind IP determination per platform (spec 6.1), both pure and injectable
+- [x] Tests under `runestone-cli/tests/services/dns/`
 
 **Gate**
 
-- [ ] Every row of spec 9.5 has a test
-- [ ] Both `DNS_AUTO_REORDER` modes tested: `false` produces **zero** file changes; `true` moves only our own entries and never triggers a restart
-- [ ] Re-entrancy: repeated enable never inserts a second entry of ours
-- [ ] Write fidelity: indentation style and the order of unrelated keys survive a write
-- [ ] **Invariant test**: for any sequence of enable → user edit → disable, the values, the count and the relative order of entries we do not own are unchanged — with the 9.7 fallback both off and on
-- [ ] The upstream list is never empty under any input, including no detection and an empty `DNS_UPSTREAM`
-- [ ] `npm run test:unit` green, and the engine touches no real file in any test
+- [x] Every row of spec 9.5 has a test
+- [x] Both `DNS_AUTO_REORDER` modes tested: `false` produces **zero** file changes; `true` moves only our own entries and never triggers a restart
+- [x] Re-entrancy: repeated enable never inserts a second entry of ours
+- [x] Write fidelity: indentation style and the order of unrelated keys survive a write
+- [x] **Invariant test**: for any sequence of enable → user edit → disable, the values, the count and the relative order of entries we do not own are unchanged — with the 9.7 fallback both off and on
+- [x] The upstream list is never empty under any input, including no detection and an empty `DNS_UPSTREAM`
+- [x] `npm run test:unit` green, and the engine touches no real file in any test
+
+**Landed.** Four modules under `runestone-cli/src/services/dns/`, 60 + 12 + 24 + 9 tests:
+
+| Module | What it is |
+| --- | --- |
+| `json-edit.ts` | A structural scanner for JSON text: object and array spans, indentation, newline style |
+| `daemon-config.ts` | The whole of spec 9 as pure functions: insert, identify, remove, reorder, reconcile |
+| `daemon-file.ts` | The one impure part — read, atomic write with read-back re-parse, delete |
+| `upstream.ts` | Spec 8.4 upstream determination and spec 6.1 Bind IP, both pure and injectable |
+
+**The engine edits JSON text rather than re-serialising it.** `JSON.parse` followed by `JSON.stringify` would have been a fraction of the code and would have failed M5's gate: it re-renders the whole document, so a user's inline nested object, their tabs, or their CRLF endings would all be quietly rewritten — which is what spec 9.5 means by "rewriting the formatting is itself a way of damaging the user's edits". Every operation is now a splice, so the bytes we do not own are never re-rendered at all. The byte-identical enable-then-disable round trip is tested across nine document shapes, including tab indentation, CRLF, an inline object, `{}` and a file with no trailing newline.
+
+`--assume-entry` and `--assume-index` turned out to need no engine support: both are just the caller stating the recorded entry it asserts, and identification rule 1 is checked first, so an explicit statement always wins over the ambiguity that made it necessary. Tested at both ends.
+
+Three things to carry forward:
+
+- **A contradiction inside spec 9.5 that needs your ruling.** Identification rule 4 says an entry whose value matches nothing is "removed by the user", and the table row for *"changed the value of our entry"* says the same state is an ownership conflict requiring `--assume-entry`. The two states are **observationally identical** — in both cases our IP is simply absent from the array — so no implementation can tell them apart. The engine follows rule 4 (treat as revoked, change nothing) and additionally reports the value now sitting at the recorded position, so a caller can warn precisely without guessing. If you want the stricter reading instead, it has to become "abort whenever our value is absent", which turns the ordinary *"user deleted our entry"* case into an error the user has to clear by hand.
+- **The `dns.lock` serialisation of spec 9.3 is not here.** It guards concurrent CLI invocations, so it belongs with the command layer in M4 and M5, not with pure functions.
+- **The atomic-write tests use a temporary directory**, which is the only way to prove rename semantics. No test touches a platform daemon configuration path, and the pure engine is asserted to have no filesystem or process access at all.
 
 **Rollback.** Single revert; nothing imports the engine yet.
 
@@ -327,7 +346,7 @@ M6b and M8 produce findings that cannot be re-derived from the code. Record them
 
 Recorded so that M1 and M2 are not mistaken for work already begun:
 
-- `docker/dns/` is still an **empty, untracked directory**; nothing from commit `3581211` survives in it, and M2 creates its contents from scratch. `runestone-cli/src/services/dns/` now holds `daemon-target.ts` from M0 and nothing else — M1 adds the ownership engine beside it.
+- `docker/dns/` is still an **empty, untracked directory**; nothing from commit `3581211` survives in it, and M2 creates its contents from scratch. `runestone-cli/src/services/dns/` holds M0's `daemon-target.ts` and M1's `json-edit.ts`, `daemon-config.ts`, `daemon-file.ts` and `upstream.ts`. **Nothing outside `tests/` imports any of them yet**, which is what keeps every milestone so far revertible on its own.
 - The dnsmasq and webproc code that commit `3581211` added to the runestone image — `start_dnsmasq()` in `docker/traefik/entrypoint.sh` and the `{{ if env "DNS_ENABLE" }}` blocks in `docker/traefik/dynamic/traefik.dynamic.yml` — is still present and must be removed in M3 (spec 5.3, 13).
 - There is no multi-arch build and publish path this feature can rely on, and no CI workflow in the repository. Establishing one is decision 2 and blocks M2.
 - **The `make/` directory is inherited from [druidfi/stonehenge](https://github.com/druidfi/stonehenge) and is void.** Replacing that Makefile-based installation and management flow with the npm CLI is the reason this fork exists (see the README), so nothing in the build or release plan may be derived from it. It is debris, not a baseline — and the image build path decided in decision 2 should fit the CLI's release flow.
