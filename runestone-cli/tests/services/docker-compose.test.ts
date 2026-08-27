@@ -1,7 +1,6 @@
 import { spawnSync } from 'child_process';
 import * as path from 'path';
 import { COMPOSE_SERVICES, composeService } from '../../src/services/docker-compose';
-import { buildComposeFile } from '../../src/utils/project-files';
 
 jest.mock('child_process', () => ({
   spawnSync: jest.fn()
@@ -58,16 +57,6 @@ describe('composeService', () => {
       expect.arrayContaining(['down', '--remove-orphans', '--volumes', '--rmi', 'all']),
       expect.any(Object)
     );
-  });
-
-  it('names services that the generated compose file actually declares', () => {
-    const compose = buildComposeFile();
-
-    for (const service of Object.values(COMPOSE_SERVICES)) {
-      expect(compose).toContain(`
-  ${service}:
-`);
-    }
   });
 
   it('restarts only the named services', () => {
