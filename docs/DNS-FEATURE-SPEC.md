@@ -268,11 +268,14 @@ Two environment variables redirect the only two operations that touch global sta
   2. Start the processes:
 
      ```sh
-     webproc --config /etc/dnsmasq.d/custom.conf \
+     webproc --configuration-file /etc/dnsmasq.d/custom.conf \
+       --port 8080 --restart-watch \
        -- dnsmasq --no-daemon --conf-file=/etc/dnsmasq.conf --log-facility=-
      ```
 
-  webproc watches only the custom rules; the files Runestone owns are outside its editing scope. If a user breaks the custom rules through the UI, managed mappings and upstream settings are unaffected. (`--config`, `--port` and `--user`/`--pass` were verified to exist in webproc 0.2.2; the 0.4.0 flags must be confirmed at build time.)
+  webproc watches only the custom rules; the files Runestone owns are outside its editing scope. If a user breaks the custom rules through the UI, managed mappings and upstream settings are unaffected.
+
+  **Confirmed against webproc 0.4.0**, which was an open item of this section: the writable-configuration flag is `--configuration-file` (`-c`), and **`--config` does not exist** in 0.4.0. `--port`, `--user` and `--pass` do exist, and `--on-save` already defaults to `restart`, so saving through the UI restarts dnsmasq. `--restart-watch` is used as well, so a change to `custom.conf` **on disk** restarts dnsmasq too — which covers the user editing their own file with an editor instead of through the UI. `HTTP_USER` and `HTTP_PASS` are passed as environment variables rather than as flags, because a password given on the command line shows up in the container's process list.
 - Supports enabling webproc basic auth through the `HTTP_USER` / `HTTP_PASS` environment variables.
 - Build and publish mechanics: see 15.2.
 

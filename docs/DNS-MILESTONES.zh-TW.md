@@ -18,7 +18,7 @@
 | --- | --- | --- | --- | --- | --- |
 | M0 | 安全鋼索 | 0 | T0 | — | **已完成**，有一項通過條件因既有原因未綠 |
 | M1 | daemon 所有權引擎 | 0 | T0 | M0 | **已完成** |
-| M2 | runestone-dns image | 1 | T1 | 裁決 2 | 未開始 |
+| M2 | runestone-dns image | 1 | T1 | — | **amd64 已完成**；arm64 未驗證，見 M2 |
 | M3 | 服務接線與 `dns status` | 0 | T1 | M1、M2、裁決 4 | 未開始 |
 | M4 | `dns disable` | 2（導向） | T0 | M1、M3 | 未開始 |
 | M5 | `dns enable` 到 `prepared` | 2 | T1 | M4 | 未開始 |
@@ -123,19 +123,28 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **交付項目**
 
-- [ ] `docker/dns/Dockerfile` — Alpine、dnsmasq、依 `TARGETARCH` 選取的釘版 webproc（規格 8.1）
-- [ ] `docker/dns/entrypoint.sh` — 每次啟動重生 `/etc/dnsmasq.conf` 與 `/etc/dnsmasq.d/managed.conf`，然後 exec webproc 與 dnsmasq（規格 8.3）
-- [ ] `docker/dns/publish.sh` — `docker buildx build --platform linux/amd64,linux/arm64 --push`，必須明確給定 tag 才發佈，不得預設成 `latest`（裁決 2，過渡）
-- [ ] `docker/dns/test/` — 規格 14.5 的 dind 測試載具，讓 M6a 可以不用 VM 重現
-- [ ] 用 fixture `/ssl` 目錄的 image 驗證測試
-- [ ] webproc 0.4.0 的 `--config`、`--port`、`--user`/`--pass` 旗標對釘定版本確認過（規格 8.1）
+- [x] `docker/dns/Dockerfile` — Alpine、dnsmasq、依 `TARGETARCH` 選取的釘版 webproc（規格 8.1）
+- [x] `docker/dns/entrypoint.sh` — 每次啟動重生 `/etc/dnsmasq.conf` 與 `/etc/dnsmasq.d/managed.conf`，然後 exec webproc 與 dnsmasq（規格 8.3）
+- [x] `docker/dns/publish.sh` — `docker buildx build --platform linux/amd64,linux/arm64 --push`，必須明確給定 tag 才發佈，不得預設成 `latest`（裁決 2，過渡）
+- [x] `docker/dns/test/verify-image.sh` — 規格 14.4 的檢查，跑在臨時網路與預先填好的 volume 上，因此不需要任何宿主路徑，也全程不碰 53 port
+- [x] 用 fixture `/ssl` 目錄的 image 驗證測試
+- [x] webproc 0.4.0 的 `--config`、`--port`、`--user`/`--pass` 旗標對釘定版本確認過（規格 8.1）
 
 **通過條件**
 
-- [ ] 規格 14.4 在兩種架構上全綠
-- [ ] **所有驗證都在非 53 的 port 上進行**，讓這個里程碑全程不與宿主爭 53
-- [ ] 防篡改：在容器內改掉兩個 Runestone 擁有的檔案後重啟，兩者都被還原，且 `custom.conf` 未被動到
-- [ ] mapping 規則：每個 `*.crt` 一條 `address=`、排除 `rootCA.crt`、排除非法 domain 檔名、目錄為空時仍能啟動
+- [ ] 規格 14.4 在兩種架構上全綠 — **目前只有 amd64**，32 項全過；arm64 尚未建置，見下方
+- [x] **所有驗證都在非 53 的 port 上進行**，讓這個里程碑全程不與宿主爭 53
+- [x] 防篡改：在容器內改掉兩個 Runestone 擁有的檔案後重啟，兩者都被還原，且 `custom.conf` 未被動到
+- [x] mapping 規則：每個 `*.crt` 一條 `address=`、排除 `rootCA.crt`、排除非法 domain 檔名、目錄為空時仍能啟動
+
+**已落地。** `docker/dns/` 現在有 `Dockerfile`、`entrypoint.sh`、`publish.sh`、`README.md` 與 `test/verify-image.sh`。amd64 驗證結果：**32 項檢查，32 項通過。**
+
+驗證腳本刻意避開兩件事。它**全程不用 53 port**——服務發佈在 15353——所以「建 image 的里程碑」不會同時變成「第一個去爭真實 DNS port 的里程碑」。它也**不使用任何宿主路徑**：fixture `/ssl` 目錄是由輔助容器填好的 Docker volume，因此在 Windows 的 Git Bash 與 Linux shell 上行為完全一致。（第二點是自己掙來的：早期草稿把容器內路徑直接當參數傳給 `docker exec`，MSYS 把 `/etc/dnsmasq.d/custom.conf` 改寫成了 `C:/Program Files/Git/etc/dnsmasq.d/custom.conf`。現在所有容器內路徑都寫在 `sh -c` 裡面。）
+
+有兩項發現要往下帶：
+
+- **規格原本寫的 webproc 呼叫是錯的，8.1 已修正。** webproc 0.4.0 沒有 `--config`，可寫設定檔的旗標是 `--configuration-file`（`-c`）。`--port`、`--user`、`--pass` 確實存在。順著這次確認多得到兩項改善：`--restart-watch` 讓 `custom.conf` 在**磁碟上**被改動時也會重啟 dnsmasq，覆蓋了使用者用編輯器而非 UI 修改自己檔案的情況；以及 `HTTP_USER` / `HTTP_PASS` 改以環境變數傳入而非旗標，因為命令列上的密碼會出現在容器的行程清單裡。這正是 8.1 要求「在建置時確認」的待辦——四個假設的旗標裡有一個沒有撐過實測。
+- **arm64 沒有建起來。** 維護者機器上 Docker Desktop 的預設 builder 只回報 `linux/amd64` 及其變體，arm64 建置在第一個 `RUN` 就以 `exec format error` 失敗——沒有註冊 QEMU handler。補救方式是 `docker run --privileged --rm tonistiigi/binfmt --install arm64` 或改用 `docker-container` driver 的 builder；兩者都會改動 repo 之外的狀態，因此都沒有代為執行。`publish.sh` 會先檢查 builder 的平台清單，並帶著這兩條指令拒絕執行，而不是讓建置在深處才失敗。**這條通過條件維持未打勾**：arm64 一次都沒有編譯過，沒有人應該把這個里程碑讀成「已在 arm64 驗證」。
 
 **帶著走的債。** 發佈路徑是維護者手動執行的腳本，因此除了「腳本在 repo 裡」以外，沒有任何東西記錄一個已發佈 tag 是怎麼來的。之後由 CI 取代；在那之前，已發佈的 tag 與它建置自哪個 commit 只能靠人工對應。
 
@@ -349,7 +358,7 @@ M6b 與 M8 產出的結論無法從程式碼重新推導。記錄在這裡，並
 
 記錄於此，避免把 M1 與 M2 誤認為已經開工：
 
-- `docker/dns/` 仍是**空的、未被 git 追蹤的目錄**，commit `3581211` 的東西沒有在裡面留下任何檔案，M2 從零建立其內容。`runestone-cli/src/services/dns/` 內有 M0 的 `daemon-target.ts` 與 M1 的 `json-edit.ts`、`daemon-config.ts`、`daemon-file.ts`、`upstream.ts`。**`tests/` 之外還沒有任何地方 import 它們**，這正是目前每個里程碑都能各自 revert 的原因。
+- `docker/dns/` 現在放著 M2 的 image、entrypoint、發佈腳本、README 與驗證腳本；commit `3581211` 的東西沒有在裡面留下任何檔案。`runestone-cli/src/services/dns/` 內有 M0 的 `daemon-target.ts` 與 M1 的 `json-edit.ts`、`daemon-config.ts`、`daemon-file.ts`、`upstream.ts`。**`tests/` 之外還沒有任何地方 import 它們**，這正是目前每個里程碑都能各自 revert 的原因。
 - commit `3581211` 加進 runestone image 的 dnsmasq 與 webproc 相關程式——`docker/traefik/entrypoint.sh` 的 `start_dnsmasq()` 與 `docker/traefik/dynamic/traefik.dynamic.yml` 的 `{{ if env "DNS_ENABLE" }}` 區塊——仍然存在，必須在 M3 移除（規格 5.3、13）。
 - repo 內沒有這個功能可以依賴的多架構建置發佈路徑，也沒有 CI workflow。建立一條是裁決 2，並且卡住 M2。
 - **`make/` 目錄是從 [druidfi/stonehenge](https://github.com/druidfi/stonehenge) 繼承來的，已作廢。** 把那套 Makefile 式的安裝與管理換成 npm CLI 正是這個 fork 存在的理由（見 README），因此建置與發布計畫不得從它推導任何東西。它是殘骸，不是基準——裁決 2 決定的 image 建置路徑應該貼合 CLI 的發布流程。

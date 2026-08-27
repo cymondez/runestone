@@ -18,7 +18,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | --- | --- | --- | --- | --- | --- |
 | M0 | Safety rails | 0 | T0 | — | **done**, one gate item red for a pre-existing reason |
 | M1 | Daemon ownership engine | 0 | T0 | M0 | **done** |
-| M2 | runestone-dns image | 1 | T1 | decision 2 | not started |
+| M2 | runestone-dns image | 1 | T1 | — | **done on amd64**; arm64 unverified, see M2 |
 | M3 | Service plumbing and `dns status` | 0 | T1 | M1, M2, decision 4 | not started |
 | M4 | `dns disable` | 2 (redirected) | T0 | M1, M3 | not started |
 | M5 | `dns enable` to `prepared` | 2 | T1 | M4 | not started |
@@ -123,19 +123,28 @@ Three things to carry forward:
 
 **Deliverables**
 
-- [ ] `docker/dns/Dockerfile` — Alpine, dnsmasq, pinned webproc selected by `TARGETARCH` (spec 8.1)
-- [ ] `docker/dns/entrypoint.sh` — regenerate `/etc/dnsmasq.conf` and `/etc/dnsmasq.d/managed.conf` on every start, then exec webproc and dnsmasq (spec 8.3)
-- [ ] `docker/dns/publish.sh` — `docker buildx build --platform linux/amd64,linux/arm64 --push`, requiring an explicit tag argument rather than defaulting to `latest` (decision 2, interim)
-- [ ] `docker/dns/test/` — the 14.5 dind harness, so that M6a can be reproduced without a virtual machine
-- [ ] Image verification tests with a fixture `/ssl` directory
-- [ ] webproc 0.4.0's `--config`, `--port` and `--user`/`--pass` flags confirmed against the pinned version (spec 8.1)
+- [x] `docker/dns/Dockerfile` — Alpine, dnsmasq, pinned webproc selected by `TARGETARCH` (spec 8.1)
+- [x] `docker/dns/entrypoint.sh` — regenerate `/etc/dnsmasq.conf` and `/etc/dnsmasq.d/managed.conf` on every start, then exec webproc and dnsmasq (spec 8.3)
+- [x] `docker/dns/publish.sh` — `docker buildx build --platform linux/amd64,linux/arm64 --push`, requiring an explicit tag argument rather than defaulting to `latest` (decision 2, interim)
+- [x] `docker/dns/test/verify-image.sh` — the 14.4 checks, driven from a throwaway network and a populated volume so that it needs no host paths and never touches port 53
+- [x] Image verification tests with a fixture `/ssl` directory
+- [x] webproc 0.4.0's `--config`, `--port` and `--user`/`--pass` flags confirmed against the pinned version (spec 8.1)
 
 **Gate**
 
-- [ ] Spec 14.4 green on both architectures
-- [ ] **All verification performed on a port other than 53**, so this milestone never fights the host for port 53
-- [ ] Tamper resistance: editing the two Runestone-owned files inside the container and restarting restores both, and leaves `custom.conf` untouched
-- [ ] Mapping rules: one `address=` per `*.crt`, `rootCA.crt` excluded, invalid domain filenames excluded, empty directory still starts
+- [ ] Spec 14.4 green on both architectures — **amd64 only so far**, 32 of 32 checks; arm64 not built, see below
+- [x] **All verification performed on a port other than 53**, so this milestone never fights the host for port 53
+- [x] Tamper resistance: editing the two Runestone-owned files inside the container and restarting restores both, and leaves `custom.conf` untouched
+- [x] Mapping rules: one `address=` per `*.crt`, `rootCA.crt` excluded, invalid domain filenames excluded, empty directory still starts
+
+**Landed.** `docker/dns/` now holds `Dockerfile`, `entrypoint.sh`, `publish.sh`, `README.md` and `test/verify-image.sh`. Verification on amd64: **32 checks, 32 passing.**
+
+The verification script deliberately avoids two things. It **never uses port 53** — the service is published on 15353 — so the milestone that builds the image is not the milestone that first contends for the real DNS port. And it **uses no host paths**: the fixture `/ssl` directory is a Docker volume populated by a helper container, so it behaves identically in Git Bash on Windows and in a Linux shell. (That second choice earned itself: an earlier draft passed a container path directly to `docker exec`, and MSYS rewrote `/etc/dnsmasq.d/custom.conf` into `C:/Program Files/Git/etc/dnsmasq.d/custom.conf`. Every container-side path now lives inside `sh -c`.)
+
+Two findings worth carrying:
+
+- **The spec's webproc invocation was wrong, and 8.1 has been corrected.** `--config` does not exist in webproc 0.4.0; the writable-configuration flag is `--configuration-file` (`-c`). `--port`, `--user` and `--pass` do exist. Two improvements came out of checking: `--restart-watch` makes a change to `custom.conf` *on disk* restart dnsmasq, which covers a user editing their own file with an editor rather than through the UI; and `HTTP_USER` / `HTTP_PASS` are passed as environment variables rather than flags, because a password on the command line appears in the container's process list. This is exactly the open item 8.1 asked to be confirmed at build time — one of the four assumed flags did not survive contact.
+- **arm64 has not been built.** Docker Desktop's default builder on the maintainer's machine reports only `linux/amd64` and its variants, and an arm64 build fails at the first `RUN` with `exec format error` — no QEMU handler is registered. The remedies are `docker run --privileged --rm tonistiigi/binfmt --install arm64` or a `docker-container` driver builder; both change state outside this repository, so neither was done. `publish.sh` checks the builder's platform list up front and refuses with those two commands rather than failing deep inside a build. **The gate item stays unticked**: nobody should read this milestone as "verified on arm64" when arm64 has never been compiled.
 
 **Carried debt.** The publish path is a script a maintainer runs, so nothing records what produced a published tag beyond the script being in the repository. CI replaces it later; until then, a published tag and the commit it was built from have to be associated by hand.
 
@@ -349,7 +358,7 @@ M6b and M8 produce findings that cannot be re-derived from the code. Record them
 
 Recorded so that M1 and M2 are not mistaken for work already begun:
 
-- `docker/dns/` is still an **empty, untracked directory**; nothing from commit `3581211` survives in it, and M2 creates its contents from scratch. `runestone-cli/src/services/dns/` holds M0's `daemon-target.ts` and M1's `json-edit.ts`, `daemon-config.ts`, `daemon-file.ts` and `upstream.ts`. **Nothing outside `tests/` imports any of them yet**, which is what keeps every milestone so far revertible on its own.
+- `docker/dns/` now holds M2's image, entrypoint, publish script, README and verification script; nothing from commit `3581211` survives in it. `runestone-cli/src/services/dns/` holds M0's `daemon-target.ts` and M1's `json-edit.ts`, `daemon-config.ts`, `daemon-file.ts` and `upstream.ts`. **Nothing outside `tests/` imports any of them yet**, which is what keeps every milestone so far revertible on its own.
 - The dnsmasq and webproc code that commit `3581211` added to the runestone image — `start_dnsmasq()` in `docker/traefik/entrypoint.sh` and the `{{ if env "DNS_ENABLE" }}` blocks in `docker/traefik/dynamic/traefik.dynamic.yml` — is still present and must be removed in M3 (spec 5.3, 13).
 - There is no multi-arch build and publish path this feature can rely on, and no CI workflow in the repository. Establishing one is decision 2 and blocks M2.
 - **The `make/` directory is inherited from [druidfi/stonehenge](https://github.com/druidfi/stonehenge) and is void.** Replacing that Makefile-based installation and management flow with the npm CLI is the reason this fork exists (see the README), so nothing in the build or release plan may be derived from it. It is debris, not a baseline — and the image build path decided in decision 2 should fit the CLI's release flow.

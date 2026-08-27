@@ -268,11 +268,14 @@ DNS_UI_PASS=            # 選填，webproc 基本驗證密碼（HTTP_PASS）
   2. 啟動程序：
 
      ```sh
-     webproc --config /etc/dnsmasq.d/custom.conf \
+     webproc --configuration-file /etc/dnsmasq.d/custom.conf \
+       --port 8080 --restart-watch \
        -- dnsmasq --no-daemon --conf-file=/etc/dnsmasq.conf --log-facility=-
      ```
 
-  webproc 只監看 custom rules，Runestone 擁有的設定不在它的編輯範圍內。使用者從 UI 改壞 custom rules 時，managed mapping 與上游設定不會被波及。（`--config`、`--port`、`--user`/`--pass` 已在 webproc 0.2.2 實測存在；0.4.0 的參數需在建置時確認。）
+  webproc 只監看 custom rules，Runestone 擁有的設定不在它的編輯範圍內。使用者從 UI 改壞 custom rules 時，managed mapping 與上游設定不會被波及。
+
+  **已對 webproc 0.4.0 實測確認**（這是本節原本的待辦）：可寫設定檔的旗標是 `--configuration-file`（`-c`），而 **0.4.0 沒有 `--config`**。`--port`、`--user`、`--pass` 都存在，`--on-save` 本來就預設為 `restart`，所以從 UI 存檔會重啟 dnsmasq。另外也用了 `--restart-watch`，讓 `custom.conf` **在磁碟上**被改動時同樣重啟 dnsmasq——這覆蓋了使用者用編輯器而非 UI 修改自己檔案的情況。`HTTP_USER` 與 `HTTP_PASS` 以環境變數傳入而非旗標，因為在命令列上給定的密碼會出現在容器的行程清單裡。
 - 支援以 `HTTP_USER` / `HTTP_PASS` 環境變數啟用 webproc 基本驗證。
 - 建置與發佈方式見 15.2。
 
