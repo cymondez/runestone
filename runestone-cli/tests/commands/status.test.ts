@@ -5,6 +5,7 @@ import { sshManager } from '../../src/services/ssh-manager';
 import { volumeService } from '../../src/services/docker-volume';
 
 jest.mock('../../src/services/docker-compose', () => ({
+  ...jest.requireActual('../../src/services/docker-compose'),
   composeService: {
     ps: jest.fn()
   }

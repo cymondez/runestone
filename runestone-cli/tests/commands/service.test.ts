@@ -18,6 +18,7 @@ jest.mock('../../src/services/cert-manager', () => ({
 }));
 
 jest.mock('../../src/services/docker-compose', () => ({
+  ...jest.requireActual('../../src/services/docker-compose'),
   composeService: {
     ps: jest.fn(() => [{ State: 'running' }]),
     restart: jest.fn()

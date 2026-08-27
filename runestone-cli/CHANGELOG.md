@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Certificate, service and setup changes now restart only the `runestone` container instead of every service in the Runestone project, so other services keep running.
+
 ## 1.1.1 - 2026-06-23
 
 ### Changed

@@ -1,6 +1,7 @@
 import { spawnSync } from 'child_process';
 import * as path from 'path';
-import { composeService } from '../../src/services/docker-compose';
+import { COMPOSE_SERVICES, composeService } from '../../src/services/docker-compose';
+import { buildComposeFile } from '../../src/utils/project-files';
 
 jest.mock('child_process', () => ({
   spawnSync: jest.fn()
@@ -59,16 +60,41 @@ describe('composeService', () => {
     );
   });
 
-  it('restarts compose services', () => {
+  it('names services that the generated compose file actually declares', () => {
+    const compose = buildComposeFile();
+
+    for (const service of Object.values(COMPOSE_SERVICES)) {
+      expect(compose).toContain(`
+  ${service}:
+`);
+    }
+  });
+
+  it('restarts only the named services', () => {
     const composePath = path.resolve('compose.yml');
 
-    composeService.restart(composePath);
+    composeService.restart(composePath, [COMPOSE_SERVICES.runestone]);
 
     expect(spawnSyncMock).toHaveBeenCalledWith(
       'docker',
-      expect.arrayContaining(['restart']),
+      [
+        'compose',
+        '--project-directory',
+        path.dirname(composePath),
+        '-f',
+        composePath,
+        'restart',
+        'runestone'
+      ],
       expect.any(Object)
     );
+  });
+
+  it('never issues an unscoped restart', () => {
+    expect(() => composeService.restart(path.resolve('compose.yml'), [])).toThrow(
+      'composeService.restart requires at least one service name'
+    );
+    expect(spawnSyncMock).not.toHaveBeenCalled();
   });
 
   it('parses docker compose ps JSON array output', () => {

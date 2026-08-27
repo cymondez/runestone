@@ -16,7 +16,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 
 | # | Milestone | Risk | Tier | Blocked by | Status |
 | --- | --- | --- | --- | --- | --- |
-| M0 | Safety rails | 0 | T0 | — | not started |
+| M0 | Safety rails | 0 | T0 | — | **done**, one gate item red for a pre-existing reason |
 | M1 | Daemon ownership engine | 0 | T0 | M0 | not started |
 | M2 | runestone-dns image | 1 | T1 | decision 2 | not started |
 | M3 | Service plumbing and `dns status` | 0 | T1 | M1, M2, decision 4 | not started |
@@ -48,18 +48,25 @@ The four items in spec 15 have milestone deadlines (spec 16.6). A milestone must
 
 **Deliverables**
 
-- [ ] `runestone-cli/src/services/docker-compose.ts` — `restart()` becomes service-scoped (spec 10.5)
-- [ ] Callers updated: `runestone-cli/src/services/dynamic-config-manager.ts`, `runestone-cli/src/commands/setup.ts`, and any other caller found by grep
-- [ ] `RUNESTONE_DNS_DAEMON_PATH` honoured wherever the daemon path is resolved (spec 7.4)
-- [ ] `RUNESTONE_DNS_RESTART_CMD` honoured wherever Docker is restarted (spec 7.4)
-- [ ] `runestone-cli/tests/services/docker-compose.test.ts` — restart passes a service name
-- [ ] The 16.5 safety-net procedure is written where a contributor will actually find it (this document plus the contributor documentation)
+- [x] `runestone-cli/src/services/docker-compose.ts` — `restart()` becomes service-scoped (spec 10.5)
+- [x] Callers updated: `runestone-cli/src/services/dynamic-config-manager.ts`, `runestone-cli/src/commands/setup.ts`, and any other caller found by grep
+- [x] `RUNESTONE_DNS_DAEMON_PATH` honoured wherever the daemon path is resolved (spec 7.4)
+- [x] `RUNESTONE_DNS_RESTART_CMD` honoured wherever Docker is restarted (spec 7.4)
+- [x] `runestone-cli/tests/services/docker-compose.test.ts` — restart passes a service name
+- [x] The 16.5 safety-net procedure is written where a contributor will actually find it (this document plus the contributor documentation)
 
 **Gate**
 
-- [ ] `npm test` green
-- [ ] No unscoped `docker compose restart` remains in the source
-- [ ] Dynamic-config changes restart only `runestone`
+- [ ] `npm test` green — red for a pre-existing reason, see below
+- [x] No unscoped `docker compose restart` remains in the source
+- [x] Dynamic-config changes restart only `runestone`
+
+**Landed.** `composeService.restart()` now takes a mandatory service list, so an unscoped restart cannot even be expressed; service names come from `COMPOSE_SERVICES`, and a test asserts the generated compose file actually declares every name in it. `runestone-cli/src/services/dns/daemon-target.ts` resolves the daemon configuration path and the Docker restart command in one place and honours both 7.4 overrides — it only resolves, and nothing calls it yet. The safety net is in `AGENTS.md` under "DNS Feature Rules", next to the override and restart-scope rules.
+
+Two things were left open deliberately:
+
+- **`npm test` is not green, for a reason that predates this milestone.** `runestone-cli/tests/integration/execution.test.ts` fails on Windows under Node 20.12 or newer. It intercepts Docker by putting a `docker.cmd` shim on `PATH`, but Node no longer resolves or executes `.cmd` files without a shell, so the shim is skipped, the real `docker` runs with a redirected `USERPROFILE`, and its compose plugin cannot be found. The consequence is worse than the red result: **the fake Docker is never exercised on Windows at all.** Fixing it needs either a documented way to point the CLI at a different Docker binary or an explicit skip on Windows, which is a decision of its own and not a DNS matter. Everything else is green — 161 of 162 tests.
+- **The WSL row of 6.2 cannot be resolved offline.** `platformDaemonPath()` needs the Windows-side home directory, which is only knowable by inspecting the Docker context, so it throws and names `RUNESTONE_DNS_DAEMON_PATH` rather than guessing a path to write to. M5 must supply it at the point where it already inspects the context.
 
 **Rollback.** Single revert. The restart scoping fix is worth keeping on its own merit, so this milestone is safe to land ahead of any DNS decision.
 
@@ -320,7 +327,7 @@ M6b and M8 produce findings that cannot be re-derived from the code. Record them
 
 Recorded so that M1 and M2 are not mistaken for work already begun:
 
-- `docker/dns/` and `runestone-cli/src/services/dns/` exist as **empty, untracked directories**. Nothing from commit `3581211` survives in either. M1 and M2 create their contents from scratch.
+- `docker/dns/` is still an **empty, untracked directory**; nothing from commit `3581211` survives in it, and M2 creates its contents from scratch. `runestone-cli/src/services/dns/` now holds `daemon-target.ts` from M0 and nothing else — M1 adds the ownership engine beside it.
 - The dnsmasq and webproc code that commit `3581211` added to the runestone image — `start_dnsmasq()` in `docker/traefik/entrypoint.sh` and the `{{ if env "DNS_ENABLE" }}` blocks in `docker/traefik/dynamic/traefik.dynamic.yml` — is still present and must be removed in M3 (spec 5.3, 13).
 - There is no multi-arch build and publish path this feature can rely on, and no CI workflow in the repository. Establishing one is decision 2 and blocks M2.
 - **The `make/` directory is inherited from [druidfi/stonehenge](https://github.com/druidfi/stonehenge) and is void.** Replacing that Makefile-based installation and management flow with the npm CLI is the reason this fork exists (see the README), so nothing in the build or release plan may be derived from it. It is debris, not a baseline — and the image build path decided in decision 2 should fit the CLI's release flow.

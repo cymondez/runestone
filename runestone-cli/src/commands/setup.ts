@@ -7,7 +7,7 @@ import * as path from 'path';
 import { cyan, dim, gray, green, hidden, inverse, red, strikethrough, yellow } from 'kleur';
 import { DEFAULT_ENV, EnvInput, RunestoneEnv, envLoader } from '../utils/env-loader';
 import { ensureProjectFiles } from '../utils/project-files';
-import { composeService } from '../services/docker-compose';
+import { COMPOSE_SERVICES, composeService } from '../services/docker-compose';
 import { ensureWildcardCertificate } from '../services/cert-manager';
 import { installRootCa } from '../services/root-ca-installer';
 import { checkDomainResolvesToThisMachine, DomainResolutionCheck } from '../services/domain-checker';
@@ -796,7 +796,7 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
       if (running) {
         const restartSpinner = p.spinner();
         restartSpinner.start(activeT('setup.restart.spinner'));
-        composeService.restart(config.COMPOSE_FILE_PATH);
+        composeService.restart(config.COMPOSE_FILE_PATH, [COMPOSE_SERVICES.runestone]);
         restartSpinner.stop(activeT('setup.restart.done'));
       } else {
         p.log.warn(activeT('setup.restart.notRunning'));

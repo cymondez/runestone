@@ -16,7 +16,7 @@
 
 | # | 里程碑 | 風險 | 層級 | 前置 | 狀態 |
 | --- | --- | --- | --- | --- | --- |
-| M0 | 安全鋼索 | 0 | T0 | — | 未開始 |
+| M0 | 安全鋼索 | 0 | T0 | — | **已完成**，有一項通過條件因既有原因未綠 |
 | M1 | daemon 所有權引擎 | 0 | T0 | M0 | 未開始 |
 | M2 | runestone-dns image | 1 | T1 | 裁決 2 | 未開始 |
 | M3 | 服務接線與 `dns status` | 0 | T1 | M1、M2、裁決 4 | 未開始 |
@@ -48,18 +48,25 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **交付項目**
 
-- [ ] `runestone-cli/src/services/docker-compose.ts` — `restart()` 改為服務範圍（規格 10.5）
-- [ ] 呼叫端更新：`runestone-cli/src/services/dynamic-config-manager.ts`、`runestone-cli/src/commands/setup.ts`，以及 grep 找到的其他呼叫端
-- [ ] 解析 daemon 路徑的地方一律尊重 `RUNESTONE_DNS_DAEMON_PATH`（規格 7.4）
-- [ ] 重啟 Docker 的地方一律尊重 `RUNESTONE_DNS_RESTART_CMD`（規格 7.4）
-- [ ] `runestone-cli/tests/services/docker-compose.test.ts` — restart 有帶服務名稱
-- [ ] 16.5 的安全網程序寫在接手者真的會看到的地方（本文件加上貢獻者文件）
+- [x] `runestone-cli/src/services/docker-compose.ts` — `restart()` 改為服務範圍（規格 10.5）
+- [x] 呼叫端更新：`runestone-cli/src/services/dynamic-config-manager.ts`、`runestone-cli/src/commands/setup.ts`，以及 grep 找到的其他呼叫端
+- [x] 解析 daemon 路徑的地方一律尊重 `RUNESTONE_DNS_DAEMON_PATH`（規格 7.4）
+- [x] 重啟 Docker 的地方一律尊重 `RUNESTONE_DNS_RESTART_CMD`（規格 7.4）
+- [x] `runestone-cli/tests/services/docker-compose.test.ts` — restart 有帶服務名稱
+- [x] 16.5 的安全網程序寫在接手者真的會看到的地方（本文件加上貢獻者文件）
 
 **通過條件**
 
-- [ ] `npm test` 全綠
-- [ ] 原始碼中不再有未指定服務的 `docker compose restart`
-- [ ] 動態設定變更只重啟 `runestone`
+- [ ] `npm test` 全綠 — 因既有原因未綠，見下方說明
+- [x] 原始碼中不再有未指定服務的 `docker compose restart`
+- [x] 動態設定變更只重啟 `runestone`
+
+**已落地。** `composeService.restart()` 現在必須帶服務清單，未指定範圍的 restart 連寫都寫不出來；服務名稱一律取自 `COMPOSE_SERVICES`，並有測試確認產生出來的 compose 檔真的宣告了其中每一個名稱。`runestone-cli/src/services/dns/daemon-target.ts` 把 daemon 設定檔路徑與重啟 Docker 的指令收在同一處解析，並尊重 7.4 的兩個覆寫——它只負責解析，目前還沒有任何地方呼叫它。安全網寫在 `AGENTS.md` 的「DNS Feature Rules」，和覆寫、restart 範圍的規則放在一起。
+
+有兩件事是刻意留著的：
+
+- **`npm test` 沒有全綠，原因早於這個里程碑。** `runestone-cli/tests/integration/execution.test.ts` 在 Windows 搭配 Node 20.12 以上會失敗。它靠把 `docker.cmd` 這個 shim 放進 `PATH` 來攔截 Docker，但 Node 已經不再在沒有 shell 的情況下解析或執行 `.cmd`，於是 shim 被跳過、真正的 `docker` 在被改寫過的 `USERPROFILE` 下執行、找不到自己的 compose plugin。比紅燈更嚴重的是後果：**這個假 Docker 在 Windows 上根本從來沒有被走過。** 要修它，得選擇替 CLI 提供一個有文件的 docker 執行檔指向機制，或是在 Windows 明確 skip；那是它自己的裁決，不是 DNS 的事。其餘全綠——162 項中的 161 項。
+- **規格 6.2 的 WSL 那一列無法離線判定。** `platformDaemonPath()` 需要 Windows 側的家目錄，而那只能靠檢查 Docker context 得知，因此它選擇丟出錯誤並指名 `RUNESTONE_DNS_DAEMON_PATH`，而不是猜一個要寫進去的路徑。M5 必須在它本來就會檢查 context 的地方把這個值補上。
 
 **回退。** 單一 revert。restart 範圍修正本身就有價值，所以這個里程碑可以在任何 DNS 裁決之前先落地。
 
@@ -320,7 +327,7 @@ M6b 與 M8 產出的結論無法從程式碼重新推導。記錄在這裡，並
 
 記錄於此，避免把 M1 與 M2 誤認為已經開工：
 
-- `docker/dns/` 與 `runestone-cli/src/services/dns/` 是**空的、未被 git 追蹤的目錄**。commit `3581211` 的東西在兩者中都沒有留下任何檔案。M1 與 M2 從零建立其內容。
+- `docker/dns/` 仍是**空的、未被 git 追蹤的目錄**，commit `3581211` 的東西沒有在裡面留下任何檔案，M2 從零建立其內容。`runestone-cli/src/services/dns/` 現在只有 M0 的 `daemon-target.ts`——M1 在它旁邊加上所有權引擎。
 - commit `3581211` 加進 runestone image 的 dnsmasq 與 webproc 相關程式——`docker/traefik/entrypoint.sh` 的 `start_dnsmasq()` 與 `docker/traefik/dynamic/traefik.dynamic.yml` 的 `{{ if env "DNS_ENABLE" }}` 區塊——仍然存在，必須在 M3 移除（規格 5.3、13）。
 - repo 內沒有這個功能可以依賴的多架構建置發佈路徑，也沒有 CI workflow。建立一條是裁決 2，並且卡住 M2。
 - **`make/` 目錄是從 [druidfi/stonehenge](https://github.com/druidfi/stonehenge) 繼承來的，已作廢。** 把那套 Makefile 式的安裝與管理換成 npm CLI 正是這個 fork 存在的理由（見 README），因此建置與發布計畫不得從它推導任何東西。它是殘骸，不是基準——裁決 2 決定的 image 建置路徑應該貼合 CLI 的發布流程。

@@ -2,6 +2,17 @@ import { SpawnSyncReturns } from 'child_process';
 import * as path from 'path';
 import { spawnCommand } from '../utils/spawn';
 
+/**
+ * Service names as they appear in the generated compose file. Kept here so that
+ * every scoped `docker compose` invocation names a service from one list rather
+ * than an inline string literal.
+ */
+export const COMPOSE_SERVICES = {
+  runestone: 'runestone'
+} as const;
+
+export type ComposeServiceName = (typeof COMPOSE_SERVICES)[keyof typeof COMPOSE_SERVICES];
+
 export interface ComposeOptions {
   wait?: boolean;
   removeVolumes?: boolean;
@@ -103,8 +114,17 @@ export const composeService = {
     runCompose(['stop'], composePath);
   },
 
-  restart(composePath: string): void {
-    runCompose(['restart'], composePath);
+  /**
+   * Restarts only the named services. The service list is mandatory: an
+   * unscoped `docker compose restart` restarts every service in the project,
+   * which would let an unrelated change interrupt long-lived services.
+   */
+  restart(composePath: string, services: string[]): void {
+    if (services.length === 0) {
+      throw new Error('composeService.restart requires at least one service name');
+    }
+
+    runCompose(['restart', ...services], composePath);
   },
 
   ps(composePath: string): DockerContainer[] {

@@ -31,3 +31,39 @@
 - 只寫使用者會感受到的行為變更、修正與新功能。
 - 條目要簡潔，可操作，可理解。
 - 版本區塊使用既有格式：`## x.y.z - YYYY-MM-DD`，並按 `Added`、`Changed`、`Fixed` 分類。
+
+## DNS Feature Rules
+
+DNS 功能會改動機器的全域狀態（`daemon.json` 與重啟 Docker），因此規格與里程碑本身就是風險管控手段。動手前先讀 `docs/DNS-FEATURE-SPEC.md`（正體中文備查：`docs/DNS-FEATURE-SPEC.zh-TW.md`），進度與 gate 看 `docs/DNS-MILESTONES.md`。
+
+### 開發用覆寫（spec 7.4）
+
+- `RUNESTONE_DNS_DAEMON_PATH`：改寫 daemon 設定檔路徑，讓寫入／識別／撤銷可以對著暫存檔跑。
+- `RUNESTONE_DNS_RESTART_CMD`：改寫重啟 Docker 的指令，例如改成重啟一個 dind container。
+- 這兩個變數刻意不出現在 `.env` 與 `runestone setup`，不是使用者設定。它們的存在理由是：沒有它們，無法重啟 Docker 的接手者根本無法開發這個功能。
+- 兩者本身就是風險——路徑填錯就是寫錯檔案——所以 `dns status` 與 `doctor` 在它們生效時必須明顯回報，風險揭露也必須印出實際生效的值。
+
+### 動到真實 daemon 設定檔之前的安全網（spec 16.5）
+
+只要一個里程碑會寫入真實的 `daemon.json`（M5 起），先做完這四件事：
+
+1. 把現在的 `daemon.json` 複製到版控之外並記下 hash。這是給人用的安全網，不是 Runestone 管理的備份；規格 9.3 禁止整檔還原這條沒有改變。
+
+```bash
+cp ~/.docker/daemon.json ~/daemon.json.pre-runestone-dns && sha256sum ~/daemon.json.pre-runestone-dns
+```
+
+2. 確認 M4 的 `runestone dns disable --assume-entry` 真的能撤掉一筆手動塞進去、沒有 ownership 紀錄的項目。
+3. 手動走一次復原路徑：編輯 `daemon.json`、移除項目、重啟 Docker。
+4. 進 M6b（會重啟機器上每一個 container）之前，另外存一份 `docker ps -a`。
+
+```bash
+docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}' > ~/containers-before-dns-m6b.txt
+```
+
+寫入不等於生效：`daemon.json` 寫下去之後，直到 Docker 重啟才有作用。`--no-restart` 與 `--dry-run` 就是靠這一點把「寫」和「重啟」在時間上分開，這是整個計畫的核心槓桿，不要為了方便繞過它。
+
+### Restart 範圍
+
+- `composeService.restart()` 必須指定 service，不接受無範圍重啟。dynamic config 變更只重啟 `runestone`，DNS 設定變更只重啟 `dns`。
+- Service 名稱一律取自 `COMPOSE_SERVICES`，不要寫字串常值。

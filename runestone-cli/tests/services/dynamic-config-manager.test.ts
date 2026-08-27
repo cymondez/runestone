@@ -9,6 +9,7 @@ import {
 import { composeService } from '../../src/services/docker-compose';
 
 jest.mock('../../src/services/docker-compose', () => ({
+  ...jest.requireActual('../../src/services/docker-compose'),
   composeService: {
     ps: jest.fn(() => [{ State: 'running' }]),
     restart: jest.fn()
@@ -46,7 +47,7 @@ describe('dynamic-config-manager', () => {
     });
 
     expect(restartMock).toHaveBeenCalledTimes(1);
-    expect(restartMock).toHaveBeenCalledWith(composeFilePath);
+    expect(restartMock).toHaveBeenCalledWith(composeFilePath, ['runestone']);
   });
 
   it('shares the outer batch with nested batches', async () => {
@@ -87,6 +88,6 @@ describe('dynamic-config-manager', () => {
     });
 
     expect(restartMock).toHaveBeenCalledTimes(1);
-    expect(restartMock).toHaveBeenCalledWith(composeFilePath);
+    expect(restartMock).toHaveBeenCalledWith(composeFilePath, ['runestone']);
   });
 });
