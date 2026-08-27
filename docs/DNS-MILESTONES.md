@@ -1,0 +1,326 @@
+# Runestone DNS Implementation Milestones
+
+English | [正體中文](DNS-MILESTONES.zh-TW.md)
+
+## How to use this document
+
+- **`DNS-FEATURE-SPEC.md` is the normative source.** This document does not restate requirements; it sequences them and records progress. Where the two disagree, the specification wins and this document is wrong.
+- **The ordering rule is normative** (spec 16.1): a milestone may raise the risk level by at most one step, and the level below it must be fully green first. The reason is in spec 16.1 — writing `daemon.json` changes nothing until Docker restarts, so almost all of the risk can be deferred to two clearly marked milestones.
+- Every milestone is a mergeable increment. Through M6a, `DNS_ENABLE` defaults to false and no existing command path calls into DNS code, so **each milestone can be reverted with a single `git revert`**. This is a hard constraint, not an aspiration.
+- Suggested file locations are suggestions. Existing paths are not: where a deliverable names a file that already exists, that file is the one to change.
+- Do not tick a gate item on the strength of a test that has not been run.
+
+Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by name throughout and are not repeated here.
+
+## Status board
+
+| # | Milestone | Risk | Tier | Blocked by | Status |
+| --- | --- | --- | --- | --- | --- |
+| M0 | Safety rails | 0 | T0 | — | not started |
+| M1 | Daemon ownership engine | 0 | T0 | M0 | not started |
+| M2 | runestone-dns image | 1 | T1 | decision 2 | not started |
+| M3 | Service plumbing and `dns status` | 0 | T1 | M1, M2, decision 4 | not started |
+| M4 | `dns disable` | 2 (redirected) | T0 | M1, M3 | not started |
+| M5 | `dns enable` to `prepared` | 2 | T1 | M4 | not started |
+| M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | M5 | not started |
+| M6b | Real machine and VM verification | 3 | T3 / T4 | M6a, decision 1 | not started |
+| M7 | Lifecycle integration and disclosure | 3 | T1 / T2 | M6a | not started |
+| M8 | Platform matrix and release | 3 | T3 / T4 | M6b, M7 | not started |
+
+M2 is independent of M1 and can run in parallel with it. Everything else is a chain.
+
+## Decision gate
+
+The four items in spec 15 have milestone deadlines (spec 16.6). A milestone must not start while its blocking decision is open.
+
+| Decision | Deadline | Status | Cost of deciding late |
+| --- | --- | --- | --- |
+| 3 — fallback DNS in dnsmasq's upstream or in the daemon array | before M1 | **settled: both** — the dnsmasq upstream is mandatory and never empty (spec 8.4), the daemon-array fallback is optional and off by default (spec 9.7) | Settled in time. `insertedEntries` is an array of owned entries, which M1 implements from the start |
+| 2 — how the image is built and published, its name and initial tag | before M2 | open | M2 cannot complete. The repository has no multi-arch build path and no CI workflow today, and `make/` is not a starting point — see "Current state of the repository" |
+| 4 — `compose.yml` regeneration strategy | before M3 | open | M3's compose work would have to be redone |
+| 1 — whether `docker desktop restart` exists | before M6b | open | Low. The implementation detects it and falls back to a manual-restart prompt |
+
+## M0 — Safety rails
+
+**Goal.** Make the two operations that touch global state redirectable, and fix the restart scoping defect that DNS would otherwise inherit. No DNS behaviour exists at the end of this milestone.
+
+**Risk level 0 · Tier T0**
+
+**Deliverables**
+
+- [ ] `runestone-cli/src/services/docker-compose.ts` — `restart()` becomes service-scoped (spec 10.5)
+- [ ] Callers updated: `runestone-cli/src/services/dynamic-config-manager.ts`, `runestone-cli/src/commands/setup.ts`, and any other caller found by grep
+- [ ] `RUNESTONE_DNS_DAEMON_PATH` honoured wherever the daemon path is resolved (spec 7.4)
+- [ ] `RUNESTONE_DNS_RESTART_CMD` honoured wherever Docker is restarted (spec 7.4)
+- [ ] `runestone-cli/tests/services/docker-compose.test.ts` — restart passes a service name
+- [ ] The 16.5 safety-net procedure is written where a contributor will actually find it (this document plus the contributor documentation)
+
+**Gate**
+
+- [ ] `npm test` green
+- [ ] No unscoped `docker compose restart` remains in the source
+- [ ] Dynamic-config changes restart only `runestone`
+
+**Rollback.** Single revert. The restart scoping fix is worth keeping on its own merit, so this milestone is safe to land ahead of any DNS decision.
+
+## M1 — Daemon ownership engine
+
+**Goal.** The whole of spec 9 as pure functions over JSON text, with no CLI command wired up. Nothing a user can invoke exists at the end of this milestone.
+
+**Risk level 0 · Tier T0**
+
+**Deliverables**
+
+- [ ] Ownership engine (suggested `runestone-cli/src/services/dns/daemon-config.ts`): insert, identify, remove, reorder, atomic write with re-parse validation, indentation detection and preservation — over **`insertedEntries` as a list of owned entries** (spec 7.3), not a single entry
+- [ ] The optional daemon fallback entry (spec 9.7): inserted at `dns[1]`, recorded with its own role, identified independently, and revoked together with the Target IP entry — with one entry in conflict causing neither to be removed
+- [ ] Ownership state read/write in `runestone-cli/src/utils/tool-state.ts` per spec 7.3, including `schemaVersion`
+- [ ] Upstream DNS determination (spec 8.4) — **the result is never empty**, with `1.1.1.1` as the last resort — and Bind IP determination per platform (spec 6.1), both pure and injectable
+- [ ] Tests under `runestone-cli/tests/services/dns/`
+
+**Gate**
+
+- [ ] Every row of spec 9.5 has a test
+- [ ] Both `DNS_AUTO_REORDER` modes tested: `false` produces **zero** file changes; `true` moves only our own entries and never triggers a restart
+- [ ] Re-entrancy: repeated enable never inserts a second entry of ours
+- [ ] Write fidelity: indentation style and the order of unrelated keys survive a write
+- [ ] **Invariant test**: for any sequence of enable → user edit → disable, the values, the count and the relative order of entries we do not own are unchanged — with the 9.7 fallback both off and on
+- [ ] The upstream list is never empty under any input, including no detection and an empty `DNS_UPSTREAM`
+- [ ] `npm run test:unit` green, and the engine touches no real file in any test
+
+**Rollback.** Single revert; nothing imports the engine yet.
+
+## M2 — runestone-dns image
+
+**Goal.** A published multi-arch image that produces a correct dnsmasq configuration on every start, verified without ever contending for port 53.
+
+**Risk level 1 · Tier T1 · Blocked by decision 2**
+
+**Deliverables**
+
+- [ ] `docker/dns/Dockerfile` — Alpine, dnsmasq, pinned webproc selected by `TARGETARCH` (spec 8.1)
+- [ ] `docker/dns/entrypoint.sh` — regenerate `/etc/dnsmasq.conf` and `/etc/dnsmasq.d/managed.conf` on every start, then exec webproc and dnsmasq (spec 8.3)
+- [ ] A multi-arch build and publish path for `linux/amd64` and `linux/arm64`, per decision 2
+- [ ] Image verification tests with a fixture `/ssl` directory
+- [ ] webproc 0.4.0's `--config`, `--port` and `--user`/`--pass` flags confirmed against the pinned version (spec 8.1)
+
+**Gate**
+
+- [ ] Spec 14.4 green on both architectures
+- [ ] **All verification performed on a port other than 53**, so this milestone never fights the host for port 53
+- [ ] Tamper resistance: editing the two Runestone-owned files inside the container and restarting restores both, and leaves `custom.conf` untouched
+- [ ] Mapping rules: one `address=` per `*.crt`, `rootCA.crt` excluded, invalid domain filenames excluded, empty directory still starts
+
+**Rollback.** Single revert. An unreferenced published tag is harmless.
+
+## M3 — Service plumbing and `dns status`
+
+**Goal.** Everything needed to run the service, plus the read-only command that every later milestone uses to diagnose itself. The feature is still off.
+
+**Risk level 0 · Tier T1 · Blocked by M1, M2, decision 4**
+
+**Deliverables**
+
+- [ ] `.env` fields per spec 7.1, absent meaning disabled
+- [ ] Compose template gains the `dns` service under profile `dns` (spec 8.2), with the image and tag written literally
+- [ ] Versioned `compose.yml` regeneration in `runestone-cli/src/utils/project-files.ts` per decision 4 (spec 13)
+- [ ] `dns/custom.conf` created when missing, before the service is ever started (spec 8.3)
+- [ ] `configuration/dns/dns-ui.yml` generated and removed by the CLI (spec 8.5)
+- [ ] Remove the `{{ if env "DNS_ENABLE" }}` blocks from `docker/traefik/dynamic/traefik.dynamic.yml` and `start_dnsmasq()` from `docker/traefik/entrypoint.sh` (spec 13)
+- [ ] `runestone dns status`, read-only, reporting everything in spec 10.3
+- [ ] `runestone-cli/src/i18n/index.ts` — `en` / `zh-TW` / `ja-JP` strings for everything added so far
+
+**Gate**
+
+- [ ] With `DNS_ENABLE=false`, `up` / `stop` / `down` behave exactly as they do today — regression tested, not eyeballed
+- [ ] `status` correctly reads hand-crafted daemon files covering every state in spec 9.5, including our entry displaced, duplicated, altered and removed
+- [ ] `status` writes nothing, proven by test
+- [ ] `status` reports loudly when a spec 7.4 override is active
+- [ ] Existing installations upgrading to this version see no behaviour change
+
+**Rollback.** Single revert. Note that the traefik template and entrypoint removals are a change to the runestone image; if that image ships separately, sequence it so an old CLI never meets a new image expecting CLI-generated routes.
+
+## M4 — `dns disable`
+
+**Goal.** The escape hatch, built before the trap. If enable landed first and misbehaved, there would be no tool to clean up with.
+
+**Risk level 2 (redirected path only) · Tier T0 · Blocked by M1, M3**
+
+**Deliverables**
+
+- [ ] `runestone dns disable` implementing spec 9.2 and 10.2
+- [ ] `--assume-entry <ip>` and `--assume-index <n>` (spec 9.3)
+- [ ] `--dry-run` printing the before/after diff and writing nothing (spec 10.2)
+- [ ] Ownership-conflict paths abort with the daemon path and manual recovery steps, never a guess
+- [ ] `runestone-cli/tests/commands/` entry-point tests
+
+**Gate**
+
+- [ ] Revokes an entry planted by hand with **no ownership record**, via `--assume-entry`
+- [ ] Every failure row in spec 12 that ends in "abort" actually aborts without writing
+- [ ] Our entry already removed by the user is treated as revoked: file untouched, state cleared, no error
+- [ ] All of it exercised against `RUNESTONE_DNS_DAEMON_PATH`, with the platform daemon file provably untouched
+- [ ] `--dry-run` output matches what a real run then produces
+
+**Rollback.** Single revert.
+
+## M5 — `dns enable` to `prepared`
+
+**Goal.** The complete enable path except the restart. This is the first milestone that writes a real `daemon.json`, and because it does not restart, the write has no effect on the machine while it is being rehearsed.
+
+**Risk level 2 · Tier T1 · Blocked by M4**
+
+**Complete the 16.5 safety net before starting this milestone.**
+
+**Deliverables**
+
+- [ ] `runestone dns enable` steps 1–4 of spec 10.1: preflight that changes nothing, `.env` and project files, dns service start, real query verification from a throwaway container, ownership state, atomic daemon write
+- [ ] `--no-restart` stopping deliberately at `phase=prepared` (spec 10.1, 11.1)
+- [ ] `--dry-run` performing preflight only, then printing the diff and exiting
+- [ ] Target IP rotation (spec 9.4) and the reconciliation path (spec 9.5)
+- [ ] Rollback on every failure, and `phase=prepared` retained with manual recovery output when the rollback itself fails
+- [ ] Risk disclosure for the daemon-modification confirmation, carrying real values (spec 11.3)
+
+**Gate**
+
+- [ ] On a real machine: `enable --no-restart` → inspect the diff → `disable` → the daemon file is **byte-identical** to the pre-M5 snapshot
+- [ ] The same cycle with a hand-added user entry present: that entry survives untouched
+- [ ] Preflight failure leaves no `.env`, service, state or daemon change behind
+- [ ] Verification failure at step 3 stops the service and restores `.env`, with the daemon file never opened for writing
+- [ ] `--dry-run` writes nothing, proven by comparing file hashes before and after
+- [ ] Disclosure output contains the actual daemon path, Target IP and Bind IP — no placeholders
+
+**Rollback.** Single revert, plus `dns disable` on any machine where enable was run.
+
+## M6a — End to end in the dind harness
+
+**Goal.** Prove the full cycle including the daemon restart, inside a sandbox whose blast radius is one container — so that a contributor without a virtual machine can do it, and so that CI can do it repeatedly.
+
+**Risk level 2 on the host, 3 inside the sandbox · Tier T2 · Blocked by M5**
+
+**Deliverables**
+
+- [ ] `docker/dns/test/` — the harness from spec 14.5, plus instructions for reproducing this milestone without a virtual machine
+- [ ] Full cycle inside the harness: preflight → write → restart → resolv.conf → wildcard resolution → disable → file restored
+- [ ] A deliberately injected restart timeout, proving the rollback actually rolls back
+- [ ] The harness wired into CI
+
+**Gate**
+
+- [ ] The full cycle passes inside the harness
+- [ ] The injected restart timeout results in the daemon file being restored, not a half-applied state
+- [ ] `restart: unless-stopped` brings dnsmasq back after the sandbox daemon restart with no CLI involvement
+- [ ] The host's daemon file and containers are provably untouched by the whole run
+- [ ] It passes in CI, not only locally
+
+**Rollback.** Single revert. This is the last milestone with that property.
+
+## M6b — Real machine and VM verification
+
+**Goal.** Cover what the harness cannot: Docker Desktop's addressing and restart mechanism, Linux privilege escalation and systemd-resolved, and a genuine port 53 conflict.
+
+**Risk level 3 · Tier T3 / T4 · Maintainers only · Blocked by M6a, decision 1**
+
+**This is the only milestone that deliberately interrupts a working machine.** Schedule it. Save `docker ps -a` first (see the checklist below). Everything else has already been proven by M6a.
+
+**Deliverables**
+
+- [ ] Docker Desktop: Target IP `192.168.65.254`, the `0.0.0.0` bind, and whichever restart mechanism decision 1 settles on
+- [ ] Native Linux: `/etc/docker/daemon.json` with sudo, systemd-resolved holding `127.0.0.53`, `systemctl restart docker`
+- [ ] A real port 53 conflict exercised, confirming the spec 6.1 rule that port availability is decided by starting the service and not by reading netstat
+- [ ] Evidence committed under `docs/evidence/dns/`
+
+**Gate**
+
+- [ ] Enable → a new container's `resolv.conf` lists the Target IP first → a certificate-covered subdomain resolves to the Target IP → disable → the daemon `dns` array is back to its original state including pre-existing user entries
+- [ ] Sudo failure on Linux aborts with no partial write
+- [ ] The evidence log below is filled in
+
+## M7 — Lifecycle integration and disclosure
+
+**Goal.** Wire DNS into the commands users already run. This is the first point at which an existing command touches DNS code, so it is also the first point at which a DNS defect can affect someone who never ran `dns enable`.
+
+**Risk level 3 · Tier T1 / T2 · Blocked by M6a**
+
+**Deliverables**
+
+- [ ] `up`, `stop`, `stop --all`, `down`, `certs create`, `certs remove`, `doctor` per spec 10.4
+- [ ] The four setup questions with their descriptions (spec 11.2), including the upstream keep/replace/append action and the fallback opt-in
+- [ ] The complete spec 11.3 disclosure matrix
+- [ ] `DNS_AUTO_REORDER` behaviour in both modes (spec 9.6), never restarting Docker
+- [ ] Full `en` / `zh-TW` / `ja-JP` translations
+
+**Gate**
+
+- [ ] Spec 14.2 green, with one test per row of the spec 11.3 timing table
+- [ ] Disclosures carry real values, and `--yes` still prints them
+- [ ] Disclosure item 11 states **both** the benefit and the cost of the 9.7 fallback, and the setup question reads as advice rather than a verdict
+- [ ] `stop` leaves the dns service running; `stop --all` warns before stopping it
+- [ ] `down` aborts without destructive cleanup when disable fails
+- [ ] `certs` changes regenerate mappings only when the domain set actually changed
+- [ ] `doctor` reports and never auto-corrects
+- [ ] With DNS disabled, every one of these commands is byte-for-byte unchanged in behaviour
+
+## M8 — Platform matrix and release
+
+**Goal.** Ship it.
+
+**Risk level 3 · Tier T3 / T4 · Blocked by M6b, M7**
+
+**Deliverables**
+
+- [ ] Spec 14.3 platform matrix completed, with the T4 rows' output committed
+- [ ] The image published for both architectures **before** the CLI presents DNS as available (spec 13)
+- [ ] README and DESIGN updated with a summary of disclosure items 1–8 and the manual removal steps (spec 11.3)
+
+**Gate**
+
+- [ ] Every row of the spec 14.3 table is either done or explicitly deferred with a reason
+- [ ] A fresh install and an upgrade from the previous version both behave correctly with DNS off
+- [ ] `runestone dns disable` documented as required before removing Runestone
+
+## Safety-net checklists
+
+### Before M5 — the first write to a real daemon file
+
+```bash
+cp ~/.docker/daemon.json ~/daemon.json.pre-runestone-dns && sha256sum ~/daemon.json.pre-runestone-dns
+```
+
+On native Linux the path is `/etc/docker/daemon.json`. If the file does not exist, record that fact — `createdDaemonFile=true` is a distinct revocation path (spec 9.2).
+
+- [ ] Snapshot taken and hash recorded, outside version control
+- [ ] M4's `disable --assume-entry` confirmed working against a hand-planted entry with no ownership record
+- [ ] The manual recovery path walked once by hand: edit the file, remove the entry, restart Docker
+
+This snapshot is a safety net for the human. It is **not** a Runestone-managed backup: spec 9.3 still forbids whole-file restoration, because restoring the file would discard unrelated edits made in the meantime.
+
+### Before M6b — the one deliberate interruption
+
+```bash
+docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}' > ~/containers-before-dns-m6b.txt
+```
+
+- [ ] Container list saved
+- [ ] Nothing long-running or stateful is mid-flight in any container
+- [ ] A window agreed, because every container on the machine restarts
+
+## Evidence log
+
+M6b and M8 produce findings that cannot be re-derived from the code. Record them here and commit the artefacts under `docs/evidence/dns/`, so the next contributor does not have to re-run a T4 verification in order to trust it.
+
+| Milestone | Platform | Date | Evidence | By |
+| --- | --- | --- | --- | --- |
+| M6b | Windows Docker Desktop | | | |
+| M6b | Native Linux (VM) | | | |
+| M8 | WSL2 | | | |
+| M8 | macOS Intel | | | |
+| M8 | macOS Apple Silicon | | | |
+
+## Current state of the repository
+
+Recorded so that M1 and M2 are not mistaken for work already begun:
+
+- `docker/dns/` and `runestone-cli/src/services/dns/` exist as **empty, untracked directories**. Nothing from commit `3581211` survives in either. M1 and M2 create their contents from scratch.
+- The dnsmasq and webproc code that commit `3581211` added to the runestone image — `start_dnsmasq()` in `docker/traefik/entrypoint.sh` and the `{{ if env "DNS_ENABLE" }}` blocks in `docker/traefik/dynamic/traefik.dynamic.yml` — is still present and must be removed in M3 (spec 5.3, 13).
+- There is no multi-arch build and publish path this feature can rely on, and no CI workflow in the repository. Establishing one is decision 2 and blocks M2.
+- **The `make/` directory is inherited from [druidfi/stonehenge](https://github.com/druidfi/stonehenge) and is void.** Replacing that Makefile-based installation and management flow with the npm CLI is the reason this fork exists (see the README), so nothing in the build or release plan may be derived from it. It is debris, not a baseline — and the image build path decided in decision 2 should fit the CLI's release flow.
