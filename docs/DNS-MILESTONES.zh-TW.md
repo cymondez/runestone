@@ -19,7 +19,7 @@
 | M0 | 安全鋼索 | 0 | T0 | — | **已完成**，有一項通過條件因既有原因未綠 |
 | M1 | daemon 所有權引擎 | 0 | T0 | M0 | **已完成** |
 | M2 | runestone-dns image | 1 | T1 | — | **amd64 已完成**；arm64 未驗證，見 M2 |
-| M3 | 服務接線與 `dns status` | 0 | T1 | M1、M2、裁決 4 | 未開始 |
+| M3 | 服務接線與 `dns status` | 0 | T1 | — | **已完成** |
 | M4 | `dns disable` | 2（導向） | T0 | M1、M3 | 未開始 |
 | M5 | `dns enable` 到 `prepared` | 2 | T1 | M4 | 未開始 |
 | M6a | dind 載具內端到端 | 宿主 2／載具內 3 | T2 | M5 | 未開始 |
@@ -154,26 +154,50 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **目標。** 把服務跑起來所需的一切，加上那個後續每個里程碑都用來自我診斷的唯讀指令。功能仍然關閉。
 
-**風險等級 0 · 層級 T1 · 前置：M1、M2、裁決 4**
+**風險等級 0 · 層級 T1**
 
 **交付項目**
 
-- [ ] 依規格 7.1 新增 `.env` 欄位，欄位不存在即視為停用
-- [ ] compose 模板加入 profile `dns` 下的 `dns` 服務（規格 8.2），image 與 tag 以字面值寫入
-- [ ] 依裁決 4 在 `runestone-cli/src/utils/project-files.ts` 實作版本化的 `compose.yml` 重生（規格 13）
-- [ ] `dns/custom.conf` 在服務啟動前就先建立（不存在時才建）（規格 8.3）
-- [ ] `configuration/dns/dns-ui.yml` 由 CLI 產生與移除（規格 8.5）
-- [ ] 移除 `docker/traefik/dynamic/traefik.dynamic.yml` 的 `{{ if env "DNS_ENABLE" }}` 區塊，以及 `docker/traefik/entrypoint.sh` 的 `start_dnsmasq()`（規格 13）
-- [ ] `runestone dns status`，唯讀，輸出規格 10.3 的全部內容
-- [ ] `runestone-cli/src/i18n/index.ts` — 目前為止新增文案的 `en` / `zh-TW` / `ja-JP`
+- [x] 依規格 7.1 新增 `.env` 欄位，欄位不存在即視為停用
+- [x] compose 模板加入 profile `dns` 下的 `dns` 服務（規格 8.2），image 與 tag 以字面值寫入
+- [x] 依裁決 4 在 `runestone-cli/src/utils/project-files.ts` 實作版本化的 `compose.yml` 重生（規格 13）
+- [x] `dns/custom.conf` 在服務啟動前就先建立（不存在時才建）（規格 8.3）
+- [x] `configuration/dns/dns-ui.yml` 由 CLI 產生與移除（規格 8.5）
+- [x] 移除 `docker/traefik/dynamic/traefik.dynamic.yml` 的 `{{ if env "DNS_ENABLE" }}` 區塊，以及 `docker/traefik/entrypoint.sh` 的 `start_dnsmasq()`（規格 13）
+- [x] `runestone dns status`，唯讀，輸出規格 10.3 的全部內容
+- [x] `runestone-cli/src/i18n/index.ts` — 目前為止新增文案的 `en` / `zh-TW` / `ja-JP`
 
 **通過條件**
 
-- [ ] `DNS_ENABLE=false` 時 `up` / `stop` / `down` 與現行行為完全一致——用回歸測試證明，不是目測
-- [ ] `status` 能正確判讀涵蓋規格 9.5 所有狀態的手工 daemon 檔案，包含我方項目被推移、重複、改值、移除
-- [ ] `status` 不寫入任何東西，有測試證明
-- [ ] 規格 7.4 的覆寫生效時 `status` 會顯著提示
-- [ ] 既有使用者升級到這個版本後行為不變
+- [x] `DNS_ENABLE=false` 時 `up` / `stop` / `down` 與現行行為完全一致——用回歸測試證明，不是目測
+- [x] `status` 能正確判讀涵蓋規格 9.5 所有狀態的手工 daemon 檔案，包含我方項目被推移、重複、改值、移除
+- [x] `status` 不寫入任何東西，有測試證明
+- [x] 規格 7.4 的覆寫生效時 `status` 會顯著提示
+- [x] 既有使用者升級到這個版本後行為不變
+
+**新增的測試覆蓋。** 338 項單元測試全綠：產生出來的 Compose 檔現在是被 parse 成 YAML 而不是字串比對（否則一個縮排錯誤只會在使用者機器上以 `docker compose` 錯誤浮現）、每一條重生路徑都有測試（包含「絕不覆寫既有備份」）、規格 9.5 的每一種狀態都透過 `dns status` 斷言過，而報告產生器與指令本身都有測試證明它們讓 daemon 檔案與其目錄保持位元組相同。
+
+**已落地。** 服務可以被跑起來也可以被診斷，而功能仍然是關的。
+
+| 新增 | 內容 |
+| --- | --- |
+| `.env` 欄位（規格 7.1） | 十個 DNS 鍵，全部預設為關閉或空值，`DNS_ENABLE` 不存在即視為停用 |
+| Compose `dns` 服務（規格 8.2） | 置於 `profiles: [dns]` 之後，image 與 tag 寫死，53 port 依 `DNS_BIND_IP` 綁定 tcp 與 udp |
+| 版本化重生（規格 13） | 模板版本不符時 `ensureProjectFiles()` 重生 `compose.yml`，並先備份原有內容 |
+| `dns/custom.conf` | 不存在時建立，且永不覆寫 |
+| `configuration/dns/dns-ui.yml` | 由 CLI 產生與移除（規格 8.5） |
+| `runestone dns status` | 唯讀，回報規格 10.3 的全部內容 |
+| i18n | `en`／`zh-TW`／`ja-JP` 各 56 個字串 |
+
+依規格 13 從 runestone image 移除：`docker/traefik/dynamic/traefik.dynamic.yml` 的 `{{ if env "DNS_ENABLE" }}` 區塊，以及 `docker/traefik/entrypoint.sh` 的 `start_dnsmasq()`。那個 image 裡不再有任何 dnsmasq 相關的東西。
+
+**`syncDnsUiRoute()` 存在，但刻意沒有從 `up` 呼叫。** 16.3 節規定 M6a 之前不得有任何既有指令路徑呼叫 DNS 程式碼，這樣每個里程碑才能各自 revert；生命週期接線是 M7 的工作。
+
+三處與規格的偏離，全部已改寫進規格，而不是留在程式碼裡當意外：
+
+- **模板版本標記放在 Compose 檔自己的標頭，不放 `.env`。** 規格 13 原本建議 `.env`，那是個陷阱：`envLoader.write()` 是由解析出來的鍵值重寫 `.env` 的，把標記記在那裡，會讓一次普通的 `up` 就吃掉使用者環境檔裡的所有註解。標頭註解跟著它描述的檔案走，每個 project 各自獨立，也不可能與它漂移。
+- **`DNS_CONTAINER_RESOLVER` 是新增的（規格 7.1、8.2）。** 規格 8.2 要求 dns 服務明確設定 `dns:`，讓 daemon 的設定不會把容器指回它自己。Compose 無法把逗號分隔的 `DNS_UPSTREAM` 展開成 YAML 序列，而把清單烤進模板又會讓「改上游」綁上「重生 Compose」。一個專用鍵、預設 `1.1.1.1`，就回答了它。風險很低——image 本來就以 `no-resolv` 執行 dnsmasq，所以這是縱深防禦，不是真正的迴圈防護。
+- **`preparedReason` 是新增的（規格 7.3）。** 第 12 節要求 `status` 必須分辨「刻意的 `--no-restart`」與「反向還原失敗的殘留」，而 7.3 的紀錄裡沒有任何欄位能承載它。它是選用欄位，因此不動 `schemaVersion`；欄位不存在時 `status` 會說「未被記錄」，而不是去猜。
 
 **回退。** 單一 revert。注意 traefik 模板與 entrypoint 的移除是對 runestone image 的改動；若該 image 獨立發布，要排好順序，避免舊 CLI 遇到期待「路由由 CLI 產生」的新 image。
 

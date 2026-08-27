@@ -39,10 +39,18 @@ export interface DnsOwnedEntryRecord {
   index: number;
 }
 
+/**
+ * Why the record is sitting at `prepared`. The two causes need opposite
+ * responses — one needs nothing but a Docker restart, the other needs manual
+ * recovery — so `dns status` has to be able to tell them apart (spec 12).
+ */
+export type DnsPreparedReason = 'no-restart' | 'rollback-failed';
+
 /** Spec 7.3. Everything outside `insertedEntries` belongs to the user. */
 export interface DnsOwnershipState {
   schemaVersion: number;
   phase: DnsPhase;
+  preparedReason?: DnsPreparedReason;
   contextName: string;
   daemonPath: string;
   targetIp: string;

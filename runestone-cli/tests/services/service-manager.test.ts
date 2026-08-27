@@ -20,6 +20,7 @@ import {
 } from '../../src/services/service-manager';
 import { RunestoneEnv } from '../../src/utils/env-loader';
 import { toolState } from '../../src/utils/tool-state';
+import { testEnv } from '../helpers/env';
 
 jest.mock('../../src/services/cert-manager', () => ({
   createDomainCertificate: jest.fn(),
@@ -38,29 +39,7 @@ const listDomainCertificatesMock = listDomainCertificates as jest.MockedFunction
 const createDomainCertificateMock = createDomainCertificate as jest.MockedFunction<typeof createDomainCertificate>;
 
 function config(projectDir: string): RunestoneEnv {
-  return {
-    HOST_DOMAIN: 'example.test',
-    PREFIX: 'runestone',
-    HTTPS_PORT: '443',
-    HTTP_PORT: '80',
-    SMTP_PORT: '1025',
-    RUNESTONE_IMAGE: 'cymondez/runestone',
-    RUNESTONE_TAG: '5.2',
-    MKCERT_INSTALLED: 'true',
-    RUNESTONE_VERSION: '5',
-    RUNESTONE_LANG: 'en',
-    WEB_ENTRYPOINT_PORT: '80',
-    WEB_ENTRYPOINT_NAME: 'web',
-    WEB_SECURE_ENTRYPOINT_PORT: '443',
-    WEB_SECURE_ENTRYPOINT_NAME: 'websecure',
-    PROJECT_DIR: projectDir,
-    ENV_PATH: path.join(projectDir, '.env'),
-    COMPOSE_FILE_PATH: path.join(projectDir, 'compose.yml'),
-    NETWORK_NAME: 'runestone-network',
-    SSH_VOLUME_NAME: 'runestone-ssh',
-    ENV_FILE_EXISTS: true,
-    REQUIRED_VARS_PRESENT: true
-  };
+  return testEnv(projectDir, { HOST_DOMAIN: 'example.test', MKCERT_INSTALLED: 'true' });
 }
 
 describe('service-manager', () => {

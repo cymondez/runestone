@@ -59,6 +59,25 @@ describe('composeService', () => {
     );
   });
 
+  it('never passes a profile, so a profiled service stays out of every command', () => {
+    // The dns service sits behind `profiles: [dns]`. As long as no invocation
+    // names that profile, `up` / `stop` / `down` behave exactly as they did
+    // before the service existed — which is what keeps the feature off.
+    const composePath = path.resolve('compose.yml');
+
+    composeService.up(composePath, { wait: true });
+    composeService.stop(composePath);
+    composeService.down(composePath);
+    composeService.restart(composePath, [COMPOSE_SERVICES.runestone]);
+    composeService.pull(composePath);
+
+    expect(spawnSyncMock.mock.calls.length).toBe(5);
+    for (const call of spawnSyncMock.mock.calls) {
+      expect(call[1]).not.toContain('--profile');
+      expect(call[1]).not.toContain('dns');
+    }
+  });
+
   it('restarts only the named services', () => {
     const composePath = path.resolve('compose.yml');
 

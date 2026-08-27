@@ -1,6 +1,17 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { load } from 'js-yaml';
 import { COMPOSE_SERVICES } from '../../src/services/docker-compose';
-import { buildComposeFile } from '../../src/utils/project-files';
+import {
+  COMPOSE_TEMPLATE_VERSION,
+  buildComposeFile,
+  buildDnsCustomConf,
+  dnsCustomConfPath,
+  ensureProjectFiles,
+  readComposeTemplateVersion
+} from '../../src/utils/project-files';
+import { testEnv } from '../helpers/env';
 
 /**
  * The Compose file is embedded in the CLI and generated, not shipped as a static
@@ -21,6 +32,7 @@ interface ComposeService {
   extra_hosts?: string[];
   volumes?: string[];
   profiles?: string[];
+  dns?: string[];
 }
 
 interface ComposeFile {
@@ -29,13 +41,18 @@ interface ComposeFile {
   volumes: Record<string, { name?: string; external?: boolean }>;
 }
 
-function parseCompose(): ComposeFile {
-  return load(buildComposeFile()) as ComposeFile;
+function parseCompose(text = buildComposeFile()): ComposeFile {
+  return load(text) as ComposeFile;
 }
 
 describe('generated compose file', () => {
   it('is valid YAML', () => {
     expect(() => parseCompose()).not.toThrow();
+  });
+
+  it('carries the template version in its own header', () => {
+    expect(readComposeTemplateVersion(buildComposeFile())).toBe(COMPOSE_TEMPLATE_VERSION);
+    expect(readComposeTemplateVersion('services:\n  runestone: {}\n')).toBe('');
   });
 
   it('declares a service for every name the CLI scopes commands to', () => {
@@ -90,5 +107,160 @@ describe('generated compose file', () => {
 
   it('uses the externally created ssh volume', () => {
     expect(parseCompose().volumes.ssh).toEqual({ name: '${PREFIX:-runestone}-ssh', external: true });
+  });
+
+  describe('the dns service (spec 8.2)', () => {
+    const dns = () => parseCompose().services.dns;
+
+    it('sits behind the dns profile, so an ordinary up never starts it', () => {
+      expect(dns().profiles).toEqual(['dns']);
+    });
+
+    it('pins the image and tag literally, so no environment variable can redirect it', () => {
+      expect(dns().image).toBe('cymondez/runestone-dns:1.0');
+      expect(dns().image).not.toContain('$');
+    });
+
+    it('publishes port 53 on the bind address for both protocols', () => {
+      expect(dns().ports).toEqual(['${DNS_BIND_IP:-0.0.0.0}:53:53/tcp', '${DNS_BIND_IP:-0.0.0.0}:53:53/udp']);
+    });
+
+    it('restarts unless stopped, so a host reboot brings DNS back without the CLI', () => {
+      expect(dns().restart).toBe('unless-stopped');
+      expect(dns().container_name).toBe('${PREFIX:-runestone}-dns');
+    });
+
+    it('passes the target IP, the upstreams and the UI credentials to the entrypoint', () => {
+      expect(dns().environment).toEqual({
+        DNS_HOST_IP: '${DNS_HOST_IP:-}',
+        DNS_UPSTREAM: '${DNS_UPSTREAM:-1.1.1.1}',
+        HTTP_USER: '${DNS_UI_USER:-}',
+        HTTP_PASS: '${DNS_UI_PASS:-}'
+      });
+    });
+
+    it('sets its own resolver explicitly, so the daemon setting cannot point it at itself', () => {
+      expect(dns().dns).toEqual(['${DNS_CONTAINER_RESOLVER:-1.1.1.1}']);
+    });
+
+    it('mounts the certificates read-only and the user rules writable', () => {
+      expect(dns().volumes).toEqual(['./certs:/ssl:ro', './dns/custom.conf:/etc/dnsmasq.d/custom.conf']);
+    });
+  });
+});
+
+describe('ensureProjectFiles', () => {
+  let projectDir: string;
+
+  function config() {
+    return testEnv(projectDir);
+  }
+
+  beforeEach(() => {
+    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-project-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it('creates the directories the dns service needs', () => {
+    ensureProjectFiles(config());
+
+    expect(fs.existsSync(path.join(projectDir, 'dns'))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, 'certs'))).toBe(true);
+  });
+
+  it('creates custom.conf, because Docker would otherwise bind-mount a directory', () => {
+    ensureProjectFiles(config());
+
+    expect(fs.readFileSync(dnsCustomConfPath(projectDir), 'utf8')).toBe(buildDnsCustomConf());
+  });
+
+  it('never overwrites custom.conf', () => {
+    ensureProjectFiles(config());
+    fs.writeFileSync(dnsCustomConfPath(projectDir), 'address=/mine.test/127.0.0.1\n', 'utf8');
+
+    ensureProjectFiles(config());
+
+    expect(fs.readFileSync(dnsCustomConfPath(projectDir), 'utf8')).toBe('address=/mine.test/127.0.0.1\n');
+  });
+
+  it('writes the compose file when it is absent', () => {
+    const update = ensureProjectFiles(config());
+
+    expect(update).toEqual({ written: true, fromVersion: '', toVersion: COMPOSE_TEMPLATE_VERSION });
+    expect(fs.readFileSync(config().COMPOSE_FILE_PATH, 'utf8')).toBe(buildComposeFile());
+  });
+
+  it('leaves a current compose file completely alone', () => {
+    ensureProjectFiles(config());
+    const before = fs.statSync(config().COMPOSE_FILE_PATH).mtimeMs;
+
+    const update = ensureProjectFiles(config());
+
+    expect(update.written).toBe(false);
+    expect(update.backupPath).toBeUndefined();
+    expect(fs.statSync(config().COMPOSE_FILE_PATH).mtimeMs).toBe(before);
+  });
+
+  it('regenerates a file that predates versioning, keeping the old one', () => {
+    // What an installation from before the marker existed looks like.
+    fs.writeFileSync(config().COMPOSE_FILE_PATH, 'services:\n  runestone:\n    image: old\n', 'utf8');
+
+    const update = ensureProjectFiles(config());
+
+    expect(update.written).toBe(true);
+    expect(update.fromVersion).toBe('');
+    expect(update.toVersion).toBe(COMPOSE_TEMPLATE_VERSION);
+    expect(update.backupPath).toBe(`${config().COMPOSE_FILE_PATH}.bak`);
+    expect(fs.readFileSync(update.backupPath as string, 'utf8')).toContain('image: old');
+    expect(fs.readFileSync(config().COMPOSE_FILE_PATH, 'utf8')).toBe(buildComposeFile());
+  });
+
+  it('never overwrites an existing backup', () => {
+    fs.writeFileSync(config().COMPOSE_FILE_PATH, 'services:\n  runestone:\n    image: first\n', 'utf8');
+    ensureProjectFiles(config());
+    fs.writeFileSync(config().COMPOSE_FILE_PATH, 'services:\n  runestone:\n    image: second\n', 'utf8');
+
+    const update = ensureProjectFiles(config());
+
+    expect(update.backupPath).toBe(`${config().COMPOSE_FILE_PATH}.bak2`);
+    expect(fs.readFileSync(`${config().COMPOSE_FILE_PATH}.bak`, 'utf8')).toContain('image: first');
+    expect(fs.readFileSync(`${config().COMPOSE_FILE_PATH}.bak2`, 'utf8')).toContain('image: second');
+  });
+
+  it('does not write a backup when the stale file happens to be identical', () => {
+    // Same bytes, marker stripped: there is nothing of the user's to preserve.
+    fs.writeFileSync(config().COMPOSE_FILE_PATH, buildComposeFile(), 'utf8');
+    fs.writeFileSync(
+      config().COMPOSE_FILE_PATH,
+      buildComposeFile().replace(`# runestone-compose-template: ${COMPOSE_TEMPLATE_VERSION}`, '# other'),
+      'utf8'
+    );
+
+    const update = ensureProjectFiles(config());
+
+    expect(update.written).toBe(true);
+    expect(update.backupPath).toBe(`${config().COMPOSE_FILE_PATH}.bak`);
+  });
+
+  it('regenerates on request even when the version matches', () => {
+    ensureProjectFiles(config());
+    fs.writeFileSync(config().COMPOSE_FILE_PATH, 'services: {}\n', 'utf8');
+
+    const update = ensureProjectFiles(config(), { overwriteCompose: true });
+
+    expect(update.written).toBe(true);
+    expect(fs.readFileSync(config().COMPOSE_FILE_PATH, 'utf8')).toBe(buildComposeFile());
+  });
+
+  it('leaves an existing .env untouched, comments and all', () => {
+    const envText = '# my notes\nHOST_DOMAIN=example.test\n';
+    fs.writeFileSync(config().ENV_PATH, envText, 'utf8');
+
+    ensureProjectFiles(config());
+
+    expect(fs.readFileSync(config().ENV_PATH, 'utf8')).toBe(envText);
   });
 });

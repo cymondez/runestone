@@ -21,14 +21,6 @@ http:
       service: mailpit@file
       tls: true
 
-{{ if env "DNS_ENABLE" }}
-    dns-ui:
-      entryPoints: {{env "WEB_SECURE_ENTRYPOINT_NAME"}}
-      rule: Host(`{{ env "DNS_HOST" }}`)
-      service: dns-ui@file
-      tls: true
-{{ end }}
-
     catchall:
       entryPoints:
         - {{env "WEB_ENTRYPOINT_NAME"}}
@@ -51,13 +43,6 @@ http:
       loadBalancer:
         servers:
           - url: "http://runestone:8025"
-
-{{ if env "DNS_ENABLE" }}
-    dns-ui:
-      loadBalancer:
-        servers:
-          - url: "http://127.0.0.1:8080"
-{{ end }}
 
     catchall:
       loadBalancer:

@@ -2,9 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- `runestone dns status` reports the DNS state and every invasive setting currently in effect: the Docker daemon configuration path, which entries Runestone owns and where they actually sit, the upstream resolvers and where each came from, and whether the web UI has any authentication.
+
 ### Changed
 
 - Certificate, service and setup changes now restart only the `runestone` container instead of every service in the Runestone project, so other services keep running.
+- `compose.yml` is now regenerated when Runestone's template changes, so an upgrade no longer leaves you with an outdated Compose file. The file already on disk is kept as a `.bak` beside it first.
 
 ## 1.1.1 - 2026-06-23
 

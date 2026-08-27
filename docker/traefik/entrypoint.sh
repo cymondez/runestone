@@ -42,24 +42,12 @@ start_mailpit(){
     exec mailpit --verbose
 }
 
-start_dnsmasq(){
-        echo "Start up Dnsmasq..."
-        exec webproc \
-        --address 127.0.0.1 \
-        --port 8080 \
-        --config /etc/dnsmasq.conf \
-        -- dnsmasq --no-daemon --conf-file=/etc/dnsmasq.conf
-}
-
 transform_templates_to_configs
 copy_default_configs_if_missing
 create_ssh_proxy &
 start_nginx &
 start_mailpit &
 
-if [ -z "$DNS_ENABLE" ]; then
-    start_dnsmasq &
-fi
 # first arg is `-f` or `--some-option`
 if [ "${1#-}" != "$1" ]; then
     set -- traefik "$@"

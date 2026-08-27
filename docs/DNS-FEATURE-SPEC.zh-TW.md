@@ -191,6 +191,7 @@ DNS_HOST_IP=            # Target IP，Runestone 管理
 DNS_BIND_IP=            # 53 綁定位址，Runestone 管理，可覆寫
 DNS_UPSTREAM=1.1.1.1    # dnsmasq 上游，逗號分隔。永不為空（見 8.4）
 DNS_DAEMON_FALLBACK=    # 選用：daemon dns 陣列中的第二筆自有項目（見 9.7）。留空＝不啟用
+DNS_CONTAINER_RESOLVER= # dns 容器自己使用的 resolver。留空＝1.1.1.1（見 8.2）
 DNS_AUTO_REORDER=false  # 我方項目不在最前面時，是否自動排回（見 9.6）
 DNS_UI_ENABLE=true      # 是否產生 dns.<HOST_DOMAIN> 的 Traefik route
 DNS_UI_USER=            # 選填，webproc 基本驗證帳號（HTTP_USER）
@@ -226,6 +227,7 @@ DNS_UI_PASS=            # 選填，webproc 基本驗證密碼（HTTP_PASS）
   "dns": {
     "schemaVersion": 1,
     "phase": "applied",
+    "preparedReason": null,
     "contextName": "desktop-linux",
     "daemonPath": "C:\\Users\\me\\.docker\\daemon.json",
     "targetIp": "192.168.65.254",
@@ -240,7 +242,7 @@ DNS_UI_PASS=            # 選填，webproc 基本驗證密碼（HTTP_PASS）
 }
 ```
 
-- `phase`：`prepared`（daemon 設定已寫入，但尚未重啟 Docker，因此變更還沒有任何效果）→ `applied`（已重啟並驗證）。**`prepared` 不只是失敗的中間態**：`dns enable --no-restart` 就是刻意停在這裡，`status` 必須把這種情況呈現為「已寫入，等待 Docker 重啟」而不是錯誤。正是這個切分，讓整條寫入／撤銷循環可以在真實 daemon 檔案上演練而不中斷任何一個容器（見 16.1）。
+- `phase`：`prepared`（daemon 設定已寫入，但尚未重啟 Docker，因此變更還沒有任何效果）→ `applied`（已重啟並驗證）。`preparedReason` 記錄它**為什麼**停在 `prepared`——`no-restart` 或 `rollback-failed`——因為兩者需要相反的處置，而第 12 節要求 `status` 必須能分辨；`phase` 為 `applied` 時它不存在。**`prepared` 不只是失敗的中間態**：`dns enable --no-restart` 就是刻意停在這裡，`status` 必須把這種情況呈現為「已寫入，等待 Docker 重啟」而不是錯誤。正是這個切分，讓整條寫入／撤銷循環可以在真實 daemon 檔案上演練而不中斷任何一個容器（見 16.1）。
 - `insertedEntries` 列出由 Runestone 擁有的**每一筆**項目，不在其中的一律不屬於我方。平常只有一筆（`role: "target"`），啟用 9.7 的選用備援時為兩筆（`role: "fallback"`，位於 `dns[1]`）。逐筆而言，`value` 用於比對，`index` 是最後一次已知位置，**只用於識別，不用於還原位置** — 撤銷時只把這些項目移除，不做任何位置還原動作。
 
 ### 7.4 開發用覆寫（非使用者功能）
@@ -616,7 +618,7 @@ DNS 相關共四題，順序固定，第二三四題僅在啟用時出現：
 ## 13. 相容性與遷移
 
 - 既有安裝沒有 `DNS_ENABLE` → 停用，行為完全不變。
-- **`compose.yml` 需要版本化重生**：目前 `ensureProjectFiles()` 只在檔案不存在時寫入 compose，升級 CLI 的既有使用者永遠拿不到含 dns 服務的新 compose。需加入模板版號（例如 `.env` 的 `COMPOSE_TEMPLATE_VERSION`），版本不符時重新產生。
+- **`compose.yml` 依版本標記重生**（已定案，15.4）：目前 `ensureProjectFiles()` 只在檔案不存在時寫入 compose，升級 CLI 的既有使用者永遠拿不到含 dns 服務的新 compose。版號記在 **Compose 檔自己的標頭**，形式為 `# runestone-compose-template: <n>`；與 CLI 自身的版本不符時就重生並告知使用者。刻意不放在 `.env`：`.env` 是由解析出來的鍵值重寫的，把版號記在那裡會讓一次普通的 `up` 就吃掉使用者的註解。標頭跟著它描述的檔案走，每個 project 各自獨立，也不可能與它漂移。**原有內容絕不能被默默丟掉**：若磁碟上的檔案與該版模板應產生的內容不同，先在原地旁邊備份並在輸出中指名該備份，然後才覆寫。
 - `docker/traefik/dynamic/traefik.dynamic.yml` 內 commit `3581211` 加入的 `{{ if env "DNS_ENABLE" }}` 區塊需移除，改由 CLI 產生 route。
 - `docker/traefik/entrypoint.sh` 內 commit `3581211` 加入的 `start_dnsmasq()` 與其判斷需移除；runestone image 不再需要 dnsmasq 與 webproc。
 - `docker/dns/` 改放新 image 的 Dockerfile 與 entrypoint。
@@ -707,7 +709,7 @@ privileged 的 `docker:dind` 容器有自己的 `/etc/docker/daemon.json`、自�
 1. **`docker desktop restart` 是否可用**：實作時偵測，不可用就走「提示手動重啟 + 輪詢等待」。若你已知結論可直接省略自動路徑。
 2. **暫定——image 由放在它旁邊的腳本建置與發佈。** `docker/dns/publish.sh` 執行 `docker buildx build --platform linux/amd64,linux/arm64 --push`，發佈 `cymondez/runestone-dns:1.0`，由維護者手動執行。**這明確是一個過渡答案。** 手動發佈出去的 image 不會留下「它是怎麼來的」的紀錄，所以 CI 仍然是目的地；延後的唯一理由是申請 registry token 並把 workflow 跑通需要時間，而 M2 不該等它。`origin` 是自架的 Gitea、GitHub 是鏡像，所以 CI 真的要落地時，Gitea Actions 才是順理成章的第一目標——它的 workflow 語法與 GitHub Actions 足夠接近，檔案兩邊都能搬。在那之前**腳本本身必須進版控**，讓一個已發佈的 image 至少是可以回推出來的；而且腳本必須要求明確給定 tag 才發佈，不得預設成 `latest`。
 3. **已定案——`TODO` 寫的「必須讓使用者設定其他 dns 作為備援」由兩個位置共同回答。** dnsmasq 上游（8.4）是**必要且永不為空**，預設 `1.1.1.1`，因為少了它全機 container 就失去對外名稱解析；setup 提供沿用／更換／追加。daemon `dns` 陣列裡的備援（9.7）則是**選用且預設關閉**，因為實測顯示它會把明確的 DNS 失敗換成 Runestone domain 安靜地解析成 `127.0.0.1`。`insertedEntries` 因此是一個自有項目的陣列，M1 一開始就必須照此實作。
-4. **已定案——`compose.yml` 依版本標記自動重生。** `.env` 內的 `COMPOSE_TEMPLATE_VERSION`；與 CLI 自身的模板版本不同時就重生 Compose 檔並告知使用者，而使用者手改過的檔案會先在原地旁邊備份（見第 13 節）。
+4. **已定案——`compose.yml` 依版本標記自動重生。** 標記是 Compose 檔自己標頭裡的一行註解；與 CLI 自身的模板版本不同時就重生 Compose 檔並告知使用者，而磁碟上原有的檔案會先在原地旁邊備份（見第 13 節）。
 
 ## 16. 里程碑與風險管控
 
@@ -774,5 +776,5 @@ dind 載具可以進 CI。這讓「寫 `daemon.json` → 重啟 → 解析」從
 | --- | --- | --- |
 | 15.3——備援 DNS 放在 dnsmasq 上游還是 daemon 陣列 | **M1 之前——已定案**：兩者都做，見 8.4 與 9.7 | 它定下了 `insertedEntries` 是自有項目的陣列，M1 一開始就必須照此實作 |
 | 15.2——image 的建置與發佈方式、名稱與起始 tag | **M2 之前——暫定**：進版控的 buildx 腳本，發佈 `cymondez/runestone-dns:1.0`；CI 延後，落地時以 Gitea Actions 為先 | 手動跑的發佈，只有在跑它的腳本在 repo 裡時才可追溯 |
-| 15.4——`compose.yml` 重生策略 | **M3 之前——已定案**：自動，由 `COMPOSE_TEMPLATE_VERSION` 驅動，並備份手改過的檔案 | — |
+| 15.4——`compose.yml` 重生策略 | **M3 之前——已定案**：自動，由 Compose 檔自己標頭裡的版本標記驅動，並備份原有內容 | — |
 | 15.1——`docker desktop restart` 是否存在 | M6b 之前 | 可以延後；實作本來就會自行偵測 |

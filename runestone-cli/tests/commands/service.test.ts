@@ -7,6 +7,7 @@ import { listDomainCertificates } from '../../src/services/cert-manager';
 import { composeService } from '../../src/services/docker-compose';
 import { readTraefikSnapshot } from '../../src/services/traefik-api';
 import { envLoader, RunestoneEnv } from '../../src/utils/env-loader';
+import { testEnv } from '../helpers/env';
 
 jest.mock('../../src/services/traefik-api', () => ({
   readTraefikSnapshot: jest.fn()
@@ -26,6 +27,7 @@ jest.mock('../../src/services/docker-compose', () => ({
 }));
 
 jest.mock('../../src/utils/env-loader', () => ({
+  ...jest.requireActual('../../src/utils/env-loader'),
   envLoader: {
     load: jest.fn()
   }
@@ -47,29 +49,7 @@ const textMock = p.text as jest.MockedFunction<typeof p.text>;
 const restartMock = composeService.restart as jest.MockedFunction<typeof composeService.restart>;
 
 function config(projectDir: string): RunestoneEnv {
-  return {
-    HOST_DOMAIN: 'example.test',
-    PREFIX: 'runestone',
-    HTTPS_PORT: '443',
-    HTTP_PORT: '80',
-    SMTP_PORT: '1025',
-    RUNESTONE_IMAGE: 'cymondez/runestone',
-    RUNESTONE_TAG: '5.2',
-    MKCERT_INSTALLED: 'true',
-    RUNESTONE_VERSION: '5',
-    RUNESTONE_LANG: 'en',
-    WEB_ENTRYPOINT_PORT: '80',
-    WEB_ENTRYPOINT_NAME: 'web',
-    WEB_SECURE_ENTRYPOINT_PORT: '443',
-    WEB_SECURE_ENTRYPOINT_NAME: 'websecure',
-    PROJECT_DIR: projectDir,
-    ENV_PATH: path.join(projectDir, '.env'),
-    COMPOSE_FILE_PATH: path.join(projectDir, 'compose.yml'),
-    NETWORK_NAME: 'runestone-network',
-    SSH_VOLUME_NAME: 'runestone-ssh',
-    ENV_FILE_EXISTS: true,
-    REQUIRED_VARS_PRESENT: true
-  };
+  return testEnv(projectDir, { HOST_DOMAIN: 'example.test', MKCERT_INSTALLED: 'true' });
 }
 
 describe('service command', () => {

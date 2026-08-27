@@ -19,7 +19,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | M0 | Safety rails | 0 | T0 | — | **done**, one gate item red for a pre-existing reason |
 | M1 | Daemon ownership engine | 0 | T0 | M0 | **done** |
 | M2 | runestone-dns image | 1 | T1 | — | **done on amd64**; arm64 unverified, see M2 |
-| M3 | Service plumbing and `dns status` | 0 | T1 | M1, M2, decision 4 | not started |
+| M3 | Service plumbing and `dns status` | 0 | T1 | — | **done** |
 | M4 | `dns disable` | 2 (redirected) | T0 | M1, M3 | not started |
 | M5 | `dns enable` to `prepared` | 2 | T1 | M4 | not started |
 | M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | M5 | not started |
@@ -154,26 +154,50 @@ Two findings worth carrying:
 
 **Goal.** Everything needed to run the service, plus the read-only command that every later milestone uses to diagnose itself. The feature is still off.
 
-**Risk level 0 · Tier T1 · Blocked by M1, M2, decision 4**
+**Risk level 0 · Tier T1**
 
 **Deliverables**
 
-- [ ] `.env` fields per spec 7.1, absent meaning disabled
-- [ ] Compose template gains the `dns` service under profile `dns` (spec 8.2), with the image and tag written literally
-- [ ] Versioned `compose.yml` regeneration in `runestone-cli/src/utils/project-files.ts` per decision 4 (spec 13)
-- [ ] `dns/custom.conf` created when missing, before the service is ever started (spec 8.3)
-- [ ] `configuration/dns/dns-ui.yml` generated and removed by the CLI (spec 8.5)
-- [ ] Remove the `{{ if env "DNS_ENABLE" }}` blocks from `docker/traefik/dynamic/traefik.dynamic.yml` and `start_dnsmasq()` from `docker/traefik/entrypoint.sh` (spec 13)
-- [ ] `runestone dns status`, read-only, reporting everything in spec 10.3
-- [ ] `runestone-cli/src/i18n/index.ts` — `en` / `zh-TW` / `ja-JP` strings for everything added so far
+- [x] `.env` fields per spec 7.1, absent meaning disabled
+- [x] Compose template gains the `dns` service under profile `dns` (spec 8.2), with the image and tag written literally
+- [x] Versioned `compose.yml` regeneration in `runestone-cli/src/utils/project-files.ts` per decision 4 (spec 13)
+- [x] `dns/custom.conf` created when missing, before the service is ever started (spec 8.3)
+- [x] `configuration/dns/dns-ui.yml` generated and removed by the CLI (spec 8.5)
+- [x] Remove the `{{ if env "DNS_ENABLE" }}` blocks from `docker/traefik/dynamic/traefik.dynamic.yml` and `start_dnsmasq()` from `docker/traefik/entrypoint.sh` (spec 13)
+- [x] `runestone dns status`, read-only, reporting everything in spec 10.3
+- [x] `runestone-cli/src/i18n/index.ts` — `en` / `zh-TW` / `ja-JP` strings for everything added so far
 
 **Gate**
 
-- [ ] With `DNS_ENABLE=false`, `up` / `stop` / `down` behave exactly as they do today — regression tested, not eyeballed
-- [ ] `status` correctly reads hand-crafted daemon files covering every state in spec 9.5, including our entry displaced, duplicated, altered and removed
-- [ ] `status` writes nothing, proven by test
-- [ ] `status` reports loudly when a spec 7.4 override is active
-- [ ] Existing installations upgrading to this version see no behaviour change
+- [x] With `DNS_ENABLE=false`, `up` / `stop` / `down` behave exactly as they do today — regression tested, not eyeballed
+- [x] `status` correctly reads hand-crafted daemon files covering every state in spec 9.5, including our entry displaced, duplicated, altered and removed
+- [x] `status` writes nothing, proven by test
+- [x] `status` reports loudly when a spec 7.4 override is active
+- [x] Existing installations upgrading to this version see no behaviour change
+
+**Test coverage added.** 338 unit tests, all green: the generated Compose file is now parsed as YAML rather than pattern-matched (a mis-indented conditional block would otherwise surface only as a `docker compose` error on a user's machine), every regeneration path has a test including "never overwrite an existing backup", every state of spec 9.5 is asserted through `dns status`, and both the report builder and the command are proven to leave the daemon file and its directory byte-identical.
+
+**Landed.** The service can be run and diagnosed, and the feature is still off.
+
+| Added | What it does |
+| --- | --- |
+| `.env` fields (spec 7.1) | Ten DNS keys, all defaulted to off or empty, with an absent `DNS_ENABLE` meaning disabled |
+| Compose `dns` service (spec 8.2) | Behind `profiles: [dns]`, image and tag written literally, port 53 on `DNS_BIND_IP` for both protocols |
+| Versioned regeneration (spec 13) | `ensureProjectFiles()` regenerates `compose.yml` when the template version differs, backing up what was there |
+| `dns/custom.conf` | Created when missing, never overwritten |
+| `configuration/dns/dns-ui.yml` | Generated and removed by the CLI (spec 8.5) |
+| `runestone dns status` | Read-only, reporting everything in spec 10.3 |
+| i18n | 56 keys in `en` / `zh-TW` / `ja-JP` |
+
+Removed from the runestone image, per spec 13: the `{{ if env "DNS_ENABLE" }}` blocks in `docker/traefik/dynamic/traefik.dynamic.yml` and `start_dnsmasq()` in `docker/traefik/entrypoint.sh`. Nothing dnsmasq-shaped remains in that image.
+
+**`syncDnsUiRoute()` exists but is deliberately not called from `up`.** Section 16.3 says no existing command path may call into DNS code before M6a, so that each milestone stays revertible on its own; the lifecycle wiring is M7's job.
+
+Three spec deviations, all amended in the specification rather than left as surprises in the code:
+
+- **The template version marker lives in the Compose file's own header, not in `.env`.** Spec 13 suggested `.env`, which turned out to be a trap: `envLoader.write()` regenerates `.env` from parsed key-value pairs, so recording the marker there would have dropped every comment in the user's environment file on an ordinary `up`. A header comment travels with the file it describes, is per-project, and cannot drift from it.
+- **`DNS_CONTAINER_RESOLVER` is new (spec 7.1, 8.2).** Spec 8.2 requires the dns service to set `dns:` explicitly so the daemon setting cannot point the container at itself. Compose cannot expand a comma-separated `DNS_UPSTREAM` into a YAML sequence, and baking the list into the template would tie an upstream change to a Compose regeneration. One dedicated key, defaulting to `1.1.1.1`, answers it. The stakes are low — the image already runs dnsmasq with `no-resolv`, so this is defence in depth rather than the actual loop guard.
+- **`preparedReason` is new (spec 7.3).** Section 12 requires `status` to distinguish a deliberate `--no-restart` from the residue of a failed rollback, and nothing in the 7.3 record could carry that. It is optional, so it does not change `schemaVersion`; `status` reports "not recorded" when it is absent rather than guessing.
 
 **Rollback.** Single revert. Note that the traefik template and entrypoint removals are a change to the runestone image; if that image ships separately, sequence it so an old CLI never meets a new image expecting CLI-generated routes.
 
