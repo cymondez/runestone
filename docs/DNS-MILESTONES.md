@@ -371,13 +371,15 @@ That real run earned its keep by exposing a defect no unit test would have caugh
 
 - [ ] Spec 14.3 platform matrix completed, with the T4 rows' output committed
 - [ ] The image published for both architectures **before** the CLI presents DNS as available (spec 13)
-- [ ] README and DESIGN updated with a summary of disclosure items 1–8 and the manual removal steps (spec 11.3)
+- [ ] `docs/DNS.md`, `docs/DNS.zh-TW.md` and `docs/DNS.ja-JP.md` — the complete user-facing explanation, one language per file with the same structure, covering disclosure items 1–8, 10 and 11 and the manual removal steps (spec 11.4)
+- [ ] README gains a short paragraph and a link to that documentation, and nothing more: the disclosure is too long to belong in a README
 
 **Gate**
 
 - [ ] Every row of the spec 14.3 table is either done or explicitly deferred with a reason
 - [ ] A fresh install and an upgrade from the previous version both behave correctly with DNS off
 - [ ] `runestone dns disable` documented as required before removing Runestone
+- [ ] Every language of the user documentation covers the same items — a user warned in their own language can read the explanation in it
 
 ## Safety-net checklists
 

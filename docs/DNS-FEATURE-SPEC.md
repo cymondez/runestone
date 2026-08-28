@@ -588,9 +588,24 @@ When each disclosure is required:
 | `stop --all` | 3 and 5 |
 | `down` (when DNS is enabled) | That the daemon configuration is revoked first and Docker is restarted |
 | Any failed rollback | The exact daemon path and manual recovery steps (see 12) |
-| README / DESIGN documents | A summary of items 1–8, 10 and 11, and the manual removal steps |
+| The user documentation (see below) | Items 1–8, 10 and 11 in full, and the manual removal steps |
+| README | A short paragraph and a link to that documentation — the disclosure is too long to belong in a README |
 
 `--yes` skips only the interactive confirmation; it **must not suppress the disclosure output**.
+
+### 11.4 User documentation
+
+The disclosure this feature owes its users does not fit in a README, and burying it there would make the README worse without making the disclosure any better. It lives in its own document instead:
+
+| File | Contents |
+| --- | --- |
+| `docs/DNS.md` | The complete user-facing explanation in English: what enabling DNS does to the machine, every disclosure item from 11.3, how to turn it off, and how to remove Runestone's entry by hand if the CLI is gone |
+| `docs/DNS.zh-TW.md` | The same document in Traditional Chinese |
+| `docs/DNS.ja-JP.md` | The same document in Japanese |
+
+- **One language per file, all with the same structure**, matching the locales the CLI itself ships (`en` / `zh-TW` / `ja-JP`). A user who is shown a warning in their own language must be able to read the explanation behind it in that language.
+- **The README carries a short paragraph and a link**, not the explanation. It says what the feature is for, that it modifies the Docker daemon configuration machine-wide, and where to read the rest.
+- These documents are user-facing, and separate from [`DNS-FEATURE-SPEC.md`](DNS-FEATURE-SPEC.md), which is normative and written for whoever maintains the feature.
 
 ## 12. Failure Handling
 
