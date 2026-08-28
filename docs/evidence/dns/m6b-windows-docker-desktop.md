@@ -6,7 +6,7 @@
 
 This file records what was measured rather than what was expected, because [DNS-MILESTONES.md](../../DNS-MILESTONES.md) asks that the next contributor not have to re-run a T4 verification in order to trust it.
 
-**The machine ends where it started.** `~/.docker/daemon.json` has the same SHA-256 as before the session (`27369c83…`) and every container that was running is running. Most of what follows was measured against temporary files through `RUNESTONE_DNS_DAEMON_PATH`; the last section is the one deliberate exception, where the real file was written and Docker was restarted for real.
+Most of what follows was measured against temporary files through `RUNESTONE_DNS_DAEMON_PATH`. The last two sections are the deliberate exception: the real `~/.docker/daemon.json` was written, Docker was restarted, and **DNS is left enabled and applied** on this machine rather than reverted.
 
 ## Decision 1 — `docker desktop restart` is available
 
@@ -248,6 +248,54 @@ The half of the gate that needs a completed restart:
 - whether `restart: unless-stopped` survives a **graceful** `docker desktop restart`, which spec 8.3 relies on and which M6a demonstrated only against a killed daemon
 
 None of these can be reached until `docker desktop restart` completes on this machine. That is a Docker Desktop problem to resolve first, not a Runestone one.
+
+## The interruption, completed
+
+Docker Desktop was updated to 4.88.1 partway through, and its own restart applied the configuration that had been sitting at `phase: prepared`. That is the restart this milestone needed, and it produced the gate.
+
+### The gate
+
+A newly created container, with nothing arranged for it:
+
+```
+$ docker run --rm ... cat /etc/resolv.conf
+nameserver 192.168.65.254      # the Target IP, first
+nameserver 1.1.1.1             # the 9.7 fallback, second
+```
+
+Every certificate-covered domain, resolved through the daemon setting rather than an explicit `@server` — these are ordinary `getent hosts` lookups going through the container's own `resolv.conf`:
+
+```
+traefik.local.developers-homelab.net     192.168.65.254
+anything.local.developers-homelab.net    192.168.65.254     # wildcard subdomain
+sub.traefik.me                           192.168.65.254     # a second certificate
+tunnel.local.developers-homelab.net      192.168.65.254
+github.com                               20.27.177.113      # the internet still works
+```
+
+### The 9.7 fallback table, measured in the wild
+
+For a window the dns service was down while the daemon still pointed at it — the exact situation the fallback exists for. Both rows of the 9.7 table came out as written:
+
+```
+$ getent hosts github.com                              # ordinary internet name
+20.27.177.113 github.com                               # keeps resolving, via 1.1.1.1
+
+$ getent hosts traefik.local.developers-homelab.net    # a Runestone domain
+127.0.0.1     traefik.local.developers-homelab.net     # the documented cost, exactly
+```
+
+That is the trade spec 9.7 describes, no longer as a prediction.
+
+### Two defects the completion found
+
+**Docker Desktop's version decides whether an automatic restart is safe.** Below 4.86.0 its restart stops the containers, and `unless-stopped` keeps them down for good — measured twice here, and the reason the earlier attempts looked like DNS failures when the configuration was correct. The version is read from `docker version --format '{{.Server.Platform.Name}}'` and the automatic restart is gated on it; below the threshold Runestone attempts nothing and offers three ways forward.
+
+**`dns enable` restarted a machine that was already running the configuration.** The write and the restart are separable by design, so the restart can arrive from a manual restart, a reboot or an update — and in each case restarting again terminates every container to achieve nothing. It now asks a throwaway container what its `resolv.conf` says and skips the restart when the answer is already ours. On this machine that turned the last step into a no-op.
+
+### Still not verified
+
+`disable` restoring the array **after a real restart**. Its file operation is proven — the escape-hatch run removed exactly the recorded entry from a real file and left the unrelated one and the unrelated key untouched — but tearing the working configuration down again to watch the restart half was not worth another machine-wide interruption.
 
 ## What this file does not cover
 

@@ -48,13 +48,17 @@ Runestone 只編輯屬於自己的那些位元組。你原有的設定、它們�
 
 Docker daemon 只在啟動時讀那個檔案。在 Docker 重啟之前，**那個變更完全不會生效**——這是刻意的，也正是 Runestone 把「寫入檔案」與「重啟」分開的原因。
 
-重啟會終止**這台機器上的每一個容器**，包含與 Runestone 完全無關的容器：資料庫、訊息佇列，任何你正在跑的東西。restart policy 是 `always` 或 `unless-stopped` 的容器通常會自己回來；沒有 policy 的不會。
+重啟會終止**這台機器上的每一個容器**，包含與 Runestone 完全無關的容器：資料庫、訊息佇列，任何你正在跑的東西。restart policy 是 `always` 或 `unless-stopped` 的容器會自己回來；沒有 policy 的不會。
 
 開始之前先看看你有什麼在跑：
 
 ```bash
 docker ps
 ```
+
+**在低於 4.86.0 的 Docker Desktop 上，它們不會全部回來。** 那些版本重啟的是整個應用程式，而應用程式關閉會把容器**停掉**——`unless-stopped` 的意思是「除非被停止，否則重啟」，於是它們就一直躺著，等再久也沒用。Runestone 會檢查版本，**低於 4.86.0 一律不自動重啟**，改為給出三條路：更新 Docker Desktop、透過它自己的 設定 → Docker Engine → Apply & restart 重啟、或執行 `runestone dns enable --restore-containers`，讓 Runestone 記下當時在跑的容器，並把重啟後沒回來的啟動回去。最後那條是選用的，永遠不是預設。
+
+**如果 Docker 已經在發那個位址，就完全不會重啟。** Runestone 動手前會先確認，所以套用一個已經生效的設定——在你自己重啟、機器重開、或 Docker Desktop 更新之後——不會付出任何代價。
 
 ### 3. 之後每個容器的 DNS 都會經過一個 Runestone 容器
 

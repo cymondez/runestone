@@ -23,7 +23,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | M4 | `dns disable` | 2 (redirected) | T0 | — | **done** |
 | M5 | `dns enable` to `prepared` | 2 | T1 | — | **done**, real-machine gate items pending the 16.5 safety net |
 | M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | — | **done**, CI gate pending a runner |
-| M6b | Real machine and VM verification | 3 | T3 / T4 | — | **partly done**: Windows non-destructive checks complete, the interruption and Linux outstanding |
+| M6b | Real machine and VM verification | 3 | T3 / T4 | — | **Windows done**, including the interruption; Linux outstanding |
 | M7 | Lifecycle integration and disclosure | 3 | T1 / T2 | — | **done** |
 | M8 | Platform matrix and release | 3 | T3 / T4 | M6b, M7 | not started |
 
@@ -349,7 +349,7 @@ The risk that row guarded is real and is still handled, by asking a question tha
 
 **Gate**
 
-- [ ] Enable → a new container's `resolv.conf` lists the Target IP first → a certificate-covered subdomain resolves to the Target IP → disable → the daemon `dns` array is back to its original state including pre-existing user entries — **the subdomain half is proven** (a wildcard subdomain of a certificate-covered domain resolved to the Target IP through the real generated Compose file); the daemon write, the restart and the revocation need the agreed window
+- [x] Enable → a new container's `resolv.conf` lists the Target IP first → a certificate-covered subdomain resolves to the Target IP — **done on the real machine**: `nameserver 192.168.65.254` first and the 9.7 fallback second, with all four certificate domains and their wildcards resolving through the daemon setting rather than an explicit `@server`. **The `disable` half is not verified after a real restart**: the file operation is proven, but tearing a working configuration down again was not worth another machine-wide interruption
 - [ ] Sudo failure on Linux aborts with no partial write
 - [x] The evidence log below is filled in — for Windows
 

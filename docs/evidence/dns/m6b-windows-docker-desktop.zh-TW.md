@@ -6,7 +6,7 @@
 
 這份檔案記錄的是**量到什麼**，而不是**預期是什麼**——因為 [DNS-MILESTONES.zh-TW.md](../../DNS-MILESTONES.zh-TW.md) 要求下一位貢獻者不必為了相信這件事而重跑一次 T4 驗證。
 
-**機器結束時回到它開始時的樣子。** `~/.docker/daemon.json` 的 SHA-256 與整段作業之前相同（`27369c83…`），先前在跑的容器全都在跑。以下大部分內容是透過 `RUNESTONE_DNS_DAEMON_PATH` 對著暫存檔量的；最後一節是刻意的例外，那裡寫的是真實檔案、重啟的是真的 Docker。
+以下大部分內容是透過 `RUNESTONE_DNS_DAEMON_PATH` 對著暫存檔量的。最後兩節是刻意的例外：寫的是真實的 `~/.docker/daemon.json`、Docker 真的重啟過，而且 **DNS 在這台機器上是啟用並已套用的狀態**，沒有被還原。
 
 ## 裁決 1 —— `docker desktop restart` 存在
 
@@ -248,6 +248,54 @@ The file cannot be accessed by the system.
 - `restart: unless-stopped` 能不能撐過**優雅的** `docker desktop restart`——規格 8.3 倚賴這件事，而 M6a 只針對「被砍掉的 daemon」示範過
 
 在這台機器上的 `docker desktop restart` 能夠完成之前，這些都到不了。那是要先解決的 Docker Desktop 問題，不是 Runestone 的問題。
+
+## 中斷，完成了
+
+過程中 Docker Desktop 更新到 4.88.1，而它自己的重啟把那份停在 `phase: prepared` 的設定套用了。那正是這個里程碑需要的重啟，通過條件也隨之達成。
+
+### 通過條件
+
+一個全新建立、沒有為它做任何安排的容器：
+
+```
+$ docker run --rm ... cat /etc/resolv.conf
+nameserver 192.168.65.254      # Target IP，第一筆
+nameserver 1.1.1.1             # 9.7 備援，第二筆
+```
+
+每一個憑證涵蓋的網域，都是透過 daemon 設定解析的，而不是明確指定 `@server`——以下是走容器自己 `resolv.conf` 的一般 `getent hosts` 查詢：
+
+```
+traefik.local.developers-homelab.net     192.168.65.254
+anything.local.developers-homelab.net    192.168.65.254     # 萬用子網域
+sub.traefik.me                           192.168.65.254     # 第二張憑證
+tunnel.local.developers-homelab.net      192.168.65.254
+github.com                               20.27.177.113      # 對外仍然正常
+```
+
+### 9.7 備援表，在真實環境中量到
+
+有一段時間 dns 服務停著，而 daemon 仍然指向它——正是備援存在的那個情境。9.7 表格的兩列都如實出現：
+
+```
+$ getent hosts github.com                              # 一般網際網路名稱
+20.27.177.113 github.com                               # 仍可解析，經由 1.1.1.1
+
+$ getent hosts traefik.local.developers-homelab.net    # Runestone 網域
+127.0.0.1     traefik.local.developers-homelab.net     # 正是文件寫明的代價
+```
+
+那就是規格 9.7 描述的取捨，不再只是預測。
+
+### 完成過程中抓到的兩個缺陷
+
+**Docker Desktop 的版本決定了自動重啟安不安全。** 低於 4.86.0 時它的重啟會把容器停掉，而 `unless-stopped` 會讓它們一直躺著——這裡量過兩次，也正是先前那幾次嘗試「看起來像 DNS 失敗、其實設定是對的」的原因。版本讀自 `docker version --format '{{.Server.Platform.Name}}'`，自動重啟以它為閘門；低於門檻時 Runestone 什麼都不嘗試，改為給出三條路。
+
+**`dns enable` 會對一台「設定已經生效」的機器再重啟一次。** 寫入與重啟是刻意可分開的，所以那次重啟可能來自手動重啟、機器重開或更新——而在這些情況下再重啟一次，是把每一個容器都終止掉卻換來零。現在它會先問一個拋棄式容器的 `resolv.conf`，答案已經是我方位址就跳過重啟。在這台機器上，那讓最後一步變成了 no-op。
+
+### 仍未驗證
+
+`disable` 在**真實重啟之後**把陣列還原。它的檔案操作已經證明過——逃生口那一輪從真實檔案裡精準移除了記錄的項目，無關項目與無關鍵都沒被動到——但為了看重啟那一半而把一份正在運作的設定再拆掉，不值得再中斷整台機器一次。
 
 ## 這份檔案沒有涵蓋的部分
 

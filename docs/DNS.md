@@ -48,13 +48,17 @@ Runestone edits only the bytes it owns. Your existing settings, their order, you
 
 The Docker daemon reads that file only at startup. Until Docker restarts, **the change has no effect at all** — which is deliberate, and is why Runestone separates writing the file from restarting.
 
-The restart terminates **every container on the machine**, including containers that have nothing to do with Runestone. Databases, queues, anything you have running. Containers with a restart policy of `always` or `unless-stopped` normally come back by themselves; containers without one do not.
+The restart terminates **every container on the machine**, including containers that have nothing to do with Runestone. Databases, queues, anything you have running. Containers with a restart policy of `always` or `unless-stopped` come back by themselves; containers without one do not.
 
 Check what you have running before you start:
 
 ```bash
 docker ps
 ```
+
+**On Docker Desktop older than 4.86.0, they do not all come back.** That version restarts the whole application, and an application shutdown *stops* the containers — `unless-stopped` means "restart unless it was stopped", so those stay down for good and waiting does not help. Runestone checks the version and **refuses to restart automatically below 4.86.0**, offering three ways forward instead: update Docker Desktop, restart it through its own Settings → Docker Engine → Apply & restart, or run `runestone dns enable --restore-containers` so Runestone notes what was running and starts back whatever the restart left down. That last one is opt-in and never a default.
+
+**If Docker is already handing out the address, nothing is restarted at all.** Runestone checks before it acts, so applying a configuration that is already in effect — after your own restart, a reboot, or a Docker Desktop update — costs you nothing.
 
 ### 3. Every container's DNS then goes through a Runestone container
 
