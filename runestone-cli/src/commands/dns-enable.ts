@@ -204,6 +204,10 @@ export function printCompleteResult(plan: EnablePlan, result: CompleteResult): v
     return;
   }
 
+  if (result.alreadyInEffect && !result.failure) {
+    line(t('dns.enable.restart.alreadyInEffect'));
+  }
+
   switch (result.failure) {
     case 'restart':
       logger.error(t('dns.enable.restart.failed', { message: result.failureMessage ?? '' }));

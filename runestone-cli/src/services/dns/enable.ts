@@ -554,6 +554,8 @@ export interface CompleteResult {
   failureMessage?: string;
   /** Whether the daemon change was inverted after a failure. */
   invertedDaemon: boolean;
+  /** True when the configuration was already live, so no restart was needed. */
+  alreadyInEffect?: boolean;
   /** Set when the inversion itself failed, which needs a human (spec 10.1). */
   rollbackError?: string;
 }
@@ -578,6 +580,41 @@ export function completeEnable(
   const deps = { ...defaultCompleteDependencies, ...dependencies };
   const image = verificationImage(config);
   const targetIp = plan.preflight.targetIp as string;
+
+  // **Do not restart a machine that is already running the configuration.**
+  //
+  // The write and the restart are deliberately separable, so the restart can
+  // arrive from somewhere else entirely: `--no-restart` followed by the user's
+  // own restart, an unrelated reboot, or a Docker Desktop update. In all three
+  // the daemon is already handing out our address, and restarting again would
+  // terminate every container on the machine to achieve nothing at all.
+  //
+  // Asking is cheap and certain: a throwaway container's `resolv.conf` is the
+  // fact itself, not an inference from one.
+  const already = deps.nameservers(image);
+  if (already[0] === targetIp) {
+    const live: CompleteResult = {
+      restart: { status: 'restarted', waitedMs: 0 },
+      phase: 'prepared',
+      invertedDaemon: false,
+      nameservers: already,
+      alreadyInEffect: true
+    };
+
+    const check = deps.verify(image, plan.verifyDomain, targetIp);
+    live.resolution = check;
+    if (!check.ok) {
+      live.failure = 'resolution';
+      live.failureMessage = check.error ?? 'the domain did not resolve';
+      return live;
+    }
+
+    const settled: DnsOwnershipState = { ...prepared, phase: 'applied', updatedAt: deps.now() };
+    delete settled.preparedReason;
+    deps.writeRecord(settled);
+    live.phase = 'applied';
+    return live;
+  }
 
   const restart = deps.restart(plan.preflight.restartPlan, options);
   const result: CompleteResult = { restart, phase: 'prepared', invertedDaemon: false };

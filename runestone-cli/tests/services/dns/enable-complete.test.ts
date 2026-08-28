@@ -71,10 +71,22 @@ function patient() {
   return jest.fn(() => 0);
 }
 
+/** Our address only after the first call, which is the pre-restart reading. */
+function notYetInEffect() {
+  let calls = 0;
+  return jest.fn(() => {
+    calls += 1;
+    return calls === 1 ? ['192.168.65.7'] : [TARGET, '8.8.8.8'];
+  });
+}
+
 function spies(overrides: Partial<CompleteDependencies> = {}) {
   return {
     restart: jest.fn(restarted),
-    nameservers: jest.fn(() => [TARGET, '8.8.8.8']),
+    // The daemon hands out its own resolver until the restart, and ours after.
+    // A fixture that answered with our address from the start would describe a
+    // machine where the restart had already happened.
+    nameservers: notYetInEffect(),
     verify: jest.fn(() => ({ ok: true, answers: [TARGET] })),
     writeDaemon: jest.fn(),
     deleteDaemon: jest.fn(),
@@ -346,6 +358,51 @@ describe('completing an enable (spec 10.1 steps 5 to 7)', () => {
 
       expect(result.failure).toBe('service-gone');
       expect(result.failureMessage).toContain('port is already allocated');
+    });
+  });
+
+  describe('when the configuration is already in effect', () => {
+    // The write and the restart are separable on purpose, so the restart can
+    // arrive from elsewhere: `--no-restart` then a manual restart, a reboot, or
+    // a Docker Desktop update. Restarting again would terminate every container
+    // on the machine to achieve nothing.
+    it('marks it applied without restarting anything', () => {
+      const plan = makePlan();
+      const deps = spies({ nameservers: jest.fn(() => [TARGET, '8.8.8.8']) });
+
+      const result = completeEnable(config(), plan, prepared(plan), deps);
+
+      expect(result.alreadyInEffect).toBe(true);
+      expect(result.phase).toBe('applied');
+      expect(deps.restart).not.toHaveBeenCalled();
+      expect(deps.writeRecord).toHaveBeenCalledWith(expect.objectContaining({ phase: 'applied' }));
+    });
+
+    it('still proves the domain resolves before believing it', () => {
+      const plan = makePlan();
+      const deps = spies({
+        nameservers: jest.fn(() => [TARGET]),
+        verify: jest.fn(() => ({ ok: false, answers: [], error: 'nothing answered' }))
+      });
+
+      const result = completeEnable(config(), plan, prepared(plan), deps);
+
+      expect(result.failure).toBe('resolution');
+      expect(result.phase).toBe('prepared');
+      expect(deps.restart).not.toHaveBeenCalled();
+      // Nothing was inverted: this run wrote nothing and the entries are not its
+      // to withdraw.
+      expect(deps.writeDaemon).not.toHaveBeenCalled();
+      expect(deps.clearRecord).not.toHaveBeenCalled();
+    });
+
+    it('does restart when the daemon is handing out something else', () => {
+      const plan = makePlan();
+      const deps = spies({ nameservers: jest.fn(() => ['192.168.65.7']) });
+
+      completeEnable(config(), plan, prepared(plan), deps);
+
+      expect(deps.restart).toHaveBeenCalled();
     });
   });
 
