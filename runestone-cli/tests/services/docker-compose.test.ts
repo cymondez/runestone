@@ -138,4 +138,47 @@ describe('composeService', () => {
 
     expect(() => composeService.stop('compose.yml')).toThrow('bad compose');
   });
+  describe('reporting a failure', () => {
+    // Compose draws progress with carriage returns. Printed raw, the terminal
+    // replays the overwrites and the last write wins — which is a progress
+    // line, not the error. A real port conflict reached a user as
+    // "Container runestone-dns Creating".
+    function failed(stderr: string) {
+      return {
+        status: 1,
+        stdout: '',
+        stderr,
+        pid: 1,
+        output: [null, '', stderr],
+        signal: null
+      };
+    }
+
+    it('reports what went wrong, not the progress line that overwrote it', () => {
+      const stderr =
+        ' Container runestone-dns Creating \r'
+        + ' Container runestone-dns Created \r'
+        + ' Container runestone-dns Starting \r'
+        + 'Error response from daemon: Bind for 0.0.0.0:53 failed: port is already allocated';
+      spawnSyncMock.mockReturnValue(failed(stderr) as never);
+
+      expect(() => composeService.up('compose.yml')).toThrow(/port is already allocated/);
+      expect(() => composeService.up('compose.yml')).not.toThrow(/Creating/);
+    });
+
+    it('falls back to the last line when everything looks like progress', () => {
+      spawnSyncMock.mockReturnValue(
+        failed(' Container a Creating \r Container a Created') as never
+      );
+
+      expect(() => composeService.up('compose.yml')).toThrow(/Container a Created/);
+    });
+
+    it('says something rather than nothing when compose printed nothing', () => {
+      spawnSyncMock.mockReturnValue(failed('') as never);
+
+      expect(() => composeService.up('compose.yml')).toThrow(/unknown error/);
+    });
+  });
+
 });

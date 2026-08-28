@@ -74,10 +74,38 @@ function runCompose(
   }
 
   if (result.status !== 0) {
-    throw new Error(`docker compose failed: ${result.stderr?.trim() || result.stdout?.trim() || 'unknown error'}`);
+    throw new Error(`docker compose failed: ${composeFailure(result)}`);
   }
 
   return result;
+}
+
+/**
+ * The part of a failed `docker compose` run worth showing a user.
+ *
+ * Compose draws its progress with carriage returns, so the raw stream is one
+ * long line of "Container x Creating", "Container x Created" and so on, with
+ * the real error at the end. Printed as it stands, the terminal replays those
+ * overwrites and the **error is the one thing you cannot see**: the last write
+ * wins, and it is a progress line. Measured against a real port conflict, which
+ * reported itself to the user as "Container runestone-dns Creating" and told
+ * them nothing at all.
+ *
+ * So the carriage returns become separators and the progress chatter is
+ * dropped, leaving whatever actually went wrong.
+ */
+function composeFailure(result: SpawnSyncReturns<string>): string {
+  const raw = [result.stderr ?? '', result.stdout ?? ''].join('\n');
+  const lines = raw
+    .split(/[\r\n]+/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+
+  const progress =
+    /^Container .+ (Creating|Created|Starting|Started|Stopping|Stopped|Removing|Removed|Recreate|Recreated|Waiting|Healthy)$/;
+  const meaningful = lines.filter((line) => !progress.test(line));
+
+  return meaningful.join(' ') || lines[lines.length - 1] || 'unknown error';
 }
 
 function normalizeContainer(input: Record<string, unknown>): DockerContainer {
