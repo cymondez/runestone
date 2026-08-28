@@ -189,7 +189,7 @@ Traefik、Mailpit、nginx 合併在 runestone image 是為了管理方便 — �
 DNS_ENABLE=false
 DNS_HOST_IP=            # Target IP，Runestone 管理
 DNS_BIND_IP=            # 53 綁定位址，Runestone 管理，可覆寫
-DNS_UPSTREAM=1.1.1.1    # dnsmasq 上游，逗號分隔。永不為空（見 8.4）
+DNS_UPSTREAM=           # dnsmasq 上游，逗號分隔。留空＝先偵測，再退回 1.1.1.1（見 8.4）
 DNS_DAEMON_FALLBACK=    # 選用：daemon dns 陣列中的第二筆自有項目（見 9.7）。留空＝不啟用
 DNS_CONTAINER_RESOLVER= # dns 容器自己使用的 resolver。留空＝1.1.1.1（見 8.2）
 DNS_AUTO_REORDER=false  # 我方項目不在最前面時，是否自動排回（見 9.6）
@@ -328,7 +328,7 @@ Runestone 擁有的兩個設定檔 `/etc/dnsmasq.conf` 與 `/etc/dnsmasq.d/manag
 2. 否則進行偵測：daemon 設定檔中既有的 `dns` 項目，然後是主機解析器（Node `dns.getServers()`），兩者都排除 loopback 與 Target IP。
 3. 偵測不到任何結果 → `1.1.1.1`。
 
-`1.1.1.1` 既是 `DNS_UPSTREAM` 出廠預設值，也是偵測路徑的最後手段，因此永遠存在一份可用清單。偵測仍排在公用預設之前，因為企業或校園網路可能只允許內部解析器——但偵測失敗已不再是致命錯誤，只表示改用公用預設，並且要明白告知。
+**`DNS_UPSTREAM` 出廠是空的，而 `1.1.1.1` 是偵測路徑的最後手段，不是寫進 `.env` 的值。** 這兩者不能互換，而本節先前的版本兩種都說了：如果出廠的 `.env` 帶著 `DNS_UPSTREAM=1.1.1.1`，那個值就與「使用者做出的選擇」無法區分，第 1 步永遠會勝出，**偵測因此永遠不會執行**——而那在只允許內部解析器的企業或校園網路上正好是錯的。所以「空」代表「還沒有選擇，去找」。永不為空這個保證住在判定邏輯本身與 Compose 的預設值裡，不住在出廠檔案裡。偵測失敗也不是致命錯誤：改用公用預設，並在輸出中明白告知。
 
 setup 會呈現算出來的清單，並提供三個動作（見 11.2）：沿用、更換、追加。使用者選了什麼就明確寫進 `DNS_UPSTREAM`，讓生效值永遠能在 `.env` 看見，而不是隱含在偵測邏輯裡。
 

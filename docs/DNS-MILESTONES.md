@@ -21,7 +21,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | M2 | runestone-dns image | 1 | T1 | — | **done on amd64**; arm64 unverified, see M2 |
 | M3 | Service plumbing and `dns status` | 0 | T1 | — | **done** |
 | M4 | `dns disable` | 2 (redirected) | T0 | — | **done** |
-| M5 | `dns enable` to `prepared` | 2 | T1 | M4 | not started |
+| M5 | `dns enable` to `prepared` | 2 | T1 | — | **done**, real-machine gate items pending the 16.5 safety net |
 | M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | M5 | not started |
 | M6b | Real machine and VM verification | 3 | T3 / T4 | M6a, decision 1 | not started |
 | M7 | Lifecycle integration and disclosure | 3 | T1 / T2 | M6a | not started |
@@ -254,27 +254,41 @@ Running it also caught a real defect that no unit test would have: with a blocke
 
 **Goal.** The complete enable path except the restart. This is the first milestone that writes a real `daemon.json`, and because it does not restart, the write has no effect on the machine while it is being rehearsed.
 
-**Risk level 2 · Tier T1 · Blocked by M4**
+**Risk level 2 · Tier T1**
 
 **Complete the 16.5 safety net before starting this milestone.**
 
 **Deliverables**
 
-- [ ] `runestone dns enable` steps 1–4 of spec 10.1: preflight that changes nothing, `.env` and project files, dns service start, real query verification from a throwaway container, ownership state, atomic daemon write
-- [ ] `--no-restart` stopping deliberately at `phase=prepared` (spec 10.1, 11.1)
-- [ ] `--dry-run` performing preflight only, then printing the diff and exiting
-- [ ] Target IP rotation (spec 9.4) and the reconciliation path (spec 9.5)
-- [ ] Rollback on every failure, and `phase=prepared` retained with manual recovery output when the rollback itself fails
-- [ ] Risk disclosure for the daemon-modification confirmation, carrying real values (spec 11.3)
+- [x] `runestone dns enable` steps 1–4 of spec 10.1: preflight that changes nothing, `.env` and project files, dns service start, real query verification from a throwaway container, ownership state, atomic daemon write
+- [ ] `--no-restart` stopping deliberately at `phase=prepared` (spec 10.1, 11.1) — the **behaviour** is what enable does unconditionally here; the **flag** waits for M6a, see below
+- [x] `--dry-run` performing preflight only, then printing the diff and exiting
+- [x] Target IP rotation (spec 9.4) and the reconciliation path (spec 9.5)
+- [x] Rollback on every failure, and `phase=prepared` retained with manual recovery output when the rollback itself fails
+- [x] Risk disclosure for the daemon-modification confirmation, carrying real values (spec 11.3)
 
 **Gate**
 
-- [ ] On a real machine: `enable --no-restart` → inspect the diff → `disable` → the daemon file is **byte-identical** to the pre-M5 snapshot
-- [ ] The same cycle with a hand-added user entry present: that entry survives untouched
-- [ ] Preflight failure leaves no `.env`, service, state or daemon change behind
-- [ ] Verification failure at step 3 stops the service and restores `.env`, with the daemon file never opened for writing
-- [ ] `--dry-run` writes nothing, proven by comparing file hashes before and after
-- [ ] Disclosure output contains the actual daemon path, Target IP and Bind IP — no placeholders
+- [ ] On a real machine: `enable --no-restart` → inspect the diff → `disable` → the daemon file is **byte-identical** to the pre-M5 snapshot — **maintainer step**: a real enable binds host port 53 (level 3) and needs the 16.5 safety net first. Proven at the command level with real file I/O in the meantime
+- [x] The same cycle with a hand-added user entry present: that entry survives untouched — at the command level
+- [x] Preflight failure leaves no `.env`, service, state or daemon change behind
+- [x] Verification failure at step 3 stops the service and restores `.env`, with the daemon file never opened for writing
+- [x] `--dry-run` writes nothing, proven by comparing file contents before and after
+- [x] Disclosure output contains the actual daemon path, Target IP and Bind IP — no placeholders, verified against this machine
+
+**Landed.** `runestone dns enable` through step 4 of spec 10.1, stopping at `phase=prepared`. 62 tests.
+
+**The order of the steps is the safety property.** The daemon configuration is written last and undone first, so every way this can fail — Docker unavailable, a remote context, Windows containers, the service not starting, the service starting but not answering — fails while the machine's global DNS is still untouched. Three tests assert exactly that: on a service-start failure, a verification failure, and a daemon-write failure, `writeDaemon` is never called and `.env` is restored.
+
+The ownership record is written **before** the file. An entry in the array with no record of it is an orphan nobody can revoke; a record with nothing in the file is merely wrong, and `disable` already handles that.
+
+Three deliberate departures from the deliverable list, each for a stated reason:
+
+- **`--no-restart` is not implemented, and deliberately not accepted.** In this milestone `enable` always stops at `prepared`, so a flag naming the only behaviour there is would claim the user has a choice they do not have. It lands with the restart itself in M6a. The behaviour the flag names is what the command does today.
+- **The real-machine gate items are not ticked.** A real `enable` binds host port 53, which is risk level 3 — above this milestone's level 2 — and the 16.5 safety net is the maintainer's step, not something the implementation can do for them. What *is* proven: the byte-identical enable-then-disable round trip, at the command level with real file I/O, across three array shapes including one with a pre-existing user entry.
+- **`--dry-run` was run against the real `~/.docker/daemon.json`**, which is read-only and therefore level 0. It confirmed all eleven disclosure items print real values from this machine: the actual daemon path, the Target IP resolved from inside Docker (`192.168.65.254`), the Bind IP, the UI URL and the upstream list.
+
+That real run earned its keep by exposing a defect no unit test would have caught. Item 10 reported the upstream as `1.1.1.1` **sourced from `.env`** — but the user's `.env` has no such key. The loader's own default was masquerading as a choice the user had made, so **spec 8.4's detection step could never run**. On a network that permits only its own internal resolvers, every container lookup on the machine would have been forwarded to a public resolver instead, silently. The loader now leaves `DNS_UPSTREAM` empty, the never-empty guarantee lives where it belongs, and spec 8.4 has been corrected — it had asserted both "1.1.1.1 is the shipped default of `DNS_UPSTREAM`" and "detection is still tried ahead of the public default", which cannot both be true. Host-resolver detection (`dns.getServers()`, the second source in 8.4) was missing as well and is now wired in, with the systemd-resolved stub filtered out.
 
 **Rollback.** Single revert, plus `dns disable` on any machine where enable was run.
 

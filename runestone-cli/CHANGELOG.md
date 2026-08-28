@@ -5,11 +5,13 @@
 ### Added
 
 - `runestone dns status` reports the DNS state and every invasive setting currently in effect: the Docker daemon configuration path, which entries Runestone owns and where they actually sit, the upstream resolvers and where each came from, and whether the web UI has any authentication.
+- `runestone dns enable` points the Docker daemon at the Runestone DNS. It checks everything first, starts the dns service and asks it a real question before writing anything global, and stops once the daemon configuration is written — nothing takes effect until you restart Docker yourself. `--dry-run` shows the full disclosure and the exact change without writing anything.
 - `runestone dns disable` removes the entries Runestone added to the Docker daemon DNS configuration and leaves everything else exactly where it was. `--dry-run` shows what would change without writing anything, and `--assume-entry` / `--assume-index` let you state which entry is Runestone's when it cannot tell on its own. When it cannot tell and you have not said, it refuses rather than guessing.
 
 ### Changed
 
 - Certificate, service and setup changes now restart only the `runestone` container instead of every service in the Runestone project, so other services keep running.
+- Upstream DNS is now detected from the Docker daemon configuration and the host's own resolvers before falling back to `1.1.1.1`, instead of always using `1.1.1.1`. On a network that only permits internal resolvers, container lookups no longer go to a public resolver.
 - `compose.yml` is now regenerated when Runestone's template changes, so an upgrade no longer leaves you with an outdated Compose file. The file already on disk is kept as a `.bak` beside it first.
 
 ## 1.1.1 - 2026-06-23

@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { createDnsDisableCommand } from './dns-disable';
+import { createDnsEnableCommand } from './dns-enable';
 import { green, red, yellow } from 'kleur';
 import { DnsStatusReport, buildDnsStatusReport, preparedReasonOf } from '../services/dns/status';
 import { UpstreamOrigin } from '../services/dns/upstream';
@@ -213,5 +214,6 @@ export function createDnsCommand(): Command {
   return createCommand('dns')
     .description(t('commands.dns.description'))
     .addCommand(createDnsStatusCommand())
+    .addCommand(createDnsEnableCommand())
     .addCommand(createDnsDisableCommand());
 }

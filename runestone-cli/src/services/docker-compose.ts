@@ -27,6 +27,10 @@ export interface ComposeOptions {
   removeImages?: boolean;
   forceRecreate?: boolean;
   noDeps?: boolean;
+  /** Compose profiles to activate; without one, a profiled service is invisible. */
+  profiles?: string[];
+  /** Limit the command to these services instead of the whole project. */
+  services?: string[];
 }
 
 export interface DockerContainer {
@@ -115,8 +119,11 @@ export const composeService = {
     if (options?.noDeps) {
       args.push('--no-deps');
     }
+    if (options?.services) {
+      args.push(...options.services);
+    }
 
-    runCompose(args, composePath);
+    runCompose(args, composePath, 120000, options?.profiles ?? []);
   },
 
   down(composePath: string, options?: ComposeOptions): void {

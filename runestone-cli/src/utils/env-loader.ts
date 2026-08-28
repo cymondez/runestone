@@ -86,9 +86,12 @@ export const DEFAULT_ENV: Required<EnvInput> = {
   DNS_ENABLE: 'false',
   DNS_HOST_IP: '',
   DNS_BIND_IP: '',
-  // Never empty: dnsmasq runs with no-resolv, so with no upstream every
-  // container on the machine would lose internet name resolution (spec 8.4).
-  DNS_UPSTREAM: '1.1.1.1',
+  // Deliberately empty. The never-empty guarantee of spec 8.4 belongs to
+  // determineUpstreams, not to this default: if the loader supplied 1.1.1.1
+  // here, that value would look like a choice the user made, and the detection
+  // step would never run — which is exactly wrong on a network that only
+  // permits its own internal resolvers.
+  DNS_UPSTREAM: '',
   DNS_DAEMON_FALLBACK: '',
   DNS_AUTO_REORDER: 'false',
   DNS_CONTAINER_RESOLVER: '',
@@ -133,10 +136,8 @@ export const envLoader = {
       DNS_ENABLE: merged.DNS_ENABLE || DEFAULT_ENV.DNS_ENABLE,
       DNS_HOST_IP: merged.DNS_HOST_IP ?? DEFAULT_ENV.DNS_HOST_IP,
       DNS_BIND_IP: merged.DNS_BIND_IP ?? DEFAULT_ENV.DNS_BIND_IP,
-      // An explicitly emptied DNS_UPSTREAM falls back to the shipped default
-      // rather than through as empty, because an empty upstream list is the one
-      // state spec 8.4 forbids.
-      DNS_UPSTREAM: merged.DNS_UPSTREAM || DEFAULT_ENV.DNS_UPSTREAM,
+      // Empty means "nothing chosen", which is what lets detection run.
+      DNS_UPSTREAM: merged.DNS_UPSTREAM ?? DEFAULT_ENV.DNS_UPSTREAM,
       DNS_DAEMON_FALLBACK: merged.DNS_DAEMON_FALLBACK ?? DEFAULT_ENV.DNS_DAEMON_FALLBACK,
       DNS_AUTO_REORDER: merged.DNS_AUTO_REORDER || DEFAULT_ENV.DNS_AUTO_REORDER,
       DNS_CONTAINER_RESOLVER: merged.DNS_CONTAINER_RESOLVER ?? DEFAULT_ENV.DNS_CONTAINER_RESOLVER,

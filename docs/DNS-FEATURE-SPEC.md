@@ -189,7 +189,7 @@ Build our own **`cymondez/runestone-dns`**, located in `docker/dns/`:
 DNS_ENABLE=false
 DNS_HOST_IP=            # Target IP, managed by Runestone
 DNS_BIND_IP=            # Address port 53 binds to, managed by Runestone, overridable
-DNS_UPSTREAM=1.1.1.1    # dnsmasq upstream, comma separated. Never empty (see 8.4)
+DNS_UPSTREAM=           # dnsmasq upstream, comma separated. Empty = detect, then 1.1.1.1 (see 8.4)
 DNS_DAEMON_FALLBACK=    # Optional second owned entry in the daemon dns array (see 9.7). Empty = off
 DNS_CONTAINER_RESOLVER= # Resolver the dns container itself uses. Empty = 1.1.1.1 (see 8.2)
 DNS_AUTO_REORDER=false  # Move our own entries back to the front when they are not (see 9.6)
@@ -328,7 +328,7 @@ How the list is determined:
 2. Otherwise detection: existing `dns` entries in the daemon configuration file, then the host's resolvers (Node `dns.getServers()`), in both cases excluding loopback addresses and the Target IP.
 3. If that yields nothing, `1.1.1.1`.
 
-`1.1.1.1` is both the shipped default of `DNS_UPSTREAM` and the last resort of the detection path, so a usable list always exists. Detection is still tried ahead of the public default because corporate and campus networks may permit only internal resolvers — but a failed detection is no longer fatal, it just means the public default is used and said so out loud.
+**`DNS_UPSTREAM` ships empty, and `1.1.1.1` is the last resort of the detection path rather than a value written into `.env`.** Those two are not interchangeable, and an earlier version of this section said both: if the shipped `.env` carried `DNS_UPSTREAM=1.1.1.1`, that value would be indistinguishable from a choice the user made, step 1 would always win, and **detection would never run** — which is exactly wrong on a corporate or campus network that permits only its own internal resolvers. Empty therefore means "nothing chosen, go and look". The never-empty guarantee lives in the determination itself and in the Compose default, not in the shipped file. A failed detection is not fatal either: the public default is used, and the output says so out loud.
 
 Setup presents the computed list and offers three actions (see 11.2): keep it, replace it, or append to it. Whatever the user picks is written to `DNS_UPSTREAM` explicitly, so the effective value is always visible in `.env` instead of being implied by detection.
 
