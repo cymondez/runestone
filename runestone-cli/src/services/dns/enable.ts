@@ -239,7 +239,11 @@ export function planEnable(
     DNS_BIND_IP: bindIp,
     DNS_BIND_PREFIX: bindPrefix(bindIp),
     DNS_UPSTREAM: checks.upstreams.upstreams.join(','),
-    DNS_CONTAINER_RESOLVER: checks.upstreams.upstreams[0] ?? ''
+    DNS_CONTAINER_RESOLVER: checks.upstreams.upstreams[0] ?? '',
+    // Written for the same reason 8.4 writes the upstream list: a value that
+    // only lives in a flag is a value nobody can read back afterwards. Empty is
+    // meaningful here — it is how the 9.7 fallback is turned off.
+    DNS_DAEMON_FALLBACK: config.DNS_DAEMON_FALLBACK.trim()
   };
 
   const base: EnablePlan = {

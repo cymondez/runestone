@@ -224,6 +224,17 @@ export function dnsHealthLines(report: DnsHealthReport): DnsHealthLine[] {
           status: check.status,
           text: check.status === 'pass' ? t('dns.doctor.targetIp.pass', detail) : t('dns.doctor.targetIp.warn', detail)
         };
+      case 'desktopRestart':
+        if (check.status === 'skip') {
+          return { status: check.status, text: t('dns.doctor.desktopRestart.skip', detail) };
+        }
+        return {
+          status: check.status,
+          text:
+            check.status === 'pass'
+              ? t('dns.doctor.desktopRestart.pass', detail)
+              : t('dns.doctor.desktopRestart.warn', detail)
+        };
       case 'mappings':
       default:
         if (check.status === 'skip') {

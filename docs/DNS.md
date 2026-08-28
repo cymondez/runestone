@@ -134,6 +134,18 @@ So turning it on buys resilience for unrelated projects and costs you the loud f
 - **A machine used mainly for Runestone development, where broken DNS should be obvious at once** → leaving it off is usually right.
 - **Unsure** → leave it off. Turning it on later costs one more daemon write and one more Docker restart, nothing else.
 
+Set it either in `.env`, or on the command line:
+
+```bash
+runestone dns enable --fallback 1.1.1.1
+```
+
+```bash
+runestone dns enable --no-fallback
+```
+
+Whichever you use is written to `DNS_DAEMON_FALLBACK`, so the value in effect is always one you can read back.
+
 ## Turning it on
 
 `runestone setup` asks whether you want DNS and records your answers. **Setup does not enable it** — it never touches the Docker daemon configuration. Enabling is its own command, so that the two confirmations it needs belong to a command you ran for that purpose.

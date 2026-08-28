@@ -542,13 +542,16 @@ daemon 撤銷未成功前，不得移除 dns 服務。
 
 ```text
 runestone dns enable  [--yes] [--dry-run] [--no-restart] [--upstream <ip,...>]
+                      [--fallback <ip> | --no-fallback] [--restore-containers]
 runestone dns disable [--yes] [--dry-run] [--assume-entry <ip>] [--assume-index <n>]
 runestone dns status
 ```
 
 - `--yes` 略過重啟 Docker 的確認；未帶時重啟前必須確認。
 - `--assume-entry` 與 `--assume-index` 都可以給超過一次，因為所有權可能涵蓋兩筆項目（9.7）；每一筆需要明確指定的項目給一次。
-- `--dry-run` 印出 daemon 設定的前後 diff 後結束，完全不寫入任何東西。它是 16.2 各層級的主要開發工具，並且保留在正式版 CLI 裡——想先看清變更再決定是否同意的使用者，值得拿到同一個工具。
+- `--fallback <ip>` 為這一次執行設定 9.7 的 daemon 備援，`--no-fallback` 則移除它；兩者都會寫入 `DNS_DAEMON_FALLBACK`，因此「生效的值」永遠就是「讀得回來的值」，而不是只活在旗標裡。兩者都不給時，該設定保持原樣。**這個備援需要有自己的旗標**：`--upstream` 有，而備援沒有——於是決定「查詢是大聲失敗、還是把 Runestone 網域解析成 `127.0.0.1`」的那筆項目，只能靠 `runestone setup` 或手改 `.env` 才設得到。
+- `--restore-containers` 只適用於「因為 Docker Desktop 過舊而不自動重啟」的情況（6.2）：它會記下執行中的容器，並把重啟後沒回來的啟動回去。**選用，永不預設**——啟動不屬於 Runestone 的容器，不是它可以自己決定的事。
+- `--dry-run` 印出 daemon 設定的前後 diff 後結束，完全不寫入任何東西。它是 16.2 各層級的主要開發工具，並且保留在正式版 CLI 裡——想先看清變更再決定是否同意的使用者，值得拿到同一個工具。**diff 會同時顯示移除與新增**，因為一份計畫也可能從使用者的檔案裡拿走項目——`--no-fallback` 做的正是這件事——而「只在新增時才顯示」的變更，是只揭露了一半的變更。
 - `--no-restart` 寫入 daemon 設定後停在 `phase=prepared`，把重啟 Docker 留給使用者。在使用者重啟前不會有任何效果，而這正是這個旗標讓「寫入」變成可安全演練的原因。
 - 成功 exit code `0`，操作失敗非 `0`。
 - 所有文案補 `en` / `zh-TW` / `ja-JP` 三語。

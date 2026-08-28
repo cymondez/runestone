@@ -14,7 +14,13 @@ import {
 } from './daemon-config';
 import { readDaemonConfig, writeDaemonConfig } from './daemon-file';
 import { resolveDaemonConfigTarget, sameDaemonPath } from './daemon-target';
-import { TargetIpResult, resolveTargetIp } from './environment';
+import {
+  DESKTOP_SAFE_RESTART_VERSION,
+  TargetIpResult,
+  desktopRestartIsSafe,
+  readDesktopVersion,
+  resolveTargetIp
+} from './environment';
 import { isAutoReorderEnabled, isDnsEnabled, ownedEntryInputs } from './settings';
 import { dnsContainerName } from './ui-route';
 import { UpstreamResolution, defaultHostResolvers, determineUpstreams } from './upstream';
@@ -48,6 +54,8 @@ export interface LifecycleDependencies {
   /** `up -d dns`: an environment change needs the container recreated, not restarted. */
   recreateDnsService: (composePath: string) => void;
   targetIp: (image: string) => TargetIpResult;
+  /** Docker Desktop's own version, for the restart-safety check. */
+  desktopVersion: () => ReturnType<typeof readDesktopVersion>;
   readDir: (dir: string) => string[];
   now: () => string;
 }
@@ -64,6 +72,7 @@ export const defaultLifecycleDependencies: LifecycleDependencies = {
   recreateDnsService: (composePath) =>
     composeService.up(composePath, { profiles: [DNS_PROFILE], services: [COMPOSE_SERVICES.dns] }),
   targetIp: (image) => resolveTargetIp(image),
+  desktopVersion: () => readDesktopVersion(),
   readDir: (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir) : []),
   now: () => new Date().toISOString()
 };
@@ -459,7 +468,13 @@ export function applyUpDns(
 }
 
 export type DnsHealthStatus = 'pass' | 'warn' | 'fail' | 'skip';
-export type DnsHealthCheckId = 'ownership' | 'position' | 'service' | 'targetIp' | 'mappings';
+export type DnsHealthCheckId =
+  | 'ownership'
+  | 'position'
+  | 'service'
+  | 'targetIp'
+  | 'mappings'
+  | 'desktopRestart';
 
 export interface DnsHealthCheck {
   id: DnsHealthCheckId;
@@ -540,6 +555,23 @@ export function checkDnsHealth(
     status: state.running ? 'pass' : 'fail',
     detail: { name: dnsContainerName(config), error: state.error ?? '' }
   });
+
+  // Whether a future `dns enable` may restart Docker for you, or will hand that
+  // step back. Worth reporting from a diagnostic, because the answer decides
+  // whether an enable can finish on its own — and because the remedy is an
+  // update the user has to choose to install.
+  if (target.host === 'docker-desktop') {
+    const version = deps.desktopVersion();
+    if (!version?.version) {
+      checks.push({ id: 'desktopRestart', status: 'skip', detail: { minimum: DESKTOP_SAFE_RESTART_VERSION } });
+    } else {
+      checks.push({
+        id: 'desktopRestart',
+        status: desktopRestartIsSafe(version) ? 'pass' : 'warn',
+        detail: { version: version.version, minimum: DESKTOP_SAFE_RESTART_VERSION }
+      });
+    }
+  }
 
   const probe = deps.targetIp(dnsImage(config));
   if (!probe.ip) {

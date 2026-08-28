@@ -270,4 +270,41 @@ describe('dns enable command', () => {
     expect(fs.readFileSync(daemonPath, 'utf8')).toBe(afterFirst);
     expect(JSON.parse(afterFirst).dns).toEqual([TARGET, '8.8.8.8']);
   });
+  describe('the daemon fallback (spec 9.7) from the command line', () => {
+    // Before this, the only way to set it was `runestone setup` or editing
+    // `.env` by hand: `--upstream` had a flag and the fallback had none.
+    it('adds the entry named by --fallback at dns[1]', async () => {
+      writeDaemon(['8.8.8.8']);
+
+      await enable('--dry-run', '--fallback', '10.0.0.53');
+
+      expect(output()).toContain('10.0.0.53 is added at dns[1]');
+      expect(output()).toContain('+ 10.0.0.53');
+    });
+
+    it('shows the removal when --no-fallback takes one away', async () => {
+      const before = writeDaemon(['8.8.8.8']);
+
+      await enable('--yes', '--no-restart', '--fallback', '1.1.1.1');
+      expect(JSON.parse(fs.readFileSync(daemonPath, 'utf8')).dns).toEqual([TARGET, '1.1.1.1', '8.8.8.8']);
+
+      await enable('--dry-run', '--no-fallback');
+
+      // A plan that takes an entry out of the user's daemon file has to say so.
+      expect(output()).toContain('- 1.1.1.1');
+
+      // And the whole round trip still lands back on the untouched original.
+      await disable('--yes');
+      expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
+    });
+
+    it('writes nothing at all on a dry run, whichever flag was given', async () => {
+      const before = writeDaemon([TARGET, '1.1.1.1']);
+
+      await enable('--dry-run', '--fallback', '9.9.9.9');
+
+      expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
+    });
+  });
+
 });

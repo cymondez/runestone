@@ -134,6 +134,18 @@ DNS_UI_ENABLE=false
 - **主要用於 Runestone 開發的機器，而且希望 DNS 一壞就立刻看得出來** → 通常應該關著。
 - **不確定** → 先關著。之後要開啟，成本只是再一次 daemon 寫入與再一次 Docker 重啟，沒有別的。
 
+可以在 `.env` 設定，也可以直接在指令上給：
+
+```bash
+runestone dns enable --fallback 1.1.1.1
+```
+
+```bash
+runestone dns enable --no-fallback
+```
+
+不論用哪一種，值都會被寫進 `DNS_DAEMON_FALLBACK`，所以「生效的值」永遠是你讀得回來的那個。
+
 ## 開啟它
 
 `runestone setup` 會問你要不要 DNS，並把你的答案記下來。**setup 不會啟用它**——它從不碰 Docker daemon 設定。啟用是它自己的指令，這樣它需要的那兩道確認，才會屬於一個你為了這件事而下的指令。

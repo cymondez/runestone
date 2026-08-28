@@ -77,6 +77,7 @@ describe('dns lifecycle', () => {
     managed?: string;
     detected?: string;
     probeError?: string;
+    desktopVersion?: string | null;
   } = {}): Harness {
     const result: Harness = { deps: {}, written: [], records: [], env: [], restarts: 0, recreates: 0 };
 
@@ -104,6 +105,10 @@ describe('dns lifecycle', () => {
         result.recreates += 1;
       },
       targetIp: () => (options.probeError ? { error: options.probeError } : { ip: options.detected ?? TARGET }),
+      desktopVersion: () =>
+        options.desktopVersion === null
+          ? undefined
+          : { raw: `Docker Desktop ${options.desktopVersion ?? '4.88.1'} (1)`, version: options.desktopVersion ?? '4.88.1' },
       now: () => '2026-08-28T00:00:00.000Z'
     };
 
@@ -342,4 +347,38 @@ describe('dns lifecycle', () => {
       expect(targets).toEqual({ services: [], profiles: ['dns'], keepsDns: false });
     });
   });
+  describe('doctor and the Docker Desktop restart check', () => {
+    const enabled = () => testEnv(projectDir, { DNS_ENABLE: 'true', DNS_HOST_IP: TARGET });
+
+    function checkFor(desktopVersion: string | null | undefined) {
+      daemon([TARGET]);
+      const inspection = harness({ state: record(), managed: '', desktopVersion });
+      const report = checkDnsHealth(enabled(), inspection.deps);
+      return report.checks.find((check) => check.id === 'desktopRestart');
+    }
+
+    it('passes on a version whose restart leaves containers recoverable', () => {
+      expect(checkFor('4.88.1')).toMatchObject({ status: 'pass', detail: { version: '4.88.1' } });
+    });
+
+    it('warns on an older version, because dns enable will not restart it', () => {
+      expect(checkFor('4.85.0')).toMatchObject({ status: 'warn', detail: { version: '4.85.0' } });
+    });
+
+    it('reports the threshold even when the version cannot be read', () => {
+      expect(checkFor(null)).toMatchObject({ status: 'skip', detail: { minimum: '4.86.0' } });
+    });
+
+    it('still writes nothing, whatever it found', () => {
+      const before = daemon([TARGET]);
+      const inspection = harness({ state: record(), managed: '', desktopVersion: '4.85.0' });
+
+      checkDnsHealth(enabled(), inspection.deps);
+
+      expect(inspection.written).toHaveLength(0);
+      expect(inspection.records).toHaveLength(0);
+      expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
+    });
+  });
+
 });

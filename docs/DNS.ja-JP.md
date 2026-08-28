@@ -134,6 +134,18 @@ DNS_UI_ENABLE=false
 - **主に Runestone の開発に使うマシンで、DNS の不調をすぐ気づきたい** → 通常は無効のままが適切です。
 - **迷う場合** → 無効のままにしてください。後から有効にする費用は、daemon への書き込み 1 回と Docker の再起動 1 回だけです。
 
+`.env` で設定するか、コマンドラインで直接指定できます。
+
+```bash
+runestone dns enable --fallback 1.1.1.1
+```
+
+```bash
+runestone dns enable --no-fallback
+```
+
+どちらを使っても値は `DNS_DAEMON_FALLBACK` に書き込まれるので、有効な値は常に読み返せる値になります。
+
 ## 有効にする
 
 `runestone setup` は DNS が必要かどうかを尋ね、回答を記録します。**セットアップは有効化しません** — Docker daemon の設定には決して触れません。有効化は独立したコマンドです。必要な 2 つの確認が、そのために実行したコマンドに属するようにするためです。

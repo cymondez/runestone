@@ -542,13 +542,16 @@ External-change detection must also be shown (per 9.5):
 
 ```text
 runestone dns enable  [--yes] [--dry-run] [--no-restart] [--upstream <ip,...>]
+                      [--fallback <ip> | --no-fallback] [--restore-containers]
 runestone dns disable [--yes] [--dry-run] [--assume-entry <ip>] [--assume-index <n>]
 runestone dns status
 ```
 
 - `--yes` skips the Docker restart confirmation; without it, confirmation is mandatory before restarting.
 - `--assume-entry` and `--assume-index` may each be given more than once, because ownership can cover two entries (9.7). One occurrence per entry that needs to be stated explicitly.
-- `--dry-run` prints the before/after diff of the daemon configuration and exits, writing nothing whatsoever. It is the primary development tool for the tiers in 16.2, and it stays in the shipped CLI because a user who wants to see the change before consenting to it deserves the same tool.
+- `--fallback <ip>` sets the 9.7 daemon fallback for this run and `--no-fallback` removes it; both are written to `DNS_DAEMON_FALLBACK`, so the value in effect is always the value that can be read back rather than one that lived only in a flag. Without either, the setting is left as it is. **The fallback needed a flag of its own**: `--upstream` had one and the fallback did not, which left `runestone setup` and hand-editing `.env` as the only ways to choose the entry that decides whether a lookup fails loudly or resolves a Runestone domain to `127.0.0.1`.
+- `--restore-containers` applies only where the automatic restart is withheld for an old Docker Desktop (6.2): it records the running containers and starts back whichever the restart left down. **Opt-in, never a default** — starting containers Runestone does not own is not a decision it may take by itself.
+- `--dry-run` prints the before/after diff of the daemon configuration and exits, writing nothing whatsoever. **The diff shows removals as well as additions**, because a plan can take an entry out of the user's file — `--no-fallback` does exactly that — and a change shown only when it adds something is a change half disclosed. It is the primary development tool for the tiers in 16.2, and it stays in the shipped CLI because a user who wants to see the change before consenting to it deserves the same tool.
 - `--no-restart` writes the daemon configuration and stops at `phase=prepared`, leaving the Docker restart to the user. Nothing takes effect until they restart, which is precisely why this flag makes the write safe to rehearse.
 - Exit code `0` on success, non-zero on operational failure.
 - All strings need `en` / `zh-TW` / `ja-JP` translations.

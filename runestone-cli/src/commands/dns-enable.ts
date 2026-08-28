@@ -124,8 +124,22 @@ export function printEnableDiff(plan: EnablePlan): void {
   const before = readDnsArray(plan.before).values.map(String);
   const after = readDnsArray(plan.after).values.map(String);
   const added = new Set(plan.entries.map((entry) => entry.value));
-  const remaining = [...before];
 
+  // **Removals first, and never silently.** A plan can take an entry away as
+  // well as add one — `--no-fallback` does exactly that, and turning the 9.7
+  // entry off is a change to the user's daemon file they are owed sight of.
+  // Showing only additions made that invisible.
+  const unmatched = [...after];
+  for (const value of before) {
+    const position = unmatched.indexOf(value);
+    if (position === -1) {
+      line(`- ${value}`);
+    } else {
+      unmatched.splice(position, 1);
+    }
+  }
+
+  const remaining = [...before];
   for (const value of after) {
     const position = remaining.indexOf(value);
     if (position === -1 && added.has(value)) {
@@ -260,6 +274,8 @@ export function createDnsEnableCommand(): Command {
     .option('-y, --yes', t('dns.enable.option.yes'))
     .option('--dry-run', t('dns.enable.option.dryRun'))
     .option('--upstream <ips>', t('dns.enable.option.upstream'))
+    .option('--fallback <ip>', t('dns.enable.option.fallback'))
+    .option('--no-fallback', t('dns.enable.option.noFallback'))
     .option('--no-restart', t('dns.enable.option.noRestart'))
     .option('--restore-containers', t('dns.enable.option.restoreContainers'))
     .action(async (options: {
@@ -268,12 +284,27 @@ export function createDnsEnableCommand(): Command {
       upstream?: string;
       restart?: boolean;
       restoreContainers?: boolean;
+      fallback?: string | false;
     }) => {
       try {
         const loaded = envLoader.load();
-        const config: RunestoneEnv = options.upstream
-          ? ({ ...loaded, DNS_UPSTREAM: options.upstream } as RunestoneEnv)
-          : loaded;
+
+        // Both overrides are for this run and are then written to `.env`, so the
+        // value in effect is always the value you can read back. `--no-fallback`
+        // arrives as `false`, which is how the 9.7 entry is asked to go away —
+        // distinct from not mentioning it at all, which changes nothing.
+        const overrides: Partial<RunestoneEnv> = {};
+        if (options.upstream) {
+          overrides.DNS_UPSTREAM = options.upstream;
+        }
+        if (typeof options.fallback === 'string') {
+          overrides.DNS_DAEMON_FALLBACK = options.fallback;
+        } else if (options.fallback === false) {
+          overrides.DNS_DAEMON_FALLBACK = '';
+        }
+
+        const config: RunestoneEnv =
+          Object.keys(overrides).length > 0 ? ({ ...loaded, ...overrides } as RunestoneEnv) : loaded;
 
         const plan = planEnable(config);
 

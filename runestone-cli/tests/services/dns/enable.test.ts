@@ -249,7 +249,11 @@ describe('dns enable', () => {
         // Empty, because an all-interfaces bind must not be spelled out.
         DNS_BIND_PREFIX: '',
         DNS_UPSTREAM: '10.0.0.1,10.0.0.2',
-        DNS_CONTAINER_RESOLVER: '10.0.0.1'
+        DNS_CONTAINER_RESOLVER: '10.0.0.1',
+        // Written even when empty: that is how the 9.7 fallback records being
+        // off, and `--fallback` / `--no-fallback` have to be readable back out
+        // of `.env` rather than living only in a flag.
+        DNS_DAEMON_FALLBACK: ''
       });
     });
 
