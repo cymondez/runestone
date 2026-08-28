@@ -261,7 +261,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 **交付項目**
 
 - [x] `runestone dns enable` 的規格 10.1 第 1–4 步：不改動任何狀態的前置檢查、`.env` 與專案檔案、啟動 dns 服務、由一次性容器實際查詢驗證、寫入所有權狀態、原子寫入 daemon
-- [ ] `--no-restart` 刻意停在 `phase=prepared`（規格 10.1、11.1）——這裡 enable 一律就是這個**行為**；**旗標**本身等 M6a，理由見下
+- [x] `--no-restart` 刻意停在 `phase=prepared`（規格 10.1、11.1）——旗標隨 M6a 落地，並在 M6b 對真實 daemon 檔實際用過
 - [x] `--dry-run` 只做前置檢查，然後印出 diff 並結束
 - [x] Target IP 變更處理（規格 9.4）與調和路徑（規格 9.5）
 - [x] 每一種失敗都有反向還原；還原本身失敗時保留 `phase=prepared` 並輸出手動修復資訊
@@ -269,7 +269,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **通過條件**
 
-- [ ] 在真機上：`enable --no-restart` → 檢視 diff → `disable` → daemon 檔案與 M5 前的快照**逐位元組相同**——**維護者步驟**：真正的 enable 會綁定主機 53 port（等級 3），且需先完成 16.5 安全網。在那之前已在指令層以真實檔案 I/O 證明
+- [ ] 在真機上：`enable --no-restart` → 檢視 diff → `disable` → daemon 檔案與 M5 前的快照**逐位元組相同**——enable 與 diff 已完成（M6b，對真實檔案，原有鍵原封不動）。**「逐位元組相同」這個說法對 Docker Desktop 需要重述**：它會自己改寫 `daemon.json`、重排鍵、重新排版陣列，所以這個不變式在 Runestone 自身操作之間成立，但不跨越中間的一次 Docker Desktop 重啟
 - [x] 同樣的循環，但事先手動加入一筆使用者項目：該項目完好未被動到——在指令層
 - [x] 前置檢查失敗時不留下任何 `.env`、服務、狀態或 daemon 變更
 - [x] 第 3 步驗證失敗時停掉服務並還原 `.env`，且 daemon 檔案從未被開啟寫入
@@ -475,9 +475,9 @@ cp ~/.docker/daemon.json ~/daemon.json.pre-runestone-dns && sha256sum ~/daemon.j
 
 原生 Linux 的路徑是 `/etc/docker/daemon.json`。若檔案不存在，把「不存在」這件事記下來——`createdDaemonFile=true` 是另一條撤銷路徑（規格 9.2）。
 
-- [ ] 已在版控之外取得快照並記錄雜湊
-- [ ] 已確認 M4 的 `disable --assume-entry` 對「手動植入、無所有權記錄」的項目確實有效
-- [ ] 已手動走過一遍復原路徑：編輯檔案、移除該筆、重啟 Docker
+- [x] 已在版控之外取得快照並記錄雜湊——`m6b-safety-net.sh capture`，而且真的用上了
+- [x] 已確認 M4 的 `disable --assume-entry` 對「手動植入、無所有權記錄」的項目確實有效——不給旗標時拒絕，給了之後精準移除指定那筆，無關項目與無關鍵都沒被動到
+- [x] 已手動走過一遍復原路徑：編輯檔案、移除該筆、重啟 Docker——是在真實故障情境下走的：Docker 當著、我方項目還在檔案裡。在它停著時把檔案還原就已足夠，Docker 回來時讀到的是修正後的檔案
 
 這份快照是給人用的安全網，**不是** Runestone 管理的備份：規格 9.3 依然禁止整檔還原，因為還原檔案會連帶丟掉這期間發生的其他無關修改。
 
@@ -492,7 +492,7 @@ sh docker/dns/test/m6b-safety-net.sh capture
 - [x] 容器清單已存
 - [ ] 沒有任何長時間執行或帶狀態的工作正在容器內進行中
 - [ ] 已約好時間，因為機器上每個容器都會重啟
-- [ ] **每個執行中容器的 restart policy 都已記下。** 沒有 policy 的容器不會自己回來；而 `unless-stopped` 在**優雅的** `docker desktop restart` 之後會不會回來——相對於 M6a 演練的「把 daemon 砍掉」——在這個平台上還沒有定論
+- [x] **每個執行中容器的 restart policy 都已記下**——`capture` 會記錄，並回報有幾個不會自己回來。至於 `unless-stopped` 能不能撐過**優雅的** `docker desktop restart`（相對於 M6a 演練的「被砍掉的 daemon」），仍無定論，列為 M6b 項目追蹤
 
 ## 證據記錄
 

@@ -261,7 +261,7 @@ Running it also caught a real defect that no unit test would have: with a blocke
 **Deliverables**
 
 - [x] `runestone dns enable` steps 1–4 of spec 10.1: preflight that changes nothing, `.env` and project files, dns service start, real query verification from a throwaway container, ownership state, atomic daemon write
-- [ ] `--no-restart` stopping deliberately at `phase=prepared` (spec 10.1, 11.1) — the **behaviour** is what enable does unconditionally here; the **flag** waits for M6a, see below
+- [x] `--no-restart` stopping deliberately at `phase=prepared` (spec 10.1, 11.1) — the flag landed with M6a and was used against a real daemon file in M6b
 - [x] `--dry-run` performing preflight only, then printing the diff and exiting
 - [x] Target IP rotation (spec 9.4) and the reconciliation path (spec 9.5)
 - [x] Rollback on every failure, and `phase=prepared` retained with manual recovery output when the rollback itself fails
@@ -269,7 +269,7 @@ Running it also caught a real defect that no unit test would have: with a blocke
 
 **Gate**
 
-- [ ] On a real machine: `enable --no-restart` → inspect the diff → `disable` → the daemon file is **byte-identical** to the pre-M5 snapshot — **maintainer step**: a real enable binds host port 53 (level 3) and needs the 16.5 safety net first. Proven at the command level with real file I/O in the meantime
+- [ ] On a real machine: `enable --no-restart` → inspect the diff → `disable` → the daemon file is **byte-identical** to the pre-M5 snapshot — the enable and the diff are done (M6b, against the real file, existing keys preserved). **The byte-identical claim needs restating for Docker Desktop**: it rewrites `daemon.json` itself, reordering keys and reformatting arrays, so the invariant holds across Runestone's own operations and not across a Docker Desktop restart in between
 - [x] The same cycle with a hand-added user entry present: that entry survives untouched — at the command level
 - [x] Preflight failure leaves no `.env`, service, state or daemon change behind
 - [x] Verification failure at step 3 stops the service and restores `.env`, with the daemon file never opened for writing
@@ -475,9 +475,9 @@ cp ~/.docker/daemon.json ~/daemon.json.pre-runestone-dns && sha256sum ~/daemon.j
 
 On native Linux the path is `/etc/docker/daemon.json`. If the file does not exist, record that fact — `createdDaemonFile=true` is a distinct revocation path (spec 9.2).
 
-- [ ] Snapshot taken and hash recorded, outside version control
-- [ ] M4's `disable --assume-entry` confirmed working against a hand-planted entry with no ownership record
-- [ ] The manual recovery path walked once by hand: edit the file, remove the entry, restart Docker
+- [x] Snapshot taken and hash recorded, outside version control — `m6b-safety-net.sh capture`, and it was used in anger
+- [x] M4's `disable --assume-entry` confirmed working against a hand-planted entry with no ownership record — refused without it, removed exactly the named entry with it, unrelated entry and unrelated key untouched
+- [x] The manual recovery path walked once by hand: edit the file, remove the entry, restart Docker — walked under real failure conditions, with Docker down and the entry in the file. Restoring the file while it was down was enough; Docker read the corrected file when it returned
 
 This snapshot is a safety net for the human. It is **not** a Runestone-managed backup: spec 9.3 still forbids whole-file restoration, because restoring the file would discard unrelated edits made in the meantime.
 
@@ -492,7 +492,7 @@ That snapshots the daemon file and its hash, the Runestone tool state, and every
 - [x] Container list saved
 - [ ] Nothing long-running or stateful is mid-flight in any container
 - [ ] A window agreed, because every container on the machine restarts
-- [ ] **The restart policy of every running container noted.** A container with no policy does not come back on its own, and whether `unless-stopped` comes back after a *graceful* `docker desktop restart` — as opposed to the daemon being killed, which is what M6a exercised — is not yet established on this platform
+- [x] **The restart policy of every running container noted** — `capture` records it and reports how many will not return on their own. Whether `unless-stopped` survives a *graceful* `docker desktop restart`, as opposed to the killed daemon M6a exercised, is still unestablished and is tracked as an M6b item
 
 ## Evidence log
 
