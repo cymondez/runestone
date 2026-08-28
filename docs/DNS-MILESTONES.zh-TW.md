@@ -22,7 +22,7 @@
 | M3 | 服務接線與 `dns status` | 0 | T1 | — | **已完成** |
 | M4 | `dns disable` | 2（導向） | T0 | — | **已完成** |
 | M5 | `dns enable` 到 `prepared` | 2 | T1 | — | **已完成**，真機通過條件待 16.5 安全網 |
-| M6a | dind 載具內端到端 | 宿主 2／載具內 3 | T2 | M5 | 未開始 |
+| M6a | dind 載具內端到端 | 宿主 2／載具內 3 | T2 | — | **已完成**，CI 通過條件待 runner |
 | M6b | 真機與 VM 驗證 | 3 | T3／T4 | M6a、裁決 1 | 未開始 |
 | M7 | 生命週期整合與揭露 | 3 | T1／T2 | M6a | 未開始 |
 | M8 | 平台矩陣與發布 | 3 | T3／T4 | M6b、M7 | 未開始 |
@@ -36,7 +36,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 | 裁決 | 截止 | 狀態 | 延後定案的代價 |
 | --- | --- | --- | --- |
 | 3——備援 DNS 放 dnsmasq 上游還是 daemon 陣列 | M1 之前 | **已定案：兩者都做**——dnsmasq 上游為必要且永不為空（規格 8.4），daemon 陣列備援為選用且預設關閉（規格 9.7） | 及時定案。`insertedEntries` 是自有項目的陣列，M1 一開始就照此實作 |
-| 2——image 的建置發佈方式、名稱與起始 tag | M2 之前 | **暫定：進版控的 buildx 腳本**，`cymondez/runestone-dns:1.0`。CI 是延後而非放棄——申請 registry token 與把 workflow 跑通需要時間，M2 不該等。`origin` 是自架 Gitea、GitHub 是鏡像，所以 CI 落地時以 Gitea Actions 為第一目標 | 及時定案。欠下的債是可追溯性：手動跑的發佈之所以還能回推，只因為腳本在 repo 裡 |
+| 2——image 的建置發佈方式、名稱與起始 tag | M2 之前 | **暫定：進版控的 buildx 腳本**，`cymondez/runestone-dns:1.0`。「從 CI 發佈」是延後而非放棄——申請 registry token 需要時間，M2 不該等。**CI 本身用 Drone**，跑在作為 `origin` 的自架 Gitea 上；另保留一份 GitHub Actions workflow 給鏡像 | 及時定案。欠下的債是可追溯性：手動跑的發佈之所以還能回推，只因為腳本在 repo 裡 |
 | 4——`compose.yml` 重生策略 | M3 之前 | **已定案：自動重生**，由 `.env` 內的 `COMPOSE_TEMPLATE_VERSION` 驅動；使用者手改過的檔案在被覆寫前先在原地旁邊備份 | 及時定案 |
 | 1——`docker desktop restart` 是否存在 | M6b 之前 | 未定 | 低。實作會自行偵測，並退回「提示手動重啟」 |
 
@@ -296,22 +296,39 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **目標。** 在爆炸半徑只有一個容器的沙箱內，證明含 daemon 重啟的完整循環——好讓沒有虛擬機的接手者也能做，也好讓 CI 能反覆做。
 
-**宿主風險等級 2、載具內 3 · 層級 T2 · 前置：M5**
+**宿主風險等級 2、載具內 3 · 層級 T2**
 
 **交付項目**
 
-- [ ] `docker/dns/test/` — 規格 14.5 的載具，以及「不用虛擬機重現本里程碑」的說明
-- [ ] 載具內的完整循環：前置檢查 → 寫入 → 重啟 → resolv.conf → 通配解析 → 停用 → 檔案復原
-- [ ] 刻意注入重啟逾時，證明反向還原真的會還原
-- [ ] 載具接進 CI
+- [x] `docker/dns/test/` — 規格 14.5 的載具，以及「不用虛擬機重現本里程碑」的說明
+- [x] 載具內的完整循環：前置檢查 → 寫入 → 重啟 → resolv.conf → 通配解析 → 停用 → 檔案復原
+- [x] 刻意注入重啟逾時，證明反向還原真的會還原
+- [x] 載具接進 CI —— `.drone.yml`（Drone，對著自架 Gitea）與給鏡像用的 `.github/workflows/dns-harness.yml`，兩者呼叫同一批腳本
 
 **通過條件**
 
-- [ ] 完整循環在載具內通過
-- [ ] 注入的重啟逾時導致 daemon 檔案被還原，而不是留下半套狀態
-- [ ] 沙箱 daemon 重啟後 `restart: unless-stopped` 把 dnsmasq 拉回，過程無任何 CLI 介入
-- [ ] 能證明整趟執行都沒有動到宿主的 daemon 檔案與容器
-- [ ] 在 CI 上也通過，不只是本機
+- [x] 完整循環在載具內通過
+- [x] 注入的重啟逾時導致 daemon 檔案被還原，而不是留下半套狀態
+- [x] 沙箱 daemon 重啟後 `restart: unless-stopped` 把 dnsmasq 拉回，過程無任何 CLI 介入
+- [x] 能證明整趟執行都沒有動到宿主的 daemon 檔案與容器
+- [ ] 在 CI 上也通過，不只是本機 —— **pipeline 寫好了，但從來沒有跑過**，那需要一個指向這個 repo 的 Drone runner。沒有跑過的 pipeline 不算是通過的檢查
+
+**已落地。** `docker/dns/test/dind-harness.sh`，13 項檢查全過。
+
+沙箱裡的 daemon 跑在一個小小的監督迴圈下，而不是當容器的 entrypoint。**這是整個手法的關鍵**：殺掉它是一次真的 daemon 重啟，而容器連同裡面的 CLI 與檢查都還活著，可以觀察結果。一個 pause 檔讓載具也能讓 daemon「不要回來」，於是逾時回滾能在數秒內演練，而不是等真正的 120 秒上限。
+
+一次跑完就證明：從 Docker 內部解析 Target IP、寫入 daemon 設定、真的重啟、新容器拿到我方位址當第一個 nameserver、萬用子網域可解析、`restart: unless-stopped` 在裸重啟後自行把 dnsmasq 帶回來（沒有任何 CLI 指令參與）、注入的重啟失敗把檔案還原而不是留下半套、`disable` 回到起始狀態。最後明確斷言宿主自己的 daemon 設定與容器清單全程未被動到。
+
+**沒有任何東西是 bind mount 進沙箱的。** bind mount 是由 **daemon** 解析的，所以「腳本執行處存在的路徑」不一定在「daemon 所在處」存在——而那正是 CI 的處境：那裡的 step 本身就是一個容器。檔案改為透過 Docker API 送進去，於是載具不在乎它對話的是誰的 daemon。
+
+**載具第一次跑就值回票價**，抓到一個單元測試不會抓到的東西：`isWsl()` 在沙箱裡回傳 true。Docker Desktop 的 Linux VM 跑在 WSL2 上，所以它上面每一個容器都回報 Microsoft 核心——那個本來要用來辨識 WSL 的字串，同樣會把普通的 Linux 容器辨識成 WSL，於是 daemon 路徑從容器裡去找一顆 Windows 磁碟。
+
+**規格 6.2 的 WSL 那一列是被移除，不是被修好。** 兩個理由，第二個才是定案的那個：
+
+- Windows 的支援就是在 **Windows 上**執行 CLI。使用者的 Docker 剛好裝在 WSL 裡是 Docker Desktop 的事。一條沒有人跑、也沒有人測得到的「受支援路徑」，比沒有這條路徑更糟。
+- 它需要的偵測根本做不到。WSL 與 Docker Desktop 上任何容器的核心字串完全一樣，所以根本沒有東西可以拿來偵測。
+
+那一列原本要防的風險是真的，而且仍然有處理，只是改成問一個有可靠答案的問題：**若 `docker info` 回報 daemon 是 Docker Desktop，而 CLI 卻跑在 Linux 上，前置檢查一律拒絕。** 那個 daemon 的設定在 Windows 那一側，因此寫入這個檔案系統的 `~/.docker/daemon.json` 會回報成功，卻只改到一個 Docker 從來不讀的檔案——正是這個功能要消滅的「安靜地給出錯誤答案」。`isWsl()` 在 M0 把它復活之前本來就是死程式碼，已刪除。
 
 **回退。** 單一 revert。這是最後一個具備這個性質的里程碑。
 

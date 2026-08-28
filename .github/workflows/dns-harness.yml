@@ -6,9 +6,10 @@ name: DNS harness
 # can run — and a check that runs on every change is worth more than a manual
 # verification performed once and then never again.
 #
-# This file is deliberately written to the subset Gitea Actions also understands,
-# because `origin` for this repository is a self-hosted Gitea and GitHub is a
-# mirror. Copy it to `.gitea/workflows/` to run it there.
+# CI proper is Drone, running against the self-hosted Gitea that is `origin`; see
+# `.drone.yml`. This file is for the GitHub mirror. Both run the same three checks
+# by invoking the same scripts, so neither is a second implementation of the
+# other — if they ever disagree, the scripts are what to fix.
 
 on:
   push:

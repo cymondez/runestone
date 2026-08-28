@@ -22,7 +22,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | M3 | Service plumbing and `dns status` | 0 | T1 | — | **done** |
 | M4 | `dns disable` | 2 (redirected) | T0 | — | **done** |
 | M5 | `dns enable` to `prepared` | 2 | T1 | — | **done**, real-machine gate items pending the 16.5 safety net |
-| M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | M5 | not started |
+| M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | — | **done**, CI gate pending a runner |
 | M6b | Real machine and VM verification | 3 | T3 / T4 | M6a, decision 1 | not started |
 | M7 | Lifecycle integration and disclosure | 3 | T1 / T2 | M6a | not started |
 | M8 | Platform matrix and release | 3 | T3 / T4 | M6b, M7 | not started |
@@ -36,7 +36,7 @@ The four items in spec 15 have milestone deadlines (spec 16.6). A milestone must
 | Decision | Deadline | Status | Cost of deciding late |
 | --- | --- | --- | --- |
 | 3 — fallback DNS in dnsmasq's upstream or in the daemon array | before M1 | **settled: both** — the dnsmasq upstream is mandatory and never empty (spec 8.4), the daemon-array fallback is optional and off by default (spec 9.7) | Settled in time. `insertedEntries` is an array of owned entries, which M1 implements from the start |
-| 2 — how the image is built and published, its name and initial tag | before M2 | **settled for now: a committed buildx script**, `cymondez/runestone-dns:1.0`. CI is deferred, not abandoned — the registry token and a green workflow take time M2 should not wait on. `origin` is a self-hosted Gitea and GitHub a mirror, so Gitea Actions is the first target when CI lands | Settled in time. The debt is traceability: a hand-run publish is reconstructable only because the script is in the repository |
+| 2 — how the image is built and published, its name and initial tag | before M2 | **settled for now: a committed buildx script**, `cymondez/runestone-dns:1.0`. Publishing from CI is deferred, not abandoned — the registry token takes time M2 should not wait on. **CI itself is Drone**, against the self-hosted Gitea that is `origin`; a GitHub Actions workflow is kept for the mirror | Settled in time. The debt is traceability: a hand-run publish is reconstructable only because the script is in the repository |
 | 4 — `compose.yml` regeneration strategy | before M3 | **settled: automatic**, driven by `COMPOSE_TEMPLATE_VERSION` in `.env`, and a file the user hand-edited is backed up beside the original before being overwritten | Settled in time |
 | 1 — whether `docker desktop restart` exists | before M6b | open | Low. The implementation detects it and falls back to a manual-restart prompt |
 
@@ -296,22 +296,39 @@ That real run earned its keep by exposing a defect no unit test would have caugh
 
 **Goal.** Prove the full cycle including the daemon restart, inside a sandbox whose blast radius is one container — so that a contributor without a virtual machine can do it, and so that CI can do it repeatedly.
 
-**Risk level 2 on the host, 3 inside the sandbox · Tier T2 · Blocked by M5**
+**Risk level 2 on the host, 3 inside the sandbox · Tier T2**
 
 **Deliverables**
 
-- [ ] `docker/dns/test/` — the harness from spec 14.5, plus instructions for reproducing this milestone without a virtual machine
-- [ ] Full cycle inside the harness: preflight → write → restart → resolv.conf → wildcard resolution → disable → file restored
-- [ ] A deliberately injected restart timeout, proving the rollback actually rolls back
-- [ ] The harness wired into CI
+- [x] `docker/dns/test/` — the harness from spec 14.5, plus instructions for reproducing this milestone without a virtual machine
+- [x] Full cycle inside the harness: preflight → write → restart → resolv.conf → wildcard resolution → disable → file restored
+- [x] A deliberately injected restart timeout, proving the rollback actually rolls back
+- [x] The harness wired into CI — `.drone.yml` (Drone against the self-hosted Gitea) and `.github/workflows/dns-harness.yml` for the mirror, both calling the same scripts
 
 **Gate**
 
-- [ ] The full cycle passes inside the harness
-- [ ] The injected restart timeout results in the daemon file being restored, not a half-applied state
-- [ ] `restart: unless-stopped` brings dnsmasq back after the sandbox daemon restart with no CLI involvement
-- [ ] The host's daemon file and containers are provably untouched by the whole run
-- [ ] It passes in CI, not only locally
+- [x] The full cycle passes inside the harness
+- [x] The injected restart timeout results in the daemon file being restored, not a half-applied state
+- [x] `restart: unless-stopped` brings dnsmasq back after the sandbox daemon restart with no CLI involvement
+- [x] The host's daemon file and containers are provably untouched by the whole run
+- [ ] It passes in CI, not only locally — **the pipelines are written but have never run**, which needs a Drone runner pointed at the repository. A pipeline that has not run is not a passing check
+
+**Landed.** `docker/dns/test/dind-harness.sh`, 13 checks, all passing.
+
+The daemon inside the sandbox runs under a small supervisor loop rather than as the container's entrypoint. **That is the whole trick**: killing it is a real daemon restart, and the container — with the CLI and the checks running inside it — survives to observe the result. A pause file lets the harness also make the daemon *not* come back, which is how the rollback-on-timeout path is exercised in seconds instead of the two minutes the real poll limit would take.
+
+One run proves: the Target IP resolved from inside Docker, the daemon configuration written, a real restart, a new container given our address as its first nameserver, a wildcard subdomain resolving, `restart: unless-stopped` bringing dnsmasq back after a bare daemon restart with no CLI command involved, an injected restart failure restoring the file rather than leaving it half-applied, and `disable` returning the file to its starting state. The host's own daemon configuration and container list are asserted untouched at the end.
+
+**Nothing is bind-mounted into the sandbox.** A bind mount is resolved by the *daemon*, so a path that exists where the script runs need not exist where the daemon does — which is exactly the situation in CI, where the step is itself a container. Files go in over the Docker API instead, so the harness does not care whose daemon it is talking to.
+
+**The harness earned its keep on its first run**, by catching something no unit test would have: `isWsl()` returned true inside the sandbox. Docker Desktop runs its Linux VM on WSL2, so every container on it reports a Microsoft kernel — the string that was supposed to identify WSL identifies an ordinary Linux container just as well, and the daemon path went hunting for a Windows drive from inside a container.
+
+**The WSL row of spec 6.2 was removed rather than fixed.** Two reasons, and the second settles it:
+
+- Windows support means running the CLI **on Windows**. Whether the user's Docker happens to live in WSL is Docker Desktop's business. A supported path nobody runs and nobody can test is worse than no path at all.
+- The detection it needed cannot work. The kernel string is identical for WSL and for any container on Docker Desktop, so there is nothing to detect *with*.
+
+The risk that row guarded is real and is still handled, by asking a question that has a reliable answer: **if `docker info` reports the daemon as Docker Desktop while the CLI is running on Linux, preflight refuses.** That daemon's configuration is on the Windows side, so writing this filesystem's `~/.docker/daemon.json` would report success while changing a file Docker never reads — the exact silent-wrong-answer failure this feature exists to remove. `isWsl()` was dead code before M0 revived it, and is deleted.
 
 **Rollback.** Single revert. This is the last milestone with that property.
 

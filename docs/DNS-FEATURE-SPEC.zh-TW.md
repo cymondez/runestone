@@ -728,7 +728,7 @@ privileged 的 `docker:dind` 容器有自己的 `/etc/docker/daemon.json`、自�
 以下每一項都有對應的里程碑截止點，見 16.6。**目前只剩第 1 項未定**，而它在 M6b 之前不阻塞任何事。
 
 1. **`docker desktop restart` 是否可用**：實作時偵測，不可用就走「提示手動重啟 + 輪詢等待」。若你已知結論可直接省略自動路徑。
-2. **暫定——image 由放在它旁邊的腳本建置與發佈。** `docker/dns/publish.sh` 執行 `docker buildx build --platform linux/amd64,linux/arm64 --push`，發佈 `cymondez/runestone-dns:1.0`，由維護者手動執行。**這明確是一個過渡答案。** 手動發佈出去的 image 不會留下「它是怎麼來的」的紀錄，所以 CI 仍然是目的地；延後的唯一理由是申請 registry token 並把 workflow 跑通需要時間，而 M2 不該等它。`origin` 是自架的 Gitea、GitHub 是鏡像，所以 CI 真的要落地時，Gitea Actions 才是順理成章的第一目標——它的 workflow 語法與 GitHub Actions 足夠接近，檔案兩邊都能搬。在那之前**腳本本身必須進版控**，讓一個已發佈的 image 至少是可以回推出來的；而且腳本必須要求明確給定 tag 才發佈，不得預設成 `latest`。
+2. **暫定——image 由放在它旁邊的腳本建置與發佈。** `docker/dns/publish.sh` 執行 `docker buildx build --platform linux/amd64,linux/arm64 --push`，發佈 `cymondez/runestone-dns:1.0`，由維護者手動執行。**這明確是一個過渡答案。** 手動發佈出去的 image 不會留下「它是怎麼來的」的紀錄，所以 CI 仍然是目的地；延後的唯一理由是申請 registry token 並把 workflow 跑通需要時間，而 M2 不該等它。**CI 用 Drone**，跑在作為 `origin` 的自架 Gitea 上。另外保留一份 GitHub Actions workflow 給鏡像用；兩者跑的是同樣三項檢查（單元測試、image 驗證、沙箱載具），而且都是去呼叫同一批腳本，因此沒有任何一邊是另一邊的第二份實作。在那之前**腳本本身必須進版控**，讓一個已發佈的 image 至少是可以回推出來的；而且腳本必須要求明確給定 tag 才發佈，不得預設成 `latest`。
 3. **已定案——`TODO` 寫的「必須讓使用者設定其他 dns 作為備援」由兩個位置共同回答。** dnsmasq 上游（8.4）是**必要且永不為空**，預設 `1.1.1.1`，因為少了它全機 container 就失去對外名稱解析；setup 提供沿用／更換／追加。daemon `dns` 陣列裡的備援（9.7）則是**選用且預設關閉**，因為實測顯示它會把明確的 DNS 失敗換成 Runestone domain 安靜地解析成 `127.0.0.1`。`insertedEntries` 因此是一個自有項目的陣列，M1 一開始就必須照此實作。
 4. **已定案——`compose.yml` 依版本標記自動重生。** 標記是 Compose 檔自己標頭裡的一行註解；與 CLI 自身的模板版本不同時就重生 Compose 檔並告知使用者，而磁碟上原有的檔案會先在原地旁邊備份（見第 13 節）。
 

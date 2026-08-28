@@ -1,0 +1,55 @@
+---
+# The DNS feature's checks.
+#
+# The one step this feature cannot rehearse on a developer's machine is the
+# Docker daemon restart, because it terminates every container they have. The
+# harness does it inside a sandbox instead — which is what makes it something CI
+# can run, and a check that runs on every change is worth more than a manual
+# verification performed once and then never again.
+#
+# The harness never bind-mounts a host path into its sandbox: it copies files in
+# over the Docker API, so it does not care whether the daemon it talks to is the
+# one this step's filesystem belongs to.
+
+kind: pipeline
+type: docker
+name: dns
+
+steps:
+  - name: unit tests
+    image: node:20-alpine
+    commands:
+      - cd runestone-cli
+      - npm install --no-audit --no-fund
+      - npm run test:unit
+
+  - name: runestone-dns image
+    image: docker:cli
+    volumes:
+      - name: docker-socket
+        path: /var/run/docker.sock
+    commands:
+      - sh docker/dns/test/verify-image.sh
+
+  - name: end to end in the sandbox
+    image: docker:cli
+    volumes:
+      - name: docker-socket
+        path: /var/run/docker.sock
+    commands:
+      # The harness packs the CLI, so it needs node as well as docker.
+      - apk add --no-cache nodejs npm
+      - sh docker/dns/test/dind-harness.sh
+
+volumes:
+  # Mounting the daemon socket requires the repository to be marked Trusted in
+  # Drone. The sandbox the harness starts is privileged; the step itself is not.
+  - name: docker-socket
+    host:
+      path: /var/run/docker.sock
+
+trigger:
+  event:
+    - push
+    - pull_request
+    - custom

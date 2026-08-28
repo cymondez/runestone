@@ -14,8 +14,14 @@
 # daemon restart, and the container — with the CLI and the test running inside it
 # — survives to observe the result.
 #
-# Requires: docker, node and npm on the host. No virtual machine, and no
-# privileges on the host beyond running a privileged container.
+# Nothing here bind-mounts a host path into the sandbox. A bind mount is resolved
+# by the *daemon*, so a path that exists where this script runs need not exist
+# where the daemon does — which is exactly the situation in CI, where the step is
+# itself a container. Files go in with `docker cp`, which streams them over the
+# API and therefore works against any daemon, local or not.
+#
+# Requires: docker, node and npm wherever this runs. No virtual machine, and no
+# privileges beyond being allowed to start a privileged container.
 set -u
 
 DIND_NAME=${RUNESTONE_DIND_NAME:-runestone-dns-dind}
@@ -133,20 +139,21 @@ chmod +x "${work}/supervise.sh" "${work}/restart.sh" "${work}/restart-that-fails
 # ---------------------------------------------------------------- sandbox
 say "starting the sandbox"
 docker rm -f "$DIND_NAME" >/dev/null 2>&1
-# Git Bash rewrites anything that looks like an absolute path, so the mount
-# source is converted explicitly and the entrypoint is expressed as a command
-# string that does not begin with one.
-mount_source=$work
-if command -v cygpath >/dev/null 2>&1; then
-    mount_source=$(cygpath -w "$work")
-fi
-
+# The container waits for its own supervisor to arrive. That is what lets the
+# files be copied in rather than mounted.
 docker run -d --privileged --name "$DIND_NAME" \
     -e DOCKER_TLS_CERTDIR= \
-    -v "${mount_source}:/work" \
     --entrypoint sh \
-    "$DIND_IMAGE" -c 'exec sh /work/supervise.sh' >/dev/null || {
+    "$DIND_IMAGE" -c 'while [ ! -f /staging/supervise.sh ]; do sleep 1; done; mkdir -p /work; cp -a /staging/. /work/; exec sh /work/supervise.sh' >/dev/null || {
     echo "could not start the sandbox" >&2
+    exit 1
+}
+
+# The directory itself, not its contents: the `src/.` idiom is normalised away
+# by Git Bash before docker ever sees it, which quietly nests everything one
+# level deeper. The container copies the staged files into place instead.
+docker cp "$work" "${DIND_NAME}:/staging" || {
+    echo "could not copy the harness files into the sandbox" >&2
     exit 1
 }
 
