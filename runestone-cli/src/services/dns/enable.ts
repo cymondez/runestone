@@ -482,10 +482,30 @@ export interface CompleteDependencies {
   verify: (image: string, domain: string, serverIp: string) => ResolutionCheck;
   writeDaemon: (path: string, text: string) => void;
   deleteDaemon: (path: string) => void;
+  /** Brings the dns service back after the restart. Idempotent by design. */
+  startService: (composePath: string) => void;
   stopService: (composePath: string) => void;
   writeRecord: (state: DnsOwnershipState) => void;
   clearRecord: () => void;
+  sleep: (ms: number) => void;
+  elapsed: () => number;
   now: () => string;
+}
+
+/**
+ * How long to keep asking after the restart before calling it a failure.
+ *
+ * The restart returning is not the finish line: Docker Desktop answers `docker
+ * info` well before the containers it stopped are back, and dnsmasq needs a
+ * moment more after that.
+ */
+export const VERIFY_LIMIT_MS = 90_000;
+const VERIFY_POLL_MS = 3_000;
+
+function verifyLimitMs(): number {
+  const raw = process.env.RUNESTONE_DNS_VERIFY_TIMEOUT_MS;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : VERIFY_LIMIT_MS;
 }
 
 export const defaultCompleteDependencies: CompleteDependencies = {
@@ -494,7 +514,12 @@ export const defaultCompleteDependencies: CompleteDependencies = {
   verify: (image, domain, serverIp) => verifyDomainResolution(image, domain, serverIp),
   writeDaemon: writeDaemonConfig,
   deleteDaemon: deleteDaemonConfig,
+  startService: defaultEnableApplyDependencies.startService,
   stopService: defaultEnableApplyDependencies.stopService,
+  sleep: (ms) => {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  },
+  elapsed: () => Date.now(),
   writeRecord: (state) => toolState.writeDnsState(state),
   clearRecord: () => toolState.clearDnsState(),
   now: () => new Date().toISOString()
@@ -506,7 +531,7 @@ export interface CompleteResult {
   nameservers?: string[];
   resolution?: ResolutionCheck;
   phase: 'applied' | 'prepared';
-  failure?: 'restart' | 'resolv-conf' | 'resolution';
+  failure?: 'restart' | 'service-gone' | 'resolv-conf' | 'resolution';
   failureMessage?: string;
   /** Whether the daemon change was inverted after a failure. */
   invertedDaemon: boolean;
@@ -588,19 +613,53 @@ export function completeEnable(
     return invert('restart', restart.error ?? restart.status);
   }
 
-  const nameservers = deps.nameservers(image);
-  result.nameservers = nameservers;
-  if (nameservers[0] !== targetIp) {
-    return invert(
-      'resolv-conf',
-      `expected ${targetIp} first, got ${nameservers.join(', ') || '(none)'}`
-    );
+  // **The restart returning is not the finish line.** Docker Desktop answers
+  // `docker info` long before the containers it stopped are back, and the dns
+  // service is one of them — so bring it back explicitly rather than trusting
+  // `restart: unless-stopped` to have already done it. M6a demonstrated that
+  // policy against a *killed* dockerd, which is a crash; a graceful application
+  // restart is a different path, and measured on Docker Desktop it left the dns
+  // service down. Verifying at that moment failed a working configuration and
+  // inverted it.
+  //
+  // `up -d dns` is idempotent: it is a no-op when the service is already back.
+  try {
+    deps.startService(config.COMPOSE_FILE_PATH);
+  } catch (thrown) {
+    return invert('service-gone', thrown instanceof Error ? thrown.message : String(thrown));
   }
 
-  const resolution = deps.verify(image, plan.verifyDomain, targetIp);
-  result.resolution = resolution;
-  if (!resolution.ok) {
-    return invert('resolution', resolution.error ?? 'the domain did not resolve');
+  const deadline = deps.elapsed() + verifyLimitMs();
+  let nameservers: string[] = [];
+  let resolution: ResolutionCheck = { ok: false, answers: [], error: 'not attempted' };
+
+  while (true) {
+    nameservers = deps.nameservers(image);
+    result.nameservers = nameservers;
+
+    // An empty list means the daemon is still settling and a throwaway container
+    // could not be run yet — worth waiting for. A non-empty list with the wrong
+    // address first is a fact about the configuration, and waiting cannot change
+    // it, so that fails immediately.
+    if (nameservers.length > 0 && nameservers[0] !== targetIp) {
+      return invert('resolv-conf', `expected ${targetIp} first, got ${nameservers.join(', ')}`);
+    }
+
+    if (nameservers.length > 0) {
+      resolution = deps.verify(image, plan.verifyDomain, targetIp);
+      result.resolution = resolution;
+      if (resolution.ok) {
+        break;
+      }
+    }
+
+    if (deps.elapsed() >= deadline) {
+      return nameservers.length === 0
+        ? invert('resolv-conf', `expected ${targetIp} first, got (none)`)
+        : invert('resolution', resolution.error ?? 'the domain did not resolve');
+    }
+
+    deps.sleep(VERIFY_POLL_MS);
   }
 
   const applied: DnsOwnershipState = { ...prepared, phase: 'applied', updatedAt: deps.now() };
