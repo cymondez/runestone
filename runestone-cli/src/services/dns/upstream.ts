@@ -140,3 +140,25 @@ export function determineUpstreams(sources: UpstreamSources = {}): UpstreamResol
 export function determineBindIp(input: { host: DaemonHost; targetIp: string }): string {
   return input.host === 'linux-engine' ? input.targetIp : '0.0.0.0';
 }
+
+/**
+ * The host-address prefix the Compose file puts in front of `53:53`, derived
+ * from the Bind IP. **`0.0.0.0` becomes the empty string, not the literal
+ * address**, so the published port is `53:53/udp` rather than
+ * `0.0.0.0:53:53/udp`.
+ *
+ * Those two are not equivalent, which is the kind of thing only a real machine
+ * tells you (spec 6.1). Verified on Windows with Docker Desktop: the Internet
+ * Connection Sharing service — which WSL2 turns on, so this is the default
+ * installation, not an exotic one — already holds `0.0.0.0:53/udp`. Publishing
+ * `53:53/udp` succeeds anyway and containers reach the service at the Target IP;
+ * publishing `0.0.0.0:53:53/udp` fails outright with an address-in-use error.
+ *
+ * A Bind IP that names one address is still spelled out: on a native Linux
+ * engine that is the whole point, because binding the docker0 gateway is what
+ * avoids systemd-resolved's `127.0.0.53` and keeps port 53 off the LAN.
+ */
+export function bindPrefix(bindIp: string): string {
+  const address = bindIp.trim();
+  return address === '' || address === '0.0.0.0' || address === '::' ? '' : `${address}:`;
+}

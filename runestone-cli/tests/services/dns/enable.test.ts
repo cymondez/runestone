@@ -246,6 +246,8 @@ describe('dns enable', () => {
         DNS_ENABLE: 'true',
         DNS_HOST_IP: TARGET,
         DNS_BIND_IP: '0.0.0.0',
+        // Empty, because an all-interfaces bind must not be spelled out.
+        DNS_BIND_PREFIX: '',
         DNS_UPSTREAM: '10.0.0.1,10.0.0.2',
         DNS_CONTAINER_RESOLVER: '10.0.0.1'
       });

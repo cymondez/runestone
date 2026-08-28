@@ -23,6 +23,7 @@
 
 ### Fixed
 
+- Fixed `runestone dns enable` failing to start the dns service on Windows machines running WSL2, which is most of them. The generated `compose.yml` published port 53 as `0.0.0.0:53:53`, and that form collides with the Internet Connection Sharing service WSL2 enables; publishing it as `53:53` does not, and containers reach the service just the same. An all-interfaces bind is now published without an address at all. `compose.yml` is regenerated automatically on upgrade.
 - Fixed the Docker daemon configuration path comparison on Windows, where `C:/x/daemon.json` and `C:\x\daemon.json` are the same file. They were treated as different files, which could make `runestone dns disable` refuse to remove an entry that really was Runestone's, while printing two paths that look identical.
 
 ## 1.1.1 - 2026-06-23

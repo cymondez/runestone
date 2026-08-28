@@ -168,7 +168,10 @@ Traefik、Mailpit、nginx 合併在 runestone image 是為了管理方便 — �
 | Linux 原生 Docker Engine | Target IP（docker0 gateway，例 `172.17.0.1`） | 該位址實際存在於主機，綁它可避開 systemd-resolved 佔用的 `127.0.0.53`，也不會把 53 對整個 LAN 開放。 |
 
 - Bind IP 由 CLI 依平台與 Docker context 判定後寫入 `.env` 的 `DNS_BIND_IP`，使用者可覆寫。
-- **53 port 是否可用必須以「實際啟動 dns 服務」驗證，不可只靠 netstat 判斷。** 實測：Windows 的 Internet Connection Sharing (ICS) 服務持有 `0.0.0.0:53/udp`，Docker 仍能成功發佈 `-p 53:53/udp -p 53:53/tcp`，且 container 從 `192.168.65.254:53` 查詢 managed domain 成功取得 Target IP。單看 netstat 會誤判為不可用。
+- **53 port 是否可用必須以「實際啟動 dns 服務」驗證，不可只靠 netstat 判斷。** 實測：Windows 的 Internet Connection Sharing (ICS) 服務持有 `0.0.0.0:53/udp`，Docker 仍能成功發佈 `-p 53:53/udp -p 53:53/tcp`，且 container 從 `192.168.65.254:53` 查詢 managed domain 成功取得 Target IP。單看 netstat 會誤判為不可用——而只看 TCP 則會誤判為可用，因為那台機器上的 TCP 53 確實是空的。
+- **全介面綁定必須發佈成 `53:53`，絕不能寫成 `0.0.0.0:53:53`。** 兩者不能互換，因此 Compose 檔內插的是推導出來的 `DNS_BIND_PREFIX`（7.1）而不是 `DNS_BIND_IP` 本身：全介面綁定時該前綴為空，指名單一介面時為 `<位址>:`。在 Windows + Docker Desktop、ICS 佔著該 port 的情況下實測：`-p 53:53/udp` 能啟動且服務會在 Target IP 上回應，`-p 0.0.0.0:53:53/udp` 則以 `bind: Only one usage of each socket address` 失敗；這在 `docker compose up` 上也重現過，不只是 `docker run`。WSL2 會啟用 ICS，所以明寫位址的寫法會讓預設的 Windows 安裝直接壞掉。見 [M6b 證據](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)。
+- 指名單一介面的 Bind IP 仍然要明寫，因為在原生 Linux engine 上那正是重點。
+- **在 Docker Desktop 上綁 `127.0.0.1` 也可行**，這與上表的理由相牴觸：服務**只**發佈到 `127.0.0.1:53` 時，container 仍能從 `192.168.65.254:53` 打到它，並以「服務停止」的反向對照確認回應來源。它不是預設值，因為 macOS 上沒有實測過；那是平台矩陣的問題（14.3）。對於希望 53 port 不要出現在 LAN 上的人，它是受支援的覆寫。
 
 ### 6.2 daemon 設定檔與重啟方式
 
@@ -195,6 +198,7 @@ Traefik、Mailpit、nginx 合併在 runestone image 是為了管理方便 — �
 DNS_ENABLE=false
 DNS_HOST_IP=            # Target IP，Runestone 管理
 DNS_BIND_IP=            # 53 綁定位址，Runestone 管理，可覆寫
+DNS_BIND_PREFIX=        # 由 DNS_BIND_IP 推導，只給 Compose 檔用。空 = 全介面（見 6.1）
 DNS_UPSTREAM=           # dnsmasq 上游，逗號分隔。留空＝先偵測，再退回 1.1.1.1（見 8.4）
 DNS_DAEMON_FALLBACK=    # 選用：daemon dns 陣列中的第二筆自有項目（見 9.7）。留空＝不啟用
 DNS_CONTAINER_RESOLVER= # dns 容器自己使用的 resolver。留空＝1.1.1.1（見 8.2）
@@ -205,6 +209,8 @@ DNS_UI_PASS=            # 選填，webproc 基本驗證密碼（HTTP_PASS）
 ```
 
 `DNS_ENABLE` 不存在時視為停用，既有安裝升級後行為不變。
+
+`DNS_BIND_PREFIX` 是推導出來的，不是選出來的：它就是 `DNS_BIND_IP` 所蘊含的值，存在的理由是全介面綁定必須以 `53:53` 而不是 `0.0.0.0:53:53` 的形式送到 Compose（見 6.1）。手動設定它不是改變綁定位址的受支援做法；要改請設 `DNS_BIND_IP`。
 
 ### 7.2 專案檔案
 
@@ -293,7 +299,7 @@ DNS_UI_PASS=            # 選填，webproc 基本驗證密碼（HTTP_PASS）
 - image 與 tag 由 Runestone 的 compose 樣板固定寫入（例如 `cymondez/runestone-dns:1.0`），**不提供環境變數覆寫**。
 - `restart: unless-stopped`。
 - 使用 compose profile `dns`。**`DNS_ENABLE=true` 時，CLI 所有 compose 呼叫（`up` / `stop` / `restart` / `ps` / `down`）一律帶 `--profile dns`**，避免不同 Compose 版本對 profile 的處理差異造成行為漂移。
-- 發佈 `${DNS_BIND_IP}:53:53/tcp` 與 `${DNS_BIND_IP}:53:53/udp`；webproc 的 8080 **不對主機發佈**。
+- 發佈 `${DNS_BIND_PREFIX}53:53/tcp` 與 `${DNS_BIND_PREFIX}53:53/udp`，因此全介面綁定發佈時完全不帶位址（見 6.1）；webproc 的 8080 **不對主機發佈**。
 - 掛載：`./certs:/ssl:ro`（entrypoint 掃描憑證檔名用）、`./dns/custom.conf:/etc/dnsmasq.d/custom.conf`（可寫，使用者與 webproc 的編輯對象）。Runestone 擁有的兩個設定檔只存在容器內、不掛載（見 8.3）。
 - 環境變數：`DNS_HOST_IP`、`DNS_UPSTREAM` 供 entrypoint render 設定檔；`DNS_UI_USER` / `DNS_UI_PASS` 有值時以 `HTTP_USER` / `HTTP_PASS` 傳入。
 - 服務層直接指定 `dns:` 為上游解析器，確保 dns 容器本身不會被 daemon 的 DNS 設定導回自己而形成迴圈。
@@ -733,9 +739,9 @@ privileged 的 `docker:dind` 容器有自己的 `/etc/docker/daemon.json`、自�
 
 ## 15. 待你裁決
 
-以下每一項都有對應的里程碑截止點，見 16.6。**目前只剩第 1 項未定**，而它在 M6b 之前不阻塞任何事。
+以下每一項都有對應的里程碑截止點，見 16.6。**四項現在都已定案。**
 
-1. **`docker desktop restart` 是否可用**：實作時偵測，不可用就走「提示手動重啟 + 輪詢等待」。若你已知結論可直接省略自動路徑。
+1. **已定案——`docker desktop restart` 存在，而偵測與手動備援兩者都保留。** M6b 期間在 Windows 上實測：Docker Desktop CLI plugin `v0.4.3` 提供 `docker desktop restart`，而且除非給 `--detach`，否則它是同步的——這正是 `restartDocker` 先執行指令、再輪詢 `docker info` 時所假設的。自動路徑**不會**被省略：這個 plugin 有自己的版本號，與 Docker Desktop 本身分開，因此不能從「這是 Docker Desktop」推論出它一定在，較舊的安裝也不會有。一台機器有，不構成每台機器都有的證據。見 [M6b 證據](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)。
 2. **暫定——image 由放在它旁邊的腳本建置與發佈。** `docker/dns/publish.sh` 執行 `docker buildx build --platform linux/amd64,linux/arm64 --push`，發佈 `cymondez/runestone-dns:1.0`，由維護者手動執行。**這明確是一個過渡答案。** 手動發佈出去的 image 不會留下「它是怎麼來的」的紀錄，所以 CI 仍然是目的地；延後的唯一理由是申請 registry token 並把 workflow 跑通需要時間，而 M2 不該等它。**CI 用 Drone**，跑在作為 `origin` 的自架 Gitea 上。另外保留一份 GitHub Actions workflow 給鏡像用；兩者跑的是同樣三項檢查（單元測試、image 驗證、沙箱載具），而且都是去呼叫同一批腳本，因此沒有任何一邊是另一邊的第二份實作。在那之前**腳本本身必須進版控**，讓一個已發佈的 image 至少是可以回推出來的；而且腳本必須要求明確給定 tag 才發佈，不得預設成 `latest`。
 3. **已定案——`TODO` 寫的「必須讓使用者設定其他 dns 作為備援」由兩個位置共同回答。** dnsmasq 上游（8.4）是**必要且永不為空**，預設 `1.1.1.1`，因為少了它全機 container 就失去對外名稱解析；setup 提供沿用／更換／追加。daemon `dns` 陣列裡的備援（9.7）則是**選用且預設關閉**，因為實測顯示它會把明確的 DNS 失敗換成 Runestone domain 安靜地解析成 `127.0.0.1`。`insertedEntries` 因此是一個自有項目的陣列，M1 一開始就必須照此實作。
 4. **已定案——`compose.yml` 依版本標記自動重生。** 標記是 Compose 檔自己標頭裡的一行註解；與 CLI 自身的模板版本不同時就重生 Compose 檔並告知使用者，而磁碟上原有的檔案會先在原地旁邊備份（見第 13 節）。

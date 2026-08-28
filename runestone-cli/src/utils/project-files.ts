@@ -11,7 +11,7 @@ import { pathHelpers } from './path-helpers';
  * 1  the pre-DNS template (never carried a marker; an absent marker means this)
  * 2  adds the dns service under profile `dns`
  */
-export const COMPOSE_TEMPLATE_VERSION = '2';
+export const COMPOSE_TEMPLATE_VERSION = '3';
 
 const COMPOSE_MARKER_PREFIX = '# runestone-compose-template:';
 const COMPOSE_MARKER_PATTERN = /^# runestone-compose-template:\s*(\S+)/m;
@@ -67,8 +67,8 @@ services:
     profiles:
       - dns
     ports:
-      - "\${DNS_BIND_IP:-0.0.0.0}:53:53/tcp"
-      - "\${DNS_BIND_IP:-0.0.0.0}:53:53/udp"
+      - "\${DNS_BIND_PREFIX:-}53:53/tcp"
+      - "\${DNS_BIND_PREFIX:-}53:53/udp"
     environment:
       DNS_HOST_IP: \${DNS_HOST_IP:-}
       DNS_UPSTREAM: \${DNS_UPSTREAM:-1.1.1.1}

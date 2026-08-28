@@ -168,7 +168,10 @@ Build our own **`cymondez/runestone-dns`**, located in `docker/dns/`:
 | Native Linux Docker Engine | Target IP (docker0 gateway, e.g. `172.17.0.1`) | That address genuinely exists on the host. Binding it avoids the `127.0.0.53` address held by systemd-resolved and does not expose port 53 to the whole LAN. |
 
 - The CLI determines the Bind IP from the platform and Docker context and writes it to `DNS_BIND_IP` in `.env`; users may override it.
-- **Whether port 53 is usable must be verified by actually starting the dns service, never by inspecting netstat alone.** Verified: the Windows Internet Connection Sharing (ICS) service holds `0.0.0.0:53/udp`, yet Docker still published `-p 53:53/udp -p 53:53/tcp` successfully and a container querying a managed domain at `192.168.65.254:53` received the Target IP. Reading netstat alone would have reported the port as unusable.
+- **Whether port 53 is usable must be verified by actually starting the dns service, never by inspecting netstat alone.** Verified: the Windows Internet Connection Sharing (ICS) service holds `0.0.0.0:53/udp`, yet Docker still published `-p 53:53/udp -p 53:53/tcp` successfully and a container querying a managed domain at `192.168.65.254:53` received the Target IP. Reading netstat alone would have reported the port as unusable — and reading only TCP would have reported it as free, because on that machine TCP 53 was.
+- **An all-interfaces bind must be published as `53:53`, never as `0.0.0.0:53:53`.** The two are not interchangeable, which is why the Compose file interpolates a derived `DNS_BIND_PREFIX` (7.1) rather than `DNS_BIND_IP` itself: the prefix is empty for an all-interfaces bind and `<address>:` for an address naming one interface. Measured on Windows with Docker Desktop and ICS holding the port: `-p 53:53/udp` starts and the service answers at the Target IP, while `-p 0.0.0.0:53:53/udp` fails with `bind: Only one usage of each socket address`. Reproduced through `docker compose up`, not only `docker run`. WSL2 enables ICS, so the explicit spelling breaks the default Windows installation. See [the M6b evidence](evidence/dns/m6b-windows-docker-desktop.md).
+- A Bind IP naming one interface is still spelled out, because on a native Linux engine that is the entire point.
+- **A `127.0.0.1` bind also works on Docker Desktop**, contradicting the rationale in the table above: with the service published on `127.0.0.1:53` only, a container still reached it at `192.168.65.254:53`, with a stopped-service negative control confirming what was answering. It is not the default, because the same has not been measured on macOS; that is a platform-matrix question (14.3). It is a supported override for anyone who wants port 53 kept off the LAN.
 
 ### 6.2 Daemon configuration file and restart mechanism
 
@@ -195,6 +198,7 @@ The risk that row was guarding is real and is still handled, but by asking a que
 DNS_ENABLE=false
 DNS_HOST_IP=            # Target IP, managed by Runestone
 DNS_BIND_IP=            # Address port 53 binds to, managed by Runestone, overridable
+DNS_BIND_PREFIX=        # Derived from DNS_BIND_IP for the Compose file only. Empty = all interfaces (see 6.1)
 DNS_UPSTREAM=           # dnsmasq upstream, comma separated. Empty = detect, then 1.1.1.1 (see 8.4)
 DNS_DAEMON_FALLBACK=    # Optional second owned entry in the daemon dns array (see 9.7). Empty = off
 DNS_CONTAINER_RESOLVER= # Resolver the dns container itself uses. Empty = 1.1.1.1 (see 8.2)
@@ -205,6 +209,8 @@ DNS_UI_PASS=            # Optional, webproc basic auth password (HTTP_PASS)
 ```
 
 An absent `DNS_ENABLE` means disabled, so existing installations behave exactly as before after an upgrade.
+
+`DNS_BIND_PREFIX` is derived, not chosen: it is whatever `DNS_BIND_IP` implies, and it exists because an all-interfaces bind has to reach Compose as `53:53` rather than `0.0.0.0:53:53` (6.1). Setting it by hand is not a supported way to change the bind address; set `DNS_BIND_IP`.
 
 ### 7.2 Project files
 
@@ -293,7 +299,7 @@ Two environment variables redirect the only two operations that touch global sta
 - Image and tag are written literally by Runestone's Compose template (for example `cymondez/runestone-dns:1.0`) and **cannot be overridden by environment variables**.
 - `restart: unless-stopped`.
 - Uses the Compose profile `dns`. **When `DNS_ENABLE=true`, every Compose call made by the CLI (`up` / `stop` / `restart` / `ps` / `down`) must pass `--profile dns`**, so behaviour does not drift with differences in how Compose versions treat profiles.
-- Publishes `${DNS_BIND_IP}:53:53/tcp` and `${DNS_BIND_IP}:53:53/udp`; webproc's 8080 is **not published to the host**.
+- Publishes `${DNS_BIND_PREFIX}53:53/tcp` and `${DNS_BIND_PREFIX}53:53/udp`, so an all-interfaces bind is published without an address at all (6.1); webproc's 8080 is **not published to the host**.
 - Mounts: `./certs:/ssl:ro` (so the entrypoint can scan certificate filenames) and `./dns/custom.conf:/etc/dnsmasq.d/custom.conf` (writable, edited by the user and webproc). The two files Runestone owns exist only inside the container and are not mounted (see 8.3).
 - Environment: `DNS_HOST_IP` and `DNS_UPSTREAM` for the entrypoint to render the configuration; `DNS_UI_USER` / `DNS_UI_PASS`, when set, are passed in as `HTTP_USER` / `HTTP_PASS`.
 - The service sets `dns:` explicitly to the upstream resolvers, so the dns container itself is never pointed back at itself by the daemon DNS setting and cannot form a loop.
@@ -733,9 +739,9 @@ Consequences:
 
 ## 15. Decisions Needed From You
 
-Each decision below has a milestone deadline; see 16.6. **Only decision 1 is still open**, and it blocks nothing before M6b.
+Each decision below has a milestone deadline; see 16.6. **All four are now settled.**
 
-1. **Whether `docker desktop restart` is available**: the implementation will detect it, falling back to "instruct a manual restart and poll". If you already know the answer, the automatic path can be dropped.
+1. **Settled — `docker desktop restart` exists, and both the detection and the manual fallback stay.** Measured during M6b on Windows: Docker Desktop CLI plugin `v0.4.3` provides `docker desktop restart`, and it is synchronous unless `--detach` is given, which is what `restartDocker` assumes when it runs the command and then polls `docker info`. The automatic path is **not** dropped: the plugin carries its own version, separate from Docker Desktop's, so its presence cannot be inferred from "this is Docker Desktop", and an older installation will not have it. One machine having it is not evidence that every machine does. See [the M6b evidence](evidence/dns/m6b-windows-docker-desktop.md).
 2. **Settled for now — the image is built and published by a script kept beside it.** `docker/dns/publish.sh` runs `docker buildx build --platform linux/amd64,linux/arm64 --push`, publishing `cymondez/runestone-dns:1.0`, and a maintainer runs it. **This is explicitly an interim answer.** A hand-run publish leaves no record of what produced the image, so CI remains the intended destination; it is deferred only because obtaining the registry token and getting a workflow green takes time that M2 should not wait on. **CI is Drone**, running against the self-hosted Gitea that is `origin`. A GitHub Actions workflow is kept alongside it for the mirror; both run the same three checks (unit tests, image verification, the sandbox harness) by invoking the same scripts, so neither is a second implementation of anything. Until then **the script itself must be committed**, so that what produced a published image is at least reconstructable, and the script must refuse to publish without an explicit tag argument rather than defaulting to `latest`.
 3. **Settled — the `TODO` requirement "users must be able to configure another DNS as fallback" is answered in two places.** The dnsmasq upstream (8.4) is **mandatory and never empty**, defaulting to `1.1.1.1`, because without it every container on the machine loses internet name resolution; setup offers keep / replace / append. A fallback inside the daemon `dns` array (9.7) is **optional and off by default**, because measurement showed that it converts a loud DNS failure into Runestone domains silently resolving to `127.0.0.1`. `insertedEntries` is consequently an array of owned entries, which M1 must implement from the start.
 4. **Settled — `compose.yml` is regenerated automatically from a version marker.** The marker is a comment in the Compose file's own header; when it differs from the CLI's template version the Compose file is regenerated and the user is told, and the file already on disk is backed up beside the original first (see 13).

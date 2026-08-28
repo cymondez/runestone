@@ -1,5 +1,6 @@
 import {
   DEFAULT_UPSTREAM,
+  bindPrefix,
   determineBindIp,
   determineUpstreams,
   isUnusableUpstream,
@@ -120,5 +121,27 @@ describe('bind IP determination (spec 6.1)', () => {
 
   it('binds every interface on Docker Desktop, because the Target IP is inside the Docker VM', () => {
     expect(determineBindIp({ host: 'docker-desktop', targetIp: '192.168.65.254' })).toBe('0.0.0.0');
+  });
+
+  describe('the published-port prefix', () => {
+    // Measured on Windows with Docker Desktop (M6b): the Internet Connection
+    // Sharing service, which WSL2 turns on, already holds `0.0.0.0:53/udp`.
+    // `docker compose up` publishing `53:53/udp` starts and containers reach the
+    // service at the Target IP; publishing `0.0.0.0:53:53/udp` fails outright.
+    // Spelling out an all-interfaces bind therefore breaks the default Windows
+    // installation, and these two forms are not interchangeable.
+    it('leaves an all-interfaces bind unspelled', () => {
+      expect(bindPrefix('0.0.0.0')).toBe('');
+      expect(bindPrefix('')).toBe('');
+      expect(bindPrefix('  ')).toBe('');
+      expect(bindPrefix('::')).toBe('');
+    });
+
+    it('spells out an address that names one interface', () => {
+      // The native Linux engine case, where binding the docker0 gateway is the
+      // entire point: it avoids systemd-resolved and keeps 53 off the LAN.
+      expect(bindPrefix('172.17.0.1')).toBe('172.17.0.1:');
+      expect(bindPrefix('127.0.0.1')).toBe('127.0.0.1:');
+    });
   });
 });

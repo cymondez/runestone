@@ -23,7 +23,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | M4 | `dns disable` | 2 (redirected) | T0 | — | **done** |
 | M5 | `dns enable` to `prepared` | 2 | T1 | — | **done**, real-machine gate items pending the 16.5 safety net |
 | M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | — | **done**, CI gate pending a runner |
-| M6b | Real machine and VM verification | 3 | T3 / T4 | M6a, decision 1 | not started |
+| M6b | Real machine and VM verification | 3 | T3 / T4 | — | **partly done**: Windows non-destructive checks complete, the interruption and Linux outstanding |
 | M7 | Lifecycle integration and disclosure | 3 | T1 / T2 | — | **done** |
 | M8 | Platform matrix and release | 3 | T3 / T4 | M6b, M7 | not started |
 
@@ -31,14 +31,14 @@ M2 is independent of M1 and can run in parallel with it. Everything else is a ch
 
 ## Decision gate
 
-The four items in spec 15 have milestone deadlines (spec 16.6). A milestone must not start while its blocking decision is open. **Only decision 1 is still open, and it blocks nothing before M6b.**
+The four items in spec 15 have milestone deadlines (spec 16.6). A milestone must not start while its blocking decision is open. **All four are now settled.**
 
 | Decision | Deadline | Status | Cost of deciding late |
 | --- | --- | --- | --- |
 | 3 — fallback DNS in dnsmasq's upstream or in the daemon array | before M1 | **settled: both** — the dnsmasq upstream is mandatory and never empty (spec 8.4), the daemon-array fallback is optional and off by default (spec 9.7) | Settled in time. `insertedEntries` is an array of owned entries, which M1 implements from the start |
 | 2 — how the image is built and published, its name and initial tag | before M2 | **settled for now: a committed buildx script**, `cymondez/runestone-dns:1.0`. Publishing from CI is deferred, not abandoned — the registry token takes time M2 should not wait on. **CI itself is Drone**, against the self-hosted Gitea that is `origin`; a GitHub Actions workflow is kept for the mirror | Settled in time. The debt is traceability: a hand-run publish is reconstructable only because the script is in the repository |
 | 4 — `compose.yml` regeneration strategy | before M3 | **settled: automatic**, driven by `COMPOSE_TEMPLATE_VERSION` in `.env`, and a file the user hand-edited is backed up beside the original before being overwritten | Settled in time |
-| 1 — whether `docker desktop restart` exists | before M6b | open | Low. The implementation detects it and falls back to a manual-restart prompt |
+| 1 — whether `docker desktop restart` exists | before M6b | **settled: it exists** (CLI plugin `v0.4.3`, synchronous unless detached), and both the detection and the manual fallback stay — the plugin is versioned separately from Docker Desktop, so an older installation will not have it | Settled in time, by measurement rather than by assumption |
 
 ## M0 — Safety rails
 
@@ -336,22 +336,45 @@ The risk that row guarded is real and is still handled, by asking a question tha
 
 **Goal.** Cover what the harness cannot: Docker Desktop's addressing and restart mechanism, Linux privilege escalation and systemd-resolved, and a genuine port 53 conflict.
 
-**Risk level 3 · Tier T3 / T4 · Maintainers only · Blocked by M6a, decision 1**
+**Risk level 3 · Tier T3 / T4 · Maintainers only**
 
 **This is the only milestone that deliberately interrupts a working machine.** Schedule it. Save `docker ps -a` first (see the checklist below). Everything else has already been proven by M6a.
 
 **Deliverables**
 
-- [ ] Docker Desktop: Target IP `192.168.65.254`, the `0.0.0.0` bind, and whichever restart mechanism decision 1 settles on
+- [x] Docker Desktop: Target IP `192.168.65.254` confirmed, the all-interfaces bind published and answering, and `docker desktop restart` confirmed present — the restart itself is not yet exercised
 - [ ] Native Linux: `/etc/docker/daemon.json` with sudo, systemd-resolved holding `127.0.0.53`, `systemctl restart docker`
-- [ ] A real port 53 conflict exercised, confirming the spec 6.1 rule that port availability is decided by starting the service and not by reading netstat
-- [ ] Evidence committed under `docs/evidence/dns/`
+- [x] A real port 53 conflict exercised, confirming the spec 6.1 rule that port availability is decided by starting the service and not by reading netstat — netstat said taken, TCP said free, and only starting it gave the answer
+- [x] Evidence committed under `docs/evidence/dns/` — Windows; the Linux row is still empty
 
 **Gate**
 
-- [ ] Enable → a new container's `resolv.conf` lists the Target IP first → a certificate-covered subdomain resolves to the Target IP → disable → the daemon `dns` array is back to its original state including pre-existing user entries
+- [ ] Enable → a new container's `resolv.conf` lists the Target IP first → a certificate-covered subdomain resolves to the Target IP → disable → the daemon `dns` array is back to its original state including pre-existing user entries — **the subdomain half is proven** (a wildcard subdomain of a certificate-covered domain resolved to the Target IP through the real generated Compose file); the daemon write, the restart and the revocation need the agreed window
 - [ ] Sudo failure on Linux aborts with no partial write
-- [ ] The evidence log below is filled in
+- [x] The evidence log below is filled in — for Windows
+
+**Partly landed, on Windows with Docker Desktop.** Evidence: [`docs/evidence/dns/m6b-windows-docker-desktop.md`](evidence/dns/m6b-windows-docker-desktop.md). **Nothing written to the real daemon file and Docker never restarted** — the same SHA-256 before and after, and the same 17 containers.
+
+**Decision 1 is answered**: `docker desktop restart` exists (CLI plugin `v0.4.3`) and is synchronous unless detached. The detection and the manual fallback both stay, because the plugin is versioned separately from Docker Desktop and an older installation will not have it.
+
+**The milestone earned its keep before it even reached the destructive step**, by finding a bug that would have broken `dns enable` on most Windows machines.
+
+This machine already had a genuine port 53 conflict, arranged by nobody: the Windows Internet Connection Sharing service holds `0.0.0.0:53/udp`, and WSL2 is what turns it on — so this is the default state of a Windows machine running Docker Desktop, not an exotic one. Against that, two spellings of the same intention behave differently:
+
+- `-p 53:53/udp` starts, and a container reaches the service at the Target IP.
+- `-p 0.0.0.0:53:53/udp` fails outright with `bind: Only one usage of each socket address`.
+
+**The Compose template wrote the second one.** Spec 6.1 had recorded the ICS observation correctly — but it was measured with the bare form while the implementation spelled the address out, and the two were assumed interchangeable. Reproduced through `docker compose up`, not only `docker run`, which is the layer that actually matters.
+
+Fixed by deriving `DNS_BIND_PREFIX` from `DNS_BIND_IP`: empty for an all-interfaces bind, `<address>:` for an address naming one interface, so a Linux engine still binds the docker0 gateway explicitly. `DNS_BIND_IP` keeps its meaning and its place in disclosure item 4; only the Compose spelling changed. Compose template version 2 → 3.
+
+**A second finding contradicts spec 6.1's stated rationale.** The table says Docker Desktop must bind `0.0.0.0` because no host interface has the Target IP. But with the service published on `127.0.0.1:53` **only**, a container still reached it at `192.168.65.254:53`, with a stopped-service negative control confirming what was answering. `DNS_BIND_IP=127.0.0.1` is therefore a working and tighter configuration on Docker Desktop. It is not made the default: the same has not been measured on macOS, and a default known to work on one of the two Docker Desktop platforms is not a default. That is an M8 platform-matrix row.
+
+**The 16.5 escape hatch was exercised** against a hand-planted entry with no ownership record: refused without `--assume-entry`, removed exactly the named entry with it, left the unrelated entry and the unrelated key untouched.
+
+**The WSL distro on this machine confirmed the refusal that replaced WSL detection.** `Ubuntu-26.04` has systemd, systemd-resolved and the Docker Desktop integration but no daemon of its own, and `docker info` reports `Docker Desktop` from inside it — the exact signal `docker-desktop-elsewhere` keys on, present and correct where the old kernel-string detection could distinguish nothing.
+
+**What is left, and why.** The destructive cycle needs an agreed window: this machine runs 12 containers, several of them stateful, and a Docker restart terminates all of them. The native Linux engine needs a machine that has one; the WSL distro carries only the Docker Desktop integration, so `/etc/docker/daemon.json`, `sudo`, `systemctl restart docker` and systemd-resolved's `127.0.0.53` are all still unverified.
 
 ## M7 — Lifecycle integration and disclosure
 
@@ -456,7 +479,7 @@ M6b and M8 produce findings that cannot be re-derived from the code. Record them
 
 | Milestone | Platform | Date | Evidence | By |
 | --- | --- | --- | --- | --- |
-| M6b | Windows Docker Desktop | | | |
+| M6b | Windows Docker Desktop | 2026-08-28 | [m6b-windows-docker-desktop.md](evidence/dns/m6b-windows-docker-desktop.md) — decision 1, Target IP, the ICS port 53 conflict and the `0.0.0.0:53:53` bug, the `127.0.0.1` bind, the revocation escape hatch. Destructive cycle outstanding | cymondez |
 | M6b | Native Linux (VM) | | | |
 | M8 | WSL2 | | | |
 | M8 | macOS Intel | | | |

@@ -22,6 +22,7 @@ export interface RunestoneEnv {
   DNS_ENABLE: string;
   DNS_HOST_IP: string;
   DNS_BIND_IP: string;
+  DNS_BIND_PREFIX: string;
   DNS_UPSTREAM: string;
   DNS_DAEMON_FALLBACK: string;
   DNS_AUTO_REORDER: string;
@@ -57,6 +58,7 @@ export type EnvInput = Partial<
     | 'DNS_ENABLE'
     | 'DNS_HOST_IP'
     | 'DNS_BIND_IP'
+    | 'DNS_BIND_PREFIX'
     | 'DNS_UPSTREAM'
     | 'DNS_DAEMON_FALLBACK'
     | 'DNS_AUTO_REORDER'
@@ -86,6 +88,17 @@ export const DEFAULT_ENV: Required<EnvInput> = {
   DNS_ENABLE: 'false',
   DNS_HOST_IP: '',
   DNS_BIND_IP: '',
+  // Derived from DNS_BIND_IP, never set by hand: the host-address prefix the
+  // Compose file puts in front of `53:53`, with its trailing colon, and **empty
+  // for all interfaces**.
+  //
+  // Empty is not the same as writing `0.0.0.0` out. Verified on Windows with
+  // Docker Desktop: `-p 53:53/udp` publishes successfully alongside the
+  // Internet Connection Sharing service that already holds `0.0.0.0:53/udp`,
+  // while `-p 0.0.0.0:53:53/udp` fails with an address-in-use error. WSL2
+  // enables that service, so spelling the address out breaks the default
+  // Windows installation (spec 6.1).
+  DNS_BIND_PREFIX: '',
   // Deliberately empty. The never-empty guarantee of spec 8.4 belongs to
   // determineUpstreams, not to this default: if the loader supplied 1.1.1.1
   // here, that value would look like a choice the user made, and the detection
@@ -136,6 +149,7 @@ export const envLoader = {
       DNS_ENABLE: merged.DNS_ENABLE || DEFAULT_ENV.DNS_ENABLE,
       DNS_HOST_IP: merged.DNS_HOST_IP ?? DEFAULT_ENV.DNS_HOST_IP,
       DNS_BIND_IP: merged.DNS_BIND_IP ?? DEFAULT_ENV.DNS_BIND_IP,
+      DNS_BIND_PREFIX: merged.DNS_BIND_PREFIX ?? DEFAULT_ENV.DNS_BIND_PREFIX,
       // Empty means "nothing chosen", which is what lets detection run.
       DNS_UPSTREAM: merged.DNS_UPSTREAM ?? DEFAULT_ENV.DNS_UPSTREAM,
       DNS_DAEMON_FALLBACK: merged.DNS_DAEMON_FALLBACK ?? DEFAULT_ENV.DNS_DAEMON_FALLBACK,

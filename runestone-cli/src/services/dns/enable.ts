@@ -29,6 +29,7 @@ import { isAutoReorderEnabled, ownedEntryInputs } from './settings';
 import { syncDnsUiRoute } from './ui-route';
 import {
   UpstreamResolution,
+  bindPrefix,
   defaultHostResolvers,
   determineBindIp,
   determineUpstreams
@@ -222,6 +223,7 @@ export function planEnable(
     DNS_ENABLE: 'true',
     DNS_HOST_IP: targetIp,
     DNS_BIND_IP: bindIp,
+    DNS_BIND_PREFIX: bindPrefix(bindIp),
     DNS_UPSTREAM: checks.upstreams.upstreams.join(','),
     DNS_CONTAINER_RESOLVER: checks.upstreams.upstreams[0] ?? ''
   };
@@ -374,6 +376,7 @@ export function applyEnable(
     DNS_ENABLE: config.DNS_ENABLE,
     DNS_HOST_IP: config.DNS_HOST_IP,
     DNS_BIND_IP: config.DNS_BIND_IP,
+    DNS_BIND_PREFIX: config.DNS_BIND_PREFIX,
     DNS_UPSTREAM: config.DNS_UPSTREAM,
     DNS_CONTAINER_RESOLVER: config.DNS_CONTAINER_RESOLVER
   };

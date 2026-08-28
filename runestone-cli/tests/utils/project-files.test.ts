@@ -121,8 +121,13 @@ describe('generated compose file', () => {
       expect(dns().image).not.toContain('$');
     });
 
-    it('publishes port 53 on the bind address for both protocols', () => {
-      expect(dns().ports).toEqual(['${DNS_BIND_IP:-0.0.0.0}:53:53/tcp', '${DNS_BIND_IP:-0.0.0.0}:53:53/udp']);
+    it('publishes port 53 for both protocols through the derived bind prefix', () => {
+      // The prefix, not DNS_BIND_IP itself. An all-interfaces bind must publish
+      // `53:53/udp` and never `0.0.0.0:53:53/udp`: on Windows with Docker
+      // Desktop the first succeeds alongside the Internet Connection Sharing
+      // service that already holds `0.0.0.0:53/udp`, and the second does not
+      // (spec 6.1).
+      expect(dns().ports).toEqual(['${DNS_BIND_PREFIX:-}53:53/tcp', '${DNS_BIND_PREFIX:-}53:53/udp']);
     });
 
     it('restarts unless stopped, so a host reboot brings DNS back without the CLI', () => {

@@ -23,7 +23,7 @@
 | M4 | `dns disable` | 2（導向） | T0 | — | **已完成** |
 | M5 | `dns enable` 到 `prepared` | 2 | T1 | — | **已完成**，真機通過條件待 16.5 安全網 |
 | M6a | dind 載具內端到端 | 宿主 2／載具內 3 | T2 | — | **已完成**，CI 通過條件待 runner |
-| M6b | 真機與 VM 驗證 | 3 | T3／T4 | M6a、裁決 1 | 未開始 |
+| M6b | 真機與 VM 驗證 | 3 | T3／T4 | — | **部分完成**：Windows 的非破壞性檢查已完成，中斷與 Linux 尚未 |
 | M7 | 生命週期整合與揭露 | 3 | T1／T2 | — | **已完成** |
 | M8 | 平台矩陣與發布 | 3 | T3／T4 | M6b、M7 | 未開始 |
 
@@ -31,14 +31,14 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 ## 裁決關卡
 
-規格 15 的四項各有里程碑截止點（規格 16.6）。前置裁決未定案時，該里程碑不得開始。**目前只剩裁決 1 未定，而它在 M6b 之前不阻塞任何事。**
+規格 15 的四項各有里程碑截止點（規格 16.6）。前置裁決未定案時，該里程碑不得開始。**四項現在都已定案。**
 
 | 裁決 | 截止 | 狀態 | 延後定案的代價 |
 | --- | --- | --- | --- |
 | 3——備援 DNS 放 dnsmasq 上游還是 daemon 陣列 | M1 之前 | **已定案：兩者都做**——dnsmasq 上游為必要且永不為空（規格 8.4），daemon 陣列備援為選用且預設關閉（規格 9.7） | 及時定案。`insertedEntries` 是自有項目的陣列，M1 一開始就照此實作 |
 | 2——image 的建置發佈方式、名稱與起始 tag | M2 之前 | **暫定：進版控的 buildx 腳本**，`cymondez/runestone-dns:1.0`。「從 CI 發佈」是延後而非放棄——申請 registry token 需要時間，M2 不該等。**CI 本身用 Drone**，跑在作為 `origin` 的自架 Gitea 上；另保留一份 GitHub Actions workflow 給鏡像 | 及時定案。欠下的債是可追溯性：手動跑的發佈之所以還能回推，只因為腳本在 repo 裡 |
 | 4——`compose.yml` 重生策略 | M3 之前 | **已定案：自動重生**，由 `.env` 內的 `COMPOSE_TEMPLATE_VERSION` 驅動；使用者手改過的檔案在被覆寫前先在原地旁邊備份 | 及時定案 |
-| 1——`docker desktop restart` 是否存在 | M6b 之前 | 未定 | 低。實作會自行偵測，並退回「提示手動重啟」 |
+| 1——`docker desktop restart` 是否存在 | M6b 之前 | **已定案：存在**（CLI plugin `v0.4.3`，除非 detach 否則同步），而且偵測與手動備援兩者都保留——這個 plugin 的版本與 Docker Desktop 分開，較舊的安裝不會有 | 及時定案，靠量測而非假設 |
 
 ## M0 — 安全鋼索
 
@@ -336,22 +336,45 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **目標。** 補上載具無法涵蓋的部分：Docker Desktop 的定址與重啟機制、Linux 的提權與 systemd-resolved，以及真實的 53 port 衝突。
 
-**風險等級 3 · 層級 T3／T4 · 僅維護者 · 前置：M6a、裁決 1**
+**風險等級 3 · 層級 T3／T4 · 僅維護者**
 
 **這是唯一會刻意中斷一台正常工作機器的里程碑。** 要排時間。先存 `docker ps -a`（見下方檢查清單）。其他一切都已由 M6a 證明過。
 
 **交付項目**
 
-- [ ] Docker Desktop：Target IP `192.168.65.254`、`0.0.0.0` 綁定，以及裁決 1 決定的重啟機制
+- [x] Docker Desktop：Target IP `192.168.65.254` 已確認、全介面綁定已發佈且會回應、`docker desktop restart` 已確認存在——重啟本身尚未實際執行
 - [ ] 原生 Linux：需 sudo 的 `/etc/docker/daemon.json`、佔著 `127.0.0.53` 的 systemd-resolved、`systemctl restart docker`
-- [ ] 實際觸發一次 53 port 衝突，確認規格 6.1 那條規則——port 可用性由「啟動服務」決定，不由讀 netstat 決定
-- [ ] 證據存入 `docs/evidence/dns/`
+- [x] 實際觸發一次 53 port 衝突，確認規格 6.1 那條規則——port 可用性由「啟動服務」決定，不由讀 netstat 決定；netstat 說被佔、只看 TCP 說是空的，只有真的啟動才給出答案
+- [x] 證據存入 `docs/evidence/dns/`——Windows 部分；Linux 那一列仍是空的
 
 **通過條件**
 
-- [ ] 啟用 → 新容器 `resolv.conf` 首筆為 Target IP → 憑證涵蓋的子網域解析為 Target IP → 停用 → daemon `dns` 陣列回到原狀，含使用者原有項目
+- [ ] 啟用 → 新容器 `resolv.conf` 首筆為 Target IP → 憑證涵蓋的子網域解析為 Target IP → 停用 → daemon `dns` 陣列回到原狀，含使用者原有項目——**子網域那一半已經證明**（憑證涵蓋網域的萬用子網域，透過真正產生出來的 Compose 檔解析到 Target IP）；daemon 寫入、重啟與撤銷需要那個約好的時間窗
 - [ ] Linux 上 sudo 失敗時中止且未部分寫入
-- [ ] 下方證據記錄已填寫
+- [x] 下方證據記錄已填寫——Windows 部分
+
+**部分落地，於 Windows + Docker Desktop。** 證據：[`docs/evidence/dns/m6b-windows-docker-desktop.zh-TW.md`](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)。**沒有寫過真實 daemon 檔，Docker 也沒有重啟過**——前後 SHA-256 相同，container 也是同樣 17 個。
+
+**裁決 1 有答案了**：`docker desktop restart` 存在（CLI plugin `v0.4.3`），除非指定 detach 否則是同步的。偵測與手動備援兩者都保留，因為這個 plugin 的版本與 Docker Desktop 分開，較舊的安裝不會有它。
+
+**這個里程碑還沒走到破壞性步驟就已經值回票價**，因為它抓到一個會讓 `dns enable` 在大多數 Windows 機器上失敗的 bug。
+
+這台機器本來就有一個真的 53 埠衝突，不是誰安排的：Windows 的 Internet Connection Sharing 服務佔著 `0.0.0.0:53/udp`，而啟用它的正是 WSL2——所以這是「跑著 Docker Desktop 的 Windows 機器」的預設狀態，不是特例。在這個前提下，同一個意圖的兩種寫法行為並不相同：
+
+- `-p 53:53/udp` 能啟動，而且 container 可以從 Target IP 打到服務。
+- `-p 0.0.0.0:53:53/udp` 直接以 `bind: Only one usage of each socket address` 失敗。
+
+**Compose 模板寫的是第二種。** 規格 6.1 對 ICS 的那筆觀察本身沒有錯——但它是用不帶位址的寫法量的，而實作把位址明寫出來，兩者被當成可以互換。這在 `docker compose up` 上也重現過，不只是 `docker run`；而那才是真正會執行的那一層。
+
+修法是從 `DNS_BIND_IP` 推導出 `DNS_BIND_PREFIX`：全介面綁定時為空，指名單一介面時為 `<位址>:`，因此 Linux engine 仍然會明確綁定 docker0 gateway。`DNS_BIND_IP` 的意義以及它在揭露第 4 項裡的位置都不變；改變的只有 Compose 的寫法。Compose 模板版本 2 → 3。
+
+**第二個發現與規格 6.1 自己給的理由相牴觸。** 表格說 Docker Desktop 必須綁 `0.0.0.0`，因為主機上沒有哪張介面持有 Target IP。但服務**只**發佈到 `127.0.0.1:53` 時，container 仍然能從 `192.168.65.254:53` 打到它，並有「服務停止」的反向對照確認回應來源。所以 `DNS_BIND_IP=127.0.0.1` 在 Docker Desktop 上是可行、而且更緊的設定。這裡沒有把它設成預設：macOS 上沒有量過，而一個只在兩個 Docker Desktop 平台其中之一被證實的預設值，不算預設值。那是 M8 平台矩陣的一列。
+
+**16.5 的逃生口有實際演練過**：對著一筆手動塞進去、沒有所有權紀錄的項目，不給 `--assume-entry` 時拒絕，給了之後精準移除指定的那一筆，無關的項目與無關的鍵都沒有被動到。
+
+**這台機器上的 WSL 發行版確認了「取代 WSL 偵測」的那個拒絕。** `Ubuntu-26.04` 有 systemd、systemd-resolved 與 Docker Desktop 整合，但沒有自己的 daemon；從它裡面執行 `docker info` 會回報 `Docker Desktop`——正是 `docker-desktop-elsewhere` 所依據的訊號，在舊的核心字串偵測分辨不出任何東西的地方，它確實存在而且正確。
+
+**剩下什麼，以及為什麼。** 破壞性循環需要一個約好的時間窗：這台機器上跑著 12 個 container，其中好幾個是有狀態的，而重啟 Docker 會把它們全部終止。原生 Linux engine 則需要一台真的有的機器；這裡的 WSL 發行版只帶 Docker Desktop 整合，所以 `/etc/docker/daemon.json`、`sudo`、`systemctl restart docker` 與 systemd-resolved 的 `127.0.0.53` 全都還沒驗證。
 
 ## M7 — 生命週期整合與揭露
 
@@ -456,7 +479,7 @@ M6b 與 M8 產出的結論無法從程式碼重新推導。記錄在這裡，並
 
 | 里程碑 | 平台 | 日期 | 證據 | 執行者 |
 | --- | --- | --- | --- | --- |
-| M6b | Windows Docker Desktop | | | |
+| M6b | Windows Docker Desktop | 2026-08-28 | [m6b-windows-docker-desktop.zh-TW.md](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)——裁決 1、Target IP、ICS 的 53 埠衝突與 `0.0.0.0:53:53` 的 bug、`127.0.0.1` 綁定、撤銷逃生口。破壞性循環尚未執行 | cymondez |
 | M6b | 原生 Linux（VM） | | | |
 | M8 | WSL2 | | | |
 | M8 | macOS Intel | | | |
