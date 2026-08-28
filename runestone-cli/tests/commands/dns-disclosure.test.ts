@@ -268,7 +268,7 @@ describe('spec 11.3 disclosure matrix', () => {
       await driveSetup();
       const text = output();
 
-      expect(text).toContain('is not a Runestone domain is forwarded to these servers');
+      expect(text).toContain('not Runestone domains are forwarded to these servers');
       expect(text).toContain('10.0.0.53 — found in the Docker daemon configuration');
       expect(text).toContain('a pool, not a priority order');
     });
@@ -314,11 +314,29 @@ describe('spec 11.3 disclosure matrix', () => {
       await run('dns', 'enable', '--dry-run');
       const text = output();
 
-      // Every item, by its number. Not a sample of them.
-      const numbered = text.split('\n').map((row) => row.trim());
-      for (let item = 1; item <= 11; item += 1) {
-        expect(numbered.some((row) => row.startsWith(`${item}. `))).toBe(true);
+      // Every item, by the fact it states — not by a number. The block is
+      // grouped under labels now, so numbering is no longer what proves
+      // coverage; each of the eleven facts having survived the rewrite is.
+      const items: Array<[number, string]> = [
+        [1, `dns[0]=${TARGET}`],
+        [2, 'terminating every container on this machine'],
+        [3, 'resolves through ours'],
+        [4, ':53 on this host'],
+        [5, 'stop --all takes DNS down machine-wide'],
+        [6, 'before removing Runestone'],
+        [7, 'removes ours'],
+        [8, 'has no authentication'],
+        [9, 'placed before ours'],
+        [10, 'every non-Runestone lookup goes here'],
+        // Item 11 is both directions of spec 9.7, which is two lines here.
+        [11, 'lookups fail instead of giving 127.0.0.1']
+      ];
+
+      for (const [item, fact] of items) {
+        expect({ item, text: text.includes(fact) }).toEqual({ item, text: true });
       }
+
+      expect(text).toContain('127.0.0.1');
 
       // And with the values actually in effect, not placeholders (spec 11.3).
       expect(text).toContain(daemonPath);

@@ -6,6 +6,8 @@ import { spawnCommand } from '../../src/utils/spawn';
 import { composeService } from '../../src/services/docker-compose';
 import { DAEMON_PATH_OVERRIDE_ENV } from '../../src/services/dns/daemon-target';
 import * as p from '@clack/prompts';
+import { displayWidth } from '../../src/utils/text';
+import { t } from '../../src/i18n';
 import { toolState } from '../../src/utils/tool-state';
 
 const TARGET = '192.168.65.254';
@@ -182,7 +184,7 @@ describe('dns enable command', () => {
 
       // Spec 9.7: stating only the benefit hides the cost, and stating only the
       // cost hides the benefit. Both are unacceptable.
-      expect(output()).toContain('keeps resolving ordinary internet names');
+      expect(output()).toContain('internet names still resolve');
       expect(output()).toContain('127.0.0.1');
     });
 
@@ -285,7 +287,7 @@ describe('dns enable command', () => {
 
       await enable('--dry-run', '--fallback', '10.0.0.53');
 
-      expect(output()).toContain('10.0.0.53 is added at dns[1]');
+      expect(output()).toContain('dns[1]=10.0.0.53');
       expect(output()).toContain('+ 10.0.0.53');
     });
 
@@ -412,6 +414,55 @@ describe('dns enable command', () => {
       expect(selectMock).not.toHaveBeenCalled();
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
+  });
+
+  describe('the disclosure is meant to be read, not waded through', () => {
+    // The complaint this answers: eleven numbered paragraphs at one visual
+    // level, eight of them past 80 columns, so the terminal wrapped them where
+    // it chose and every continuation lost its indent.
+    function disclosureLines(): string[] {
+      const stripped = output()
+        // eslint-disable-next-line no-control-regex
+        .replace(/\u001b\[[0-9;]*m/g, '')
+        .split('\n');
+      const start = stripped.findIndex((row) => row.includes(t('dns.enable.section.disclosure')));
+      const end = stripped.findIndex((row) => row.includes(t('dns.enable.section.diff')));
+
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+      return stripped.slice(start + 1, end);
+    }
+
+    for (const locale of ['en', 'zh-TW', 'ja-JP']) {
+      it(`keeps every ${locale} line inside 80 columns`, async () => {
+        process.env.RUNESTONE_LANG = locale;
+        writeDaemon(['8.8.8.8']);
+
+        await enable('--dry-run');
+
+        for (const row of disclosureLines()) {
+          // The daemon path and the UI url are values, not prose: they cannot
+          // be shortened, which is why each of them has a line to itself.
+          if (row.includes(daemonPath) || row.includes('https://')) {
+            continue;
+          }
+
+          expect({ row, width: displayWidth(row) <= 80 }).toEqual({ row, width: true });
+        }
+      });
+    }
+
+    it('marks three rows as warnings, not eleven', async () => {
+      writeDaemon(['8.8.8.8']);
+
+      await enable('--dry-run');
+
+      // Restart, dependency, unauthenticated UI. Everything else is a fact
+      // about what will be written, and reads as one.
+      const marked = disclosureLines().filter((row) => row.trimStart().startsWith('! '));
+      expect(marked).toHaveLength(3);
+    });
+
   });
 
 });

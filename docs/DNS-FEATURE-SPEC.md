@@ -599,6 +599,8 @@ Items that must be disclosed:
 | 10 | Every lookup from every container on the machine that is not a Runestone domain is forwarded to `<upstream list>`. It is never empty; `1.1.1.1` is used when nothing else could be determined, and where each value came from is shown |
 | 11 | With the 9.7 fallback enabled, a second entry `<fallback>` is added at `dns[1]`. **Benefit**: while the dns service is down, every container on the machine keeps resolving ordinary internet names immediately, including projects unrelated to Runestone. **Cost**: Runestone domains then resolve to `127.0.0.1` instead of failing, which presents as an application bug rather than a DNS outage. Runestone recommends per the 9.7 table; it does not decide |
 
+Presentation: the `dns enable` disclosure is grouped under left-hand labels rather than numbered item by item. Every one of items 1–11 is still there, still carrying real values, but each line is kept inside 80 columns — the daemon path and the UI url excepted, since they are values that cannot be shortened and so get a line each — and only three lines are marked as warnings: the restart, the dependency, and an unauthenticated UI. Numbered, the eleven facts sat at one visual level and eight of them ran past 80 columns, so the terminal wrapped them where it chose and the indent was lost: thirteen printed lines were twenty-one lines on screen. The reasoning behind each line lives in the user documentation.
+
 When each disclosure is required:
 
 | Moment | Must disclose |

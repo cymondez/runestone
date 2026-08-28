@@ -17,6 +17,7 @@ import { daemonFallbackValue, isAutoReorderEnabled, isDnsUiAuthConfigured } from
 import { dnsUiUrl } from '../services/dns/ui-route';
 import { dnsSetupFacts } from '../services/dns/lifecycle';
 import { DEFAULT_UPSTREAM, invalidAddresses, parseUpstreamList } from '../services/dns/upstream';
+import { displayWidth, padToWidth } from '../utils/text';
 import { RunestoneEnv, envLoader } from '../utils/env-loader';
 import { logger } from '../utils/logger';
 import { t } from '../i18n';
@@ -79,45 +80,140 @@ export function printPreflight(checks: Preflight): void {
   }
 }
 
+interface DiscloseRow {
+  /** Already translated: the left column is what makes the block scannable. */
+  label: string;
+  text: string;
+  /** Yellow, and marked with `!`. Kept to the three facts that can bite. */
+  warn?: boolean;
+  /** Continuation lines, aligned under the text column, sharing the label. */
+  extra?: string[];
+}
+
+/**
+ * Label column, then text, then continuations aligned under it.
+ *
+ * The column is measured in terminal cells rather than characters, because a
+ * two-character Chinese label is four cells wide and padding by length would
+ * leave the CJK locales ragged where English looked fine.
+ */
+function printDiscloseRows(rows: DiscloseRow[]): void {
+  const column = Math.max(...rows.map((row) => displayWidth(row.label)));
+  const indent = ' '.repeat(2 + column + 2);
+
+  for (const row of rows) {
+    const head = `${row.warn ? '! ' : '  '}${padToWidth(row.label, column)}  ${row.text}`;
+    console.log(`  ${row.warn ? yellow(head) : head}`);
+    for (const extra of row.extra ?? []) {
+      console.log(`  ${indent}${extra}`);
+    }
+  }
+}
+
 /**
  * Spec 11.3: the user consents to concrete actions, not to abstract warnings, so
  * every item carries the value actually in effect. `--yes` skips the prompt, it
  * does not skip this.
+ *
+ * **All eleven facts of 11.3 are here, grouped under labels rather than printed
+ * as eleven numbered paragraphs.** Numbered, they sat at one visual level —
+ * three of them yellow but no shorter than the rest — and eight of the eleven
+ * ran past 80 columns, so the terminal wrapped them where it chose and the
+ * indent was lost on every continuation: thirteen printed lines were
+ * twenty-one lines on screen. The reasoning behind each line moved to the user
+ * documentation, which the last line points at.
  */
 export function printEnableDisclosure(config: RunestoneEnv, plan: EnablePlan): void {
   const checks = plan.preflight;
   const fallback = daemonFallbackValue(config);
-
-  logger.info(t('dns.enable.section.disclosure'));
-  line(t('dns.enable.disclose.1', { path: checks.daemonPath, targetIp: checks.targetIp ?? '' }));
-  warn(t('dns.enable.disclose.2'));
-  warn(t('dns.enable.disclose.3'));
-  line(t('dns.enable.disclose.4', { bindIp: checks.bindIp ?? '' }));
-  line(t('dns.enable.disclose.5'));
-  line(t('dns.enable.disclose.6'));
-  line(t('dns.enable.disclose.7', { count: plan.entries.length }));
-
   const url = dnsUiUrl(config);
-  if (isDnsUiAuthConfigured(config)) {
-    line(t('dns.enable.disclose.8auth', { url }));
-  } else {
-    warn(t('dns.enable.disclose.8', { url }));
-  }
+  const authenticated = isDnsUiAuthConfigured(config);
+  const daemonPath = checks.daemonPath;
+  const targetIp = checks.targetIp ?? '';
 
-  line(isAutoReorderEnabled(config) ? t('dns.enable.disclose.9') : t('dns.enable.disclose.9off'));
-
-  line(t('dns.enable.disclose.10', { upstreams: checks.upstreams.upstreams.join(', ') }));
-  if (checks.upstreamIsFallback) {
-    line(t('dns.enable.disclose.10fallback'));
-  }
-
-  // Both directions, always. Describing only one of them is what spec 9.7 calls
-  // unacceptable, in either direction.
-  line(fallback === undefined ? t('dns.enable.disclose.11off') : t('dns.enable.disclose.11on', { value: fallback }));
+  const rows: DiscloseRow[] = [
+    {
+      label: t('dns.enable.disclose.label.write'),
+      // The path is the object of consent, so it gets the row to itself and the
+      // entries follow underneath. Together they ran to 88 columns on a real
+      // Windows path, and neither half can be shortened: both are values.
+      text: daemonPath,
+      extra: [
+        fallback === undefined
+          ? t('dns.enable.disclose.write', { targetIp })
+          : t('dns.enable.disclose.writeFallback', { targetIp, fallback })
+      ]
+    },
+    {
+      label: t('dns.enable.disclose.label.port'),
+      text: t('dns.enable.disclose.port', { bindIp: checks.bindIp ?? '' })
+    },
+    {
+      label: t('dns.enable.disclose.label.restart'),
+      text: t('dns.enable.disclose.restart'),
+      warn: true
+    },
+    {
+      label: t('dns.enable.disclose.label.depend'),
+      text: t('dns.enable.disclose.depend'),
+      warn: true,
+      // Item 5 shares this label because it is the same dependency from the
+      // other end: which command leaves the service running, and which one
+      // takes the whole machine's DNS down with it.
+      extra: [t('dns.enable.disclose.dependStop')]
+    },
+    {
+      label: t('dns.enable.disclose.label.undo'),
+      text: t('dns.enable.disclose.undo', { count: plan.entries.length })
+    },
+    {
+      label: t('dns.enable.disclose.label.removal'),
+      text: t('dns.enable.disclose.removal')
+    },
+    {
+      label: t('dns.enable.disclose.label.upstream'),
+      text: t('dns.enable.disclose.upstream', { upstreams: checks.upstreams.upstreams.join(', ') }),
+      extra: checks.upstreamIsFallback ? [t('dns.enable.disclose.upstreamDefault')] : []
+    },
+    {
+      label: t('dns.enable.disclose.label.fallback'),
+      // Both directions, always. Describing only one of them is what spec 9.7
+      // calls unacceptable, in either direction — so the counterpart is the
+      // continuation line, not a paragraph the reader has to finish.
+      text:
+        fallback === undefined
+          ? t('dns.enable.disclose.fallbackOff')
+          : t('dns.enable.disclose.fallbackOn', { value: fallback }),
+      extra: [
+        fallback === undefined
+          ? t('dns.enable.disclose.fallbackOffOther')
+          : t('dns.enable.disclose.fallbackOnOther')
+      ]
+    },
+    {
+      label: t('dns.enable.disclose.label.reorder'),
+      text: isAutoReorderEnabled(config)
+        ? t('dns.enable.disclose.reorderOn')
+        : t('dns.enable.disclose.reorderOff')
+    },
+    {
+      label: t('dns.enable.disclose.label.ui'),
+      text: authenticated ? t('dns.enable.disclose.uiAuth', { url }) : t('dns.enable.disclose.uiOpen', { url }),
+      warn: !authenticated,
+      extra: authenticated ? [] : [t('dns.enable.disclose.uiSet')]
+    }
+  ];
 
   if (plan.duplicates.length > 0) {
-    warn(t('dns.enable.disclose.duplicate', { values: plan.duplicates.join(', ') }));
+    rows.push({
+      label: t('dns.enable.disclose.label.existing'),
+      text: t('dns.enable.disclose.existing', { values: plan.duplicates.join(', ') })
+    });
   }
+
+  logger.info(t('dns.enable.section.disclosure'));
+  printDiscloseRows(rows);
+  line(t('dns.enable.disclose.docs'));
 }
 
 export function printEnableDiff(plan: EnablePlan): void {
@@ -301,7 +397,6 @@ async function askDnsSettings(
     for (const entry of facts.upstreams.origins) {
       line(t(`setup.dns.upstream.origin.${entry.origin}`, { value: entry.value }));
     }
-    line(t('setup.dns.upstream.pool'));
 
     const action = await p.select({
       message: t('setup.dns.upstream.prompt'),
@@ -349,11 +444,14 @@ async function askDnsSettings(
 
     logger.info(t('setup.dns.fallback.title'));
     line(t('setup.dns.fallback.description', { value: current || suggested }));
-    line(t('setup.dns.fallback.benefit'));
-    line(t('setup.dns.fallback.cost'));
-    line(t('setup.dns.fallback.adviceShared'));
-    line(t('setup.dns.fallback.adviceSolo'));
-    line(t('setup.dns.fallback.adviceUnsure'));
+    // Both directions and nothing else. The five lines this replaced repeated
+    // what the disclosure says a few lines later; the trade-off itself has to
+    // stay, because this is where the choice is made. The advice table and the
+    // reasoning live in the user documentation the hint points at.
+    line(t('dns.enable.fallback.buys'));
+    line(t('dns.enable.fallback.costs'));
+    line(t('dns.enable.fallback.hint'));
+    line(t('dns.enable.disclose.docs'));
 
     const wanted = await p.confirm({
       message: t('setup.dns.fallback.prompt'),
