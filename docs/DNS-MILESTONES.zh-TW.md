@@ -382,7 +382,17 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **在 Windows 上重啟 Docker，可能讓前一刻還在發佈的埠變成不可用。** Docker 停著的那段時間，`winnat` 把 TCP 1025–1124 收成動態排除範圍，於是 `runestone` 容器再也無法為 Mailpit 發佈 1025——`netsh int ipv4 show excludedportrange` 可以確認那個範圍，而釋放它需要以管理員權限執行 `net stop winnat`。53 埠不受影響，因為這台機器的動態範圍從 1025 起算；但這個功能發佈的任何高於它的埠都會受影響。
 
-**剩下什麼，以及為什麼。** 破壞性循環需要一個約好的時間窗：這台機器上跑著 12 個 container，其中好幾個是有狀態的，而重啟 Docker 會把它們全部終止。原生 Linux engine 則需要一台真的有的機器；這裡的 WSL 發行版只帶 Docker Desktop 整合，所以 `/etc/docker/daemon.json`、`sudo`、`systemctl restart docker` 與 systemd-resolved 的 `127.0.0.53` 全都還沒驗證。
+**中斷試過了，而且沒有完成。** `dns enable --yes --no-restart` 寫了真實的 `~/.docker/daemon.json`，原有的鍵原封不動，而 `phase: prepared` 在最要緊的地方得到證明：那筆項目已經在真實檔案裡，新建立容器的 `resolv.conf` 仍然是 `nameserver 192.168.65.7`。寫入是真的、效果是零——這正是整套計畫倚賴的槓桿，而在此之前它只在 dind 裡被示範過。
+
+接著 `docker desktop restart` **讓 Docker Desktop 當掉了**——它的 Inference manager 無法重建自己的 socket，那條路徑與 DNS、`dns` 陣列或 53 埠都毫無關係。這台機器今天跑了兩次重啟：第一次完成，第二次變成這樣。這是關於「裁決 1 所選定的機制」的事實：`docker desktop restart` 存在、是同步的，而且不可靠。
+
+這次意外順手驗證了一個順序：**反向還原是先寫檔案、後重啟。** Docker 當著、我方項目還在檔案裡，而在它停著時把檔案還原就已經足夠——Docker 回來時讀到的是修正後的檔案。順序若相反，就不存在任何可以安全介入的時刻。
+
+**Docker Desktop 會自己改寫 `daemon.json`**，把鍵按字母重排、把陣列重新排版。`dns` 陣列內部的元素順序有活下來，所以用記錄的 index 做識別不受影響——但 M1 的位元組保真不變式是 Runestone 自身操作的性質，不是對「檔案能撐過一次 Docker Desktop 重啟」的承諾。
+
+安全網做到了它存在的目的：檔案逐位元組放回、先印出即將丟棄的 diff、不對一個死掉的 daemon 嘗試重啟、把五個沒回來的容器叫起來。使用者自己的 Runestone 安裝從頭到尾不在範圍內——這次用的是沙箱專案，真實的 `.env` 與狀態檔都沒被動到。
+
+**剩下什麼，以及為什麼。** 剩下的通過條件全都需要「一次能夠完成的重啟」：新容器的 `resolv.conf` 把 Target IP 排在第一位、子網域透過 daemon 設定而非明確 `@server` 解析、`disable` 把陣列還原，以及 `restart: unless-stopped` 能不能撐過優雅的 `docker desktop restart`。在這台機器上的 `docker desktop restart` 能正常運作之前，這些都到不了；那是要先解決的 Docker Desktop 問題。破壞性循環需要一個約好的時間窗：這台機器上跑著 12 個 container，其中好幾個是有狀態的，而重啟 Docker 會把它們全部終止。原生 Linux engine 則需要一台真的有的機器；這裡的 WSL 發行版只帶 Docker Desktop 整合，所以 `/etc/docker/daemon.json`、`sudo`、`systemctl restart docker` 與 systemd-resolved 的 `127.0.0.53` 全都還沒驗證。
 
 ## M7 — 生命週期整合與揭露
 
@@ -490,7 +500,7 @@ M6b 與 M8 產出的結論無法從程式碼重新推導。記錄在這裡，並
 
 | 里程碑 | 平台 | 日期 | 證據 | 執行者 |
 | --- | --- | --- | --- | --- |
-| M6b | Windows Docker Desktop | 2026-08-28 | [m6b-windows-docker-desktop.zh-TW.md](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)——裁決 1、Target IP、ICS 的 53 埠衝突與 `0.0.0.0:53:53` 的 bug、`127.0.0.1` 綁定、撤銷逃生口。破壞性循環尚未執行 | cymondez |
+| M6b | Windows Docker Desktop | 2026-08-28 | [m6b-windows-docker-desktop.zh-TW.md](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)——裁決 1、Target IP、ICS 的 53 埠衝突與 `0.0.0.0:53:53` 的 bug、`127.0.0.1` 綁定、撤銷逃生口、真實 daemon 寫入並證明 `phase: prepared`、Docker Desktop 自行改寫檔案，以及 `docker desktop restart` 當掉。重啟後的驗證尚未完成 | cymondez |
 | M6b | 原生 Linux（VM） | | | |
 | M8 | WSL2 | | | |
 | M8 | macOS Intel | | | |

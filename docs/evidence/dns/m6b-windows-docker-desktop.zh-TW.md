@@ -6,7 +6,7 @@
 
 這份檔案記錄的是**量到什麼**，而不是**預期是什麼**——因為 [DNS-MILESTONES.zh-TW.md](../../DNS-MILESTONES.zh-TW.md) 要求下一位貢獻者不必為了相信這件事而重跑一次 T4 驗證。
 
-**這次過程中沒有寫過真實的 daemon 設定，也沒有重啟過 Docker。** 機器的 `~/.docker/daemon.json` 前後 SHA-256 相同（`27369c83…`），`docker ps -a` 列出的仍是同樣 17 個 container。所有 daemon 寫入都透過 `RUNESTONE_DNS_DAEMON_PATH` 導向暫存檔。
+**機器結束時回到它開始時的樣子。** `~/.docker/daemon.json` 的 SHA-256 與整段作業之前相同（`27369c83…`），先前在跑的容器全都在跑。以下大部分內容是透過 `RUNESTONE_DNS_DAEMON_PATH` 對著暫存檔量的；最後一節是刻意的例外，那裡寫的是真實檔案、重啟的是真的 Docker。
 
 ## 裁決 1 —— `docker desktop restart` 存在
 
@@ -172,6 +172,82 @@ linux|Docker Desktop
 這個發行版正是 M6a 那個拒絕所針對的形狀：一個 Linux 使用者空間，它的 `docker` 是 Docker Desktop 的、透過 WSL 整合連過去，自己沒有 daemon。**從它裡面執行 `docker info` 會回報 `Docker Desktop`**，而那正是 `preflight` 的 `docker-desktop-elsewhere` 失敗所依據的訊號——這在真實環境中確認了：舊的核心字串偵測分辨不出任何東西，而替代訊號確實存在且正確。
 
 CLI 本身沒有在 WSL 裡跑過：那個發行版沒有 Linux 端的 `node`。
+
+## 中斷本身——試了，被 Docker Desktop 擋下
+
+2026-08-28 對著真實的 `~/.docker/daemon.json` 執行，Runestone 專案刻意用沙箱：daemon 檔才是 M6b 要驗的那個全域物件，把使用者自己的安裝也拉進爆炸半徑並不會多驗到任何東西。它自始至終沒被動過——前後 `.env` 裡都沒有 DNS 鍵，狀態檔裡也沒有所有權紀錄。
+
+### 寫入這一步證明了什麼
+
+`dns enable --yes --no-restart` 寫了真實檔案。原本就在裡面的鍵原封不動：
+
+```json
+{
+  "builder": { "gc": { "defaultKeepStorage": "20GB", "enabled": true } },
+  "experimental": false,
+  "dns": ["192.168.65.254"]
+}
+```
+
+在 daemon 被碰到之前，服務就已經回答過一次真實查詢——`traefik.m6b.test` → `192.168.65.254`。這正是規格 10.1 要強制的順序：所有可能失敗的事，都在機器的全域 DNS 改變之前失敗。
+
+**`phase: prepared` 現在在真機上得到證明，不再只有沙箱裡的證據。** 在那筆項目已經躺在真實 daemon 檔裡的狀態下，新建立容器的 `resolv.conf` 仍然是：
+
+```
+nameserver 192.168.65.7
+```
+
+Docker 自己的解析器。寫入是真的，效果是零。這個「分離」正是整套風險計畫所倚賴的槓桿，而在此之前它只在 dind 裡被示範過。`dns status` 用的正是這個說法：*「已寫入，等待 Docker 重啟。目前尚未生效。」*
+
+### Docker Desktop 會自己改寫 `daemon.json`
+
+在我們寫入與下一次讀取同一個檔案之間，它變成了：
+
+```json
+{
+  "builder": { ... },
+  "dns": [
+    "192.168.65.254"
+  ],
+  "experimental": false
+}
+```
+
+鍵被按字母重排，陣列被展開成多行。這不是我方做的——Runestone 精準地 splice 位元組，正是為了不做這件事。**是 Docker Desktop 在啟動時把檔案正規化了。**
+
+這在正確性上不花任何代價：`dns` 陣列**內部**的元素順序有被保留，所以用記錄下來的 index 做識別依然成立。它真正的意思是：M1 測試的那個「位元組保真」不變式，是 Runestone 自身操作的性質，而不是對「檔案能撐過一次 Docker Desktop 重啟」的承諾。任何人把規格 9.5 讀成「你的排版會活下來」，都應該改讀成「Runestone 不會是動它的那個」。
+
+### `docker desktop restart` 讓 Docker Desktop 當掉
+
+重啟從未完成。Docker Desktop 以這段訊息終止：
+
+```
+starting services: initializing Inference manager: listening on
+unix://C:/Users/cymondez/AppData/Local/Docker/run/dockerInference:
+remove C:/Users/cymondez/AppData/Local/Docker/run/dockerInference:
+The file cannot be accessed by the system.
+```
+
+它的 Inference manager 無法重建自己的 socket。那條路徑上沒有任何東西牽涉 DNS、`dns` 陣列或 53 埠，而當下 daemon 檔裡多的只是一個字串。這台機器今天執行過兩次 `docker desktop restart`：第一次完成了，第二次變成這樣。
+
+**這是關於「裁決 1 所選定的那個機制」的事實。** `docker desktop restart` 存在、而且是同步的——同時它並不可靠。`completeEnable` 依賴它兩次：一次用來套用，另一次用來在套用失敗、反向還原之後再重啟。一個會讓 daemon 當掉的重啟，也可能在復原過程中當掉。
+
+設計撐得住這件事，而這次意外剛好示範了原因：**反向還原是先寫檔案、後重啟。** Docker 當著，而我方的項目還在檔案裡；在它停著的時候把檔案還原就已經足夠，Docker 回來時讀到的就是修正後的檔案。如果順序是「先重啟、再寫」，就不存在任何可以安全介入的時刻。
+
+### 安全網有做到它該做的事
+
+`m6b-safety-net.sh restore` 把 daemon 檔逐位元組放了回去（前後都是 `27369c83…`），在丟棄之前先印出即將丟棄的 diff，對一個沒在跑的 daemon 拒絕執行重啟，並把五個沒有自己回來的容器叫了起來。接著 `status` 回報機器與快照完全一致。從當掉到機器回到快照狀態，總共幾分鐘，沒有任何手動編輯。
+
+### 仍未驗證的部分，以及原因
+
+通過條件裡需要「重啟真的完成」的那一半：
+
+- 新容器的 `resolv.conf` 把 Target IP 列在**第一位**
+- 憑證涵蓋的子網域透過 daemon 設定解析，而不是靠明確指定 `@server`
+- `disable` 以第二次重啟把陣列還原
+- `restart: unless-stopped` 能不能撐過**優雅的** `docker desktop restart`——規格 8.3 倚賴這件事，而 M6a 只針對「被砍掉的 daemon」示範過
+
+在這台機器上的 `docker desktop restart` 能夠完成之前，這些都到不了。那是要先解決的 Docker Desktop 問題，不是 Runestone 的問題。
 
 ## 這份檔案沒有涵蓋的部分
 

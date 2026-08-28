@@ -382,7 +382,17 @@ Fixed by deriving `DNS_BIND_PREFIX` from `DNS_BIND_IP`: empty for an all-interfa
 
 **Restarting Docker on Windows can strand a port that was published a moment earlier.** While Docker was down, `winnat` claimed TCP 1025–1124 as a dynamic exclusion range, and the `runestone` container could no longer publish 1025 for Mailpit — `netsh int ipv4 show excludedportrange` confirms the range, and releasing it needs an elevated `net stop winnat`. Port 53 is not exposed to this, because the dynamic ranges on this machine begin at 1025, but any port the feature publishes above that is.
 
-**What is left, and why.** The destructive cycle needs an agreed window: this machine runs 12 containers, several of them stateful, and a Docker restart terminates all of them. The native Linux engine needs a machine that has one; the WSL distro carries only the Docker Desktop integration, so `/etc/docker/daemon.json`, `sudo`, `systemctl restart docker` and systemd-resolved's `127.0.0.53` are all still unverified.
+**The interruption was attempted and did not complete.** `dns enable --yes --no-restart` wrote the real `~/.docker/daemon.json`, preserving the keys already in it, and `phase: prepared` was proven where it matters: with the entry in the real file, a new container's `resolv.conf` still read `nameserver 192.168.65.7`. The write was real and had no effect, which is the lever this whole plan rests on and had until now only been shown inside dind.
+
+Then `docker desktop restart` **crashed Docker Desktop** — its Inference manager could not re-create its own socket, a path with no connection to DNS, the `dns` array or port 53. Two restarts were run on this machine today; the first completed, the second did this. That is a fact about the mechanism decision 1 settled on: `docker desktop restart` exists, is synchronous, and is not dependable.
+
+The incident validated an ordering by accident: **the inversion writes the file before it restarts.** Docker was down with our entry in the file, and restoring the file while it was down was enough — Docker read the corrected file when it came back. Had the order been reversed there would have been no safe moment to intervene.
+
+**Docker Desktop rewrites `daemon.json` itself**, reordering keys alphabetically and reformatting the array. Element order inside `dns` survived, so identification by recorded index is unaffected — but M1's byte-preservation invariant is a property of Runestone's own operations, not a promise about the file across a Docker Desktop restart.
+
+The safety net did what it exists for: file back byte-for-byte, the discarded diff printed first, no restart attempted against a dead daemon, and the five containers that had not returned started again. The user's own Runestone installation was never in scope — the run used a sandbox project, and the real `.env` and state file are untouched.
+
+**What is left, and why.** The remaining gate items all need a restart that completes: a new container's `resolv.conf` listing the Target IP first, a subdomain resolving through the daemon setting rather than an explicit `@server`, `disable` restoring the array, and whether `restart: unless-stopped` survives a graceful `docker desktop restart`. None is reachable until `docker desktop restart` works on this machine, which is a Docker Desktop problem to resolve first. The destructive cycle needs an agreed window: this machine runs 12 containers, several of them stateful, and a Docker restart terminates all of them. The native Linux engine needs a machine that has one; the WSL distro carries only the Docker Desktop integration, so `/etc/docker/daemon.json`, `sudo`, `systemctl restart docker` and systemd-resolved's `127.0.0.53` are all still unverified.
 
 ## M7 — Lifecycle integration and disclosure
 
@@ -490,7 +500,7 @@ M6b and M8 produce findings that cannot be re-derived from the code. Record them
 
 | Milestone | Platform | Date | Evidence | By |
 | --- | --- | --- | --- | --- |
-| M6b | Windows Docker Desktop | 2026-08-28 | [m6b-windows-docker-desktop.md](evidence/dns/m6b-windows-docker-desktop.md) — decision 1, Target IP, the ICS port 53 conflict and the `0.0.0.0:53:53` bug, the `127.0.0.1` bind, the revocation escape hatch. Destructive cycle outstanding | cymondez |
+| M6b | Windows Docker Desktop | 2026-08-28 | [m6b-windows-docker-desktop.md](evidence/dns/m6b-windows-docker-desktop.md) — decision 1, Target IP, the ICS port 53 conflict and the `0.0.0.0:53:53` bug, the `127.0.0.1` bind, the revocation escape hatch, the real daemon write with `phase: prepared` proven, Docker Desktop rewriting the file, and `docker desktop restart` crashing. Post-restart verification outstanding | cymondez |
 | M6b | Native Linux (VM) | | | |
 | M8 | WSL2 | | | |
 | M8 | macOS Intel | | | |

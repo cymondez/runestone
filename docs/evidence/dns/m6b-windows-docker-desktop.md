@@ -6,7 +6,7 @@
 
 This file records what was measured rather than what was expected, because [DNS-MILESTONES.md](../../DNS-MILESTONES.md) asks that the next contributor not have to re-run a T4 verification in order to trust it.
 
-**Nothing in this session wrote to the real daemon configuration or restarted Docker.** The machine's `~/.docker/daemon.json` has the same SHA-256 before and after (`27369c83…`), and `docker ps -a` lists the same 17 containers. Every daemon write here went to a temporary file through `RUNESTONE_DNS_DAEMON_PATH`.
+**The machine ends where it started.** `~/.docker/daemon.json` has the same SHA-256 as before the session (`27369c83…`) and every container that was running is running. Most of what follows was measured against temporary files through `RUNESTONE_DNS_DAEMON_PATH`; the last section is the one deliberate exception, where the real file was written and Docker was restarted for real.
 
 ## Decision 1 — `docker desktop restart` is available
 
@@ -172,6 +172,82 @@ linux|Docker Desktop
 This distro is the exact shape M6a's refusal was written for: a Linux userland whose `docker` is Docker Desktop's, reached through the WSL integration, with no daemon of its own. **`docker info` reports `Docker Desktop` from inside it**, which is the signal `preflight`'s `docker-desktop-elsewhere` failure keys on — confirming in the real environment that the replacement signal is present and correct where the old kernel-string detection could not distinguish anything.
 
 The CLI itself was not run inside WSL: the distro has no Linux-side `node`.
+
+## The interruption itself — attempted, and stopped by Docker Desktop
+
+Run on 2026-08-28 against the real `~/.docker/daemon.json`, with the Runestone project deliberately a sandbox: the daemon file is the global thing M6b is about, and there was nothing to gain by also putting the user's own installation in the blast radius. It was never touched — no DNS keys in its `.env`, no ownership record in its state file, before or after.
+
+### What the write proved
+
+`dns enable --yes --no-restart` wrote the real file. The keys that were already there survived exactly:
+
+```json
+{
+  "builder": { "gc": { "defaultKeepStorage": "20GB", "enabled": true } },
+  "experimental": false,
+  "dns": ["192.168.65.254"]
+}
+```
+
+Before the daemon was touched at all, the service had already answered a real query — `traefik.m6b.test` → `192.168.65.254` — which is the ordering spec 10.1 exists to enforce: everything that can fail, fails before the machine's global DNS changes.
+
+**`phase: prepared` is now proven on a real machine, not only in the sandbox.** With the entry sitting in the real daemon file, a new container's `resolv.conf` still read:
+
+```
+nameserver 192.168.65.7
+```
+
+Docker's own resolver. The write was real and had no effect. That separation is the lever the entire risk plan rests on, and until now it had only been demonstrated inside dind. `dns status` reported it in those words: *"Written, waiting for a Docker restart. Nothing has taken effect yet."*
+
+### Docker Desktop rewrites `daemon.json` itself
+
+Between our write and the next read of the same file, it had become:
+
+```json
+{
+  "builder": { ... },
+  "dns": [
+    "192.168.65.254"
+  ],
+  "experimental": false
+}
+```
+
+Keys reordered alphabetically, the array expanded to multiple lines. Nothing of ours did that — Runestone splices bytes precisely so it does not. **Docker Desktop normalises the file when it starts.**
+
+This costs nothing in correctness: the order of elements *inside* the `dns` array was preserved, so identification by recorded index still holds. What it does mean is that the byte-preservation invariant M1 tests is a property of Runestone's own operations, not a promise about the file across a Docker Desktop restart. Anyone reading spec 9.5 as "your formatting will survive" should read it as "Runestone will not be the one to change it".
+
+### `docker desktop restart` crashed Docker Desktop
+
+The restart never completed. Docker Desktop terminated with:
+
+```
+starting services: initializing Inference manager: listening on
+unix://C:/Users/cymondez/AppData/Local/Docker/run/dockerInference:
+remove C:/Users/cymondez/AppData/Local/Docker/run/dockerInference:
+The file cannot be accessed by the system.
+```
+
+Its Inference manager could not re-create its own socket. Nothing in that path involves DNS, the `dns` array, or port 53, and the daemon file at that moment held one added string. Two `docker desktop restart` invocations were run on this machine today; the first completed, the second did this.
+
+**That is a fact about the mechanism decision 1 settled on.** `docker desktop restart` exists and is synchronous — and it is not dependable. `completeEnable` depends on it twice: once to apply, and once more to restart after inverting a failed apply. A restart that can crash the daemon is a restart that can crash during the recovery too.
+
+The design survives that, and this incident happened to demonstrate why: **the inversion writes the file before it restarts.** Docker was down with our entry in the file; restoring the file while it was down was enough, and Docker read the corrected file when it came back. Had the order been "restart, then write", there would have been no safe moment to intervene.
+
+### The safety net did its job
+
+`m6b-safety-net.sh restore` put the daemon file back byte-for-byte (`27369c83…` before and after), printed the diff it was discarding first, declined to restart a daemon that was not running, and started the five containers that had not come back. `status` then reported the machine identical to the snapshot. Total time from crash to a machine matching its snapshot: a few minutes, no manual editing.
+
+### Still unverified, and why
+
+The half of the gate that needs a completed restart:
+
+- a new container's `resolv.conf` listing the Target IP **first**
+- a certificate-covered subdomain resolving through the daemon setting rather than through an explicit `@server`
+- `disable` restoring the array with a second restart
+- whether `restart: unless-stopped` survives a **graceful** `docker desktop restart`, which spec 8.3 relies on and which M6a demonstrated only against a killed daemon
+
+None of these can be reached until `docker desktop restart` completes on this machine. That is a Docker Desktop problem to resolve first, not a Runestone one.
 
 ## What this file does not cover
 
