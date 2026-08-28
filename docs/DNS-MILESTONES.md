@@ -16,9 +16,9 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 
 | # | Milestone | Risk | Tier | Blocked by | Status |
 | --- | --- | --- | --- | --- | --- |
-| M0 | Safety rails | 0 | T0 | — | **done**, one gate item red for a pre-existing reason |
+| M0 | Safety rails | 0 | T0 | — | **done** |
 | M1 | Daemon ownership engine | 0 | T0 | M0 | **done** |
-| M2 | runestone-dns image | 1 | T1 | — | **done on amd64**; arm64 unverified, see M2 |
+| M2 | runestone-dns image | 1 | T1 | — | **done**, amd64 and arm64 both 32 of 32 |
 | M3 | Service plumbing and `dns status` | 0 | T1 | — | **done** |
 | M4 | `dns disable` | 2 (redirected) | T0 | — | **done** |
 | M5 | `dns enable` to `prepared` | 2 | T1 | — | **done**, real-machine gate items pending the 16.5 safety net |
@@ -57,7 +57,7 @@ The four items in spec 15 have milestone deadlines (spec 16.6). A milestone must
 
 **Gate**
 
-- [ ] `npm test` green — red for a pre-existing reason, see below
+- [x] `npm test` green — 41 suites, 522 passed, 1 skipped. The Windows integration failure is fixed; see the note below
 - [x] No unscoped `docker compose restart` remains in the source
 - [x] Dynamic-config changes restart only `runestone`
 
@@ -65,7 +65,7 @@ The four items in spec 15 have milestone deadlines (spec 16.6). A milestone must
 
 Two things were left open deliberately:
 
-- **`npm test` is not green, for a reason that predates this milestone.** `runestone-cli/tests/integration/execution.test.ts` fails on Windows under Node 20.12 or newer. It intercepts Docker by putting a `docker.cmd` shim on `PATH`, but Node no longer resolves or executes `.cmd` files without a shell, so the shim is skipped, the real `docker` runs with a redirected `USERPROFILE`, and its compose plugin cannot be found. The consequence is worse than the red result: **the fake Docker is never exercised on Windows at all.** Fixing it needs either a documented way to point the CLI at a different Docker binary or an explicit skip on Windows, which is a decision of its own and not a DNS matter. Everything else is green — 161 of 162 tests.
+- **`npm test` is now green**, and the Windows integration failure that predated this milestone is fixed. `runestone-cli/tests/integration/execution.test.ts` intercepts Docker with a `docker.cmd` shim on `PATH`, and **Node resolves a bare command name without consulting `PATHEXT`** — so the shim was invisible to it, and it walked straight past to the real `docker.exe` further along `PATH`. The consequence was worse than the red result: the fake Docker had never been exercised on Windows at all. The fix is in the test, not in production code: the CLI is given a `PATH` containing the fake directory and nothing that could shadow it, so `spawnCommand` gets `ENOENT` and takes its existing shell retry, which does consult `PATHEXT`. 41 suites, 522 passed, 1 skipped.
 - **The WSL row of 6.2 cannot be resolved offline.** `platformDaemonPath()` needs the Windows-side home directory, which is only knowable by inspecting the Docker context, so it throws and names `RUNESTONE_DNS_DAEMON_PATH` rather than guessing a path to write to. M5 must supply it at the point where it already inspects the context.
 
 **Rollback.** Single revert. The restart scoping fix is worth keeping on its own merit, so this milestone is safe to land ahead of any DNS decision.
@@ -132,7 +132,7 @@ Three things to carry forward:
 
 **Gate**
 
-- [ ] Spec 14.4 green on both architectures — **amd64 only so far**, 32 of 32 checks; arm64 not built, see below
+- [x] Spec 14.4 green on both architectures — **amd64 32 of 32, arm64 32 of 32**, after registering QEMU emulation
 - [x] **All verification performed on a port other than 53**, so this milestone never fights the host for port 53
 - [x] Tamper resistance: editing the two Runestone-owned files inside the container and restarting restores both, and leaves `custom.conf` untouched
 - [x] Mapping rules: one `address=` per `*.crt`, `rootCA.crt` excluded, invalid domain filenames excluded, empty directory still starts
@@ -144,7 +144,7 @@ The verification script deliberately avoids two things. It **never uses port 53*
 Two findings worth carrying:
 
 - **The spec's webproc invocation was wrong, and 8.1 has been corrected.** `--config` does not exist in webproc 0.4.0; the writable-configuration flag is `--configuration-file` (`-c`). `--port`, `--user` and `--pass` do exist. Two improvements came out of checking: `--restart-watch` makes a change to `custom.conf` *on disk* restart dnsmasq, which covers a user editing their own file with an editor rather than through the UI; and `HTTP_USER` / `HTTP_PASS` are passed as environment variables rather than flags, because a password on the command line appears in the container's process list. This is exactly the open item 8.1 asked to be confirmed at build time — one of the four assumed flags did not survive contact.
-- **arm64 has not been built.** Docker Desktop's default builder on the maintainer's machine reports only `linux/amd64` and its variants, and an arm64 build fails at the first `RUN` with `exec format error` — no QEMU handler is registered. The remedies are `docker run --privileged --rm tonistiigi/binfmt --install arm64` or a `docker-container` driver builder; both change state outside this repository, so neither was done. `publish.sh` checks the builder's platform list up front and refuses with those two commands rather than failing deep inside a build. **The gate item stays unticked**: nobody should read this milestone as "verified on arm64" when arm64 has never been compiled.
+- **arm64 is built and verified: 32 of 32, the same as amd64.** It needed QEMU emulation registered in the kernel the Docker daemon runs on — `docker run --privileged --rm tonistiigi/binfmt --install arm64`, reversible with `--uninstall`. Worth recording, because `publish.sh` used to offer a second remedy that does not work on its own: a freshly bootstrapped `docker-container` builder reported only `linux/amd64` and `linux/386` here, so that driver helps when the docker driver is the limitation and not when the emulators are missing. The script now says so.
 
 **Carried debt.** The publish path is a script a maintainer runs, so nothing records what produced a published tag beyond the script being in the repository. CI replaces it later; until then, a published tag and the commit it was built from have to be associated by hand.
 
@@ -455,15 +455,15 @@ The second: **`doctor` reported a failed DNS check and then signed off with "Env
 
 - [ ] Spec 14.3 platform matrix completed, with the T4 rows' output committed
 - [ ] The image published for both architectures **before** the CLI presents DNS as available (spec 13)
-- [ ] `docs/DNS.md`, `docs/DNS.zh-TW.md` and `docs/DNS.ja-JP.md` — the complete user-facing explanation, one language per file with the same structure, covering disclosure items 1–8, 10 and 11 and the manual removal steps (spec 11.4)
-- [ ] README gains a short paragraph and a link to that documentation, and nothing more: the disclosure is too long to belong in a README
+- [x] `docs/DNS.md`, `docs/DNS.zh-TW.md` and `docs/DNS.ja-JP.md` — the complete user-facing explanation, one language per file with the same structure, covering disclosure items 1–8, 10 and 11 and the manual removal steps (spec 11.4). 317 lines each, identical structure, every internal anchor checked
+- [x] README gains a short paragraph and a link to that documentation, and nothing more: the disclosure is too long to belong in a README — in all three README languages, with the npm copy's links rewritten to absolute URLs by `sync-readme.js`
 
 **Gate**
 
 - [ ] Every row of the spec 14.3 table is either done or explicitly deferred with a reason
-- [ ] A fresh install and an upgrade from the previous version both behave correctly with DNS off
-- [ ] `runestone dns disable` documented as required before removing Runestone
-- [ ] Every language of the user documentation covers the same items — a user warned in their own language can read the explanation in it
+- [x] A fresh install and an upgrade from the previous version both behave correctly with DNS off — a fresh project lands on template 3 and `docker compose config --services` lists only `runestone`; a template-2 project regenerates to 3, keeps the original as `.bak`, and re-running is a no-op
+- [x] `runestone dns disable` documented as required before removing Runestone — disclosure item 6 in all three user documents, with the by-hand removal steps beside it
+- [x] Every language of the user documentation covers the same items — a user warned in their own language can read the explanation in it. Checked mechanically: same heading count and nesting, same tables, same code blocks, all ten disclosure items present in each
 
 ## Safety-net checklists
 

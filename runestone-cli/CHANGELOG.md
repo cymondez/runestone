@@ -21,6 +21,10 @@
 - `compose.yml` is now regenerated when Runestone's template changes, so an upgrade no longer leaves you with an outdated Compose file. The file already on disk is kept as a `.bak` beside it first.
 - `runestone doctor` now exits non-zero when a DNS check fails, instead of reporting the failure and then signing off as passed. It says the host environment is fine and that nothing needs installing, rather than sending you to install something.
 
+### Documentation
+
+- Added the full DNS explanation as [docs/DNS.md](../docs/DNS.md), with Traditional Chinese and Japanese versions: what enabling it changes on your machine, how to turn it off, and how to remove Runestone's entry from the Docker daemon configuration by hand if the CLI is gone. The README carries a short paragraph and a link — the disclosure is too long to belong there.
+
 ### Fixed
 
 - Fixed `runestone dns enable` failing to start the dns service on Windows machines running WSL2, which is most of them. The generated `compose.yml` published port 53 as `0.0.0.0:53:53`, and that form collides with the Internet Connection Sharing service WSL2 enables; publishing it as `53:53` does not, and containers reach the service just the same. An all-interfaces bind is now published without an address at all. `compose.yml` is regenerated automatically on upgrade.

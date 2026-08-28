@@ -93,15 +93,18 @@ runestone-dns publish: this builder cannot produce:${missing}
   builder: $(docker buildx inspect 2>/dev/null | sed -n 's/^Name:[[:space:]]*//p' | head -1)
   supports: ${available:-unknown}
 
-Either register QEMU emulation for the missing platforms:
+Register QEMU emulation for the missing platforms:
 
   docker run --privileged --rm tonistiigi/binfmt --install arm64
 
-or use a builder that bundles it:
+That changes state outside this repository, so it is not done for you. It
+registers the emulators in the kernel your Docker daemon runs on, and
+\`--uninstall\` reverses it.
 
-  docker buildx create --name runestone --driver docker-container --use
-
-Both change state outside this repository, so neither is done for you.
+A \`docker-container\` builder is **not** an alternative on its own: measured on
+Docker Desktop for Windows, a freshly bootstrapped one reported only
+linux/amd64 and linux/386 until binfmt was registered. It helps when the
+limitation is the docker driver, not when the emulators are missing.
 EOF
     exit 1
 fi

@@ -125,6 +125,36 @@ function expectSuccess(result: ReturnType<typeof runCli>, label: string): void {
   }
 }
 
+/**
+ * The PATH the CLI is given, containing the fake Docker and **nothing that could
+ * shadow it**.
+ *
+ * Prepending the fake directory to the real PATH is not enough on Windows. Node
+ * resolves a bare command name without consulting `PATHEXT`, so `docker.cmd` is
+ * invisible to it: it walks straight past the shim and finds the real
+ * `docker.exe` further along, and the test silently exercises the actual Docker
+ * daemon instead of the fake. Removing the rest of PATH is what makes the shim
+ * the only candidate — `spawnCommand` then gets ENOENT and retries through a
+ * shell, which does consult `PATHEXT` and finds it.
+ *
+ * The system directory has to stay: on Windows the shell retry needs `cmd.exe`.
+ */
+function fakePath(fakeBinDir: string): string {
+  const nodeDir = path.dirname(process.execPath);
+
+  if (process.platform !== 'win32') {
+    return [fakeBinDir, '/usr/bin', '/bin', nodeDir].join(path.delimiter);
+  }
+
+  const systemRoot = process.env.SystemRoot ?? 'C:\Windows';
+  return [
+    fakeBinDir,
+    nodeDir,
+    path.join(systemRoot, 'System32'),
+    systemRoot
+  ].join(path.delimiter);
+}
+
 describe('runestone CLI actual execution integration', () => {
   let tempDir: string;
   let projectDir: string;
@@ -172,7 +202,7 @@ describe('runestone CLI actual execution integration', () => {
 
     env = {
       ...process.env,
-      PATH: `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ''}`,
+      PATH: fakePath(fakeBinDir),
       HOME: homeDir,
       USERPROFILE: homeDir,
       RUNESTONE_TOOL_STATE_PATH: path.join(tempDir, 'runestone.config.json'),

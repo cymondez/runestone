@@ -68,6 +68,20 @@ Shut down (stop and remove containers):
 runestone down
 ```
 
+## DNS For Containers (Optional)
+
+A Runestone domain resolves to `127.0.0.1`, which inside a container is the container itself — so containers cannot reach each other by domain. The optional DNS feature fixes that by giving containers a resolver that knows your Runestone domains.
+
+It is off by default, and turning it on is invasive: it adds an entry to the **Docker daemon's own configuration** and requires a Docker restart, which stops every container on the machine. After that, DNS for every container on the machine goes through a Runestone container.
+
+Read the full explanation before enabling it — what it changes, how to turn it off, and how to remove the entry by hand: **[DNS documentation](docs/DNS.md)** ([繁體中文](docs/DNS.zh-TW.md) | [日本語](docs/DNS.ja-JP.md)).
+
+```bash
+runestone dns enable --dry-run
+```
+
+That prints exactly what would change, with your real values, and writes nothing.
+
 ## Certificate Management
 
 ### List Certificates

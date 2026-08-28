@@ -16,9 +16,9 @@
 
 | # | 里程碑 | 風險 | 層級 | 前置 | 狀態 |
 | --- | --- | --- | --- | --- | --- |
-| M0 | 安全鋼索 | 0 | T0 | — | **已完成**，有一項通過條件因既有原因未綠 |
+| M0 | 安全鋼索 | 0 | T0 | — | **已完成** |
 | M1 | daemon 所有權引擎 | 0 | T0 | M0 | **已完成** |
-| M2 | runestone-dns image | 1 | T1 | — | **amd64 已完成**；arm64 未驗證，見 M2 |
+| M2 | runestone-dns image | 1 | T1 | — | **已完成**，amd64 與 arm64 都 32 項全過 |
 | M3 | 服務接線與 `dns status` | 0 | T1 | — | **已完成** |
 | M4 | `dns disable` | 2（導向） | T0 | — | **已完成** |
 | M5 | `dns enable` 到 `prepared` | 2 | T1 | — | **已完成**，真機通過條件待 16.5 安全網 |
@@ -57,7 +57,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **通過條件**
 
-- [ ] `npm test` 全綠 — 因既有原因未綠，見下方說明
+- [x] `npm test` 全綠 — 41 個測試套件、522 通過、1 skipped。Windows 的整合測試失敗已修好，見下方說明
 - [x] 原始碼中不再有未指定服務的 `docker compose restart`
 - [x] 動態設定變更只重啟 `runestone`
 
@@ -65,7 +65,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 有兩件事是刻意留著的：
 
-- **`npm test` 沒有全綠，原因早於這個里程碑。** `runestone-cli/tests/integration/execution.test.ts` 在 Windows 搭配 Node 20.12 以上會失敗。它靠把 `docker.cmd` 這個 shim 放進 `PATH` 來攔截 Docker，但 Node 已經不再在沒有 shell 的情況下解析或執行 `.cmd`，於是 shim 被跳過、真正的 `docker` 在被改寫過的 `USERPROFILE` 下執行、找不到自己的 compose plugin。比紅燈更嚴重的是後果：**這個假 Docker 在 Windows 上根本從來沒有被走過。** 要修它，得選擇替 CLI 提供一個有文件的 docker 執行檔指向機制，或是在 Windows 明確 skip；那是它自己的裁決，不是 DNS 的事。其餘全綠——162 項中的 161 項。
+- **`npm test` 現在全綠了**，而且那個早於這個里程碑的 Windows 整合測試失敗也已修好。`runestone-cli/tests/integration/execution.test.ts` 用一個放在 `PATH` 上的 `docker.cmd` shim 攔截 Docker，而 **Node 在解析裸指令名稱時不會參考 `PATHEXT`**——所以那個 shim 對它是隱形的，它直接走過去、在 `PATH` 更後面找到真正的 `docker.exe`。後果比紅燈更嚴重：這個假 Docker 在 Windows 上從來沒有被真正走過。修法在測試裡，不在產品程式碼：給 CLI 一個「只包含假目錄、沒有任何東西能蓋過它」的 `PATH`，於是 `spawnCommand` 拿到 `ENOENT`、走它本來就有的 shell 重試，而 shell 是會參考 `PATHEXT` 的。41 個套件、522 通過、1 skipped。
 - **規格 6.2 的 WSL 那一列無法離線判定。** `platformDaemonPath()` 需要 Windows 側的家目錄，而那只能靠檢查 Docker context 得知，因此它選擇丟出錯誤並指名 `RUNESTONE_DNS_DAEMON_PATH`，而不是猜一個要寫進去的路徑。M5 必須在它本來就會檢查 context 的地方把這個值補上。
 
 **回退。** 單一 revert。restart 範圍修正本身就有價值，所以這個里程碑可以在任何 DNS 裁決之前先落地。
@@ -132,7 +132,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **通過條件**
 
-- [ ] 規格 14.4 在兩種架構上全綠 — **目前只有 amd64**，32 項全過；arm64 尚未建置，見下方
+- [x] 規格 14.4 在兩種架構上全綠 — **amd64 32 項、arm64 32 項全過**，在註冊 QEMU 模擬之後
 - [x] **所有驗證都在非 53 的 port 上進行**，讓這個里程碑全程不與宿主爭 53
 - [x] 防篡改：在容器內改掉兩個 Runestone 擁有的檔案後重啟，兩者都被還原，且 `custom.conf` 未被動到
 - [x] mapping 規則：每個 `*.crt` 一條 `address=`、排除 `rootCA.crt`、排除非法 domain 檔名、目錄為空時仍能啟動
@@ -144,7 +144,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 有兩項發現要往下帶：
 
 - **規格原本寫的 webproc 呼叫是錯的，8.1 已修正。** webproc 0.4.0 沒有 `--config`，可寫設定檔的旗標是 `--configuration-file`（`-c`）。`--port`、`--user`、`--pass` 確實存在。順著這次確認多得到兩項改善：`--restart-watch` 讓 `custom.conf` 在**磁碟上**被改動時也會重啟 dnsmasq，覆蓋了使用者用編輯器而非 UI 修改自己檔案的情況；以及 `HTTP_USER` / `HTTP_PASS` 改以環境變數傳入而非旗標，因為命令列上的密碼會出現在容器的行程清單裡。這正是 8.1 要求「在建置時確認」的待辦——四個假設的旗標裡有一個沒有撐過實測。
-- **arm64 沒有建起來。** 維護者機器上 Docker Desktop 的預設 builder 只回報 `linux/amd64` 及其變體，arm64 建置在第一個 `RUN` 就以 `exec format error` 失敗——沒有註冊 QEMU handler。補救方式是 `docker run --privileged --rm tonistiigi/binfmt --install arm64` 或改用 `docker-container` driver 的 builder；兩者都會改動 repo 之外的狀態，因此都沒有代為執行。`publish.sh` 會先檢查 builder 的平台清單，並帶著這兩條指令拒絕執行，而不是讓建置在深處才失敗。**這條通過條件維持未打勾**：arm64 一次都沒有編譯過，沒有人應該把這個里程碑讀成「已在 arm64 驗證」。
+- **arm64 已經建起來並驗證過：32 項全過，與 amd64 相同。** 它需要在「Docker daemon 所在的那個核心」註冊 QEMU 模擬——`docker run --privileged --rm tonistiigi/binfmt --install arm64`，可用 `--uninstall` 還原。值得記錄的是：`publish.sh` 原本提供的第二條補救方式，單獨使用並不管用——這裡剛 bootstrap 起來的 `docker-container` builder 只回報 `linux/amd64` 與 `linux/386`，所以那個 driver 是在「docker driver 是限制來源」時有用，不是在「缺少模擬器」時。腳本現在把這件事講清楚了。
 
 **帶著走的債。** 發佈路徑是維護者手動執行的腳本，因此除了「腳本在 repo 裡」以外，沒有任何東西記錄一個已發佈 tag 是怎麼來的。之後由 CI 取代；在那之前，已發佈的 tag 與它建置自哪個 commit 只能靠人工對應。
 
@@ -455,15 +455,15 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 - [ ] 完成規格 14.3 平台矩陣，T4 各列的輸出存進 repo
 - [ ] 在 CLI 對外呈現 DNS 之前**先**發布兩種架構的 image（規格 13）
-- [ ] `docs/DNS.md`、`docs/DNS.zh-TW.md`、`docs/DNS.ja-JP.md`——完整的使用者說明，一個語言一個檔案且結構相同，涵蓋揭露項目 1–8、10、11 與手動移除步驟（規格 11.4）
-- [ ] README 只加一小段文字與指向該文件的連結，不加其他：這份揭露太長，不屬於 README
+- [x] `docs/DNS.md`、`docs/DNS.zh-TW.md`、`docs/DNS.ja-JP.md`——完整的使用者說明，一個語言一個檔案且結構相同，涵蓋揭露項目 1–8、10、11 與手動移除步驟（規格 11.4）。三份各 317 行、結構相同，每個內部錨點都檢查過
+- [x] README 只加一小段文字與指向該文件的連結，不加其他：這份揭露太長，不屬於 README——三個 README 語言版本都加了，npm 那份的連結由 `sync-readme.js` 改寫成絕對網址
 
 **通過條件**
 
 - [ ] 規格 14.3 表格每一列都是已完成，或明確記錄理由後延後
-- [ ] 全新安裝與自前一版升級，在 DNS 關閉時都行為正確
-- [ ] 文件寫明移除 Runestone 前必須先執行 `runestone dns disable`
-- [ ] 使用者說明文件的每個語言版本涵蓋相同項目——使用者既然用自己的語言看到警告，就要能用同一個語言讀到說明
+- [x] 全新安裝與自前一版升級，在 DNS 關閉時都行為正確——全新專案落在模板 3，且 `docker compose config --services` 只列出 `runestone`；模板 2 的專案會重生為 3、把原檔留成 `.bak`，重跑則是 no-op
+- [x] 文件寫明移除 Runestone 前必須先執行 `runestone dns disable`——三份使用者文件的揭露第 6 項，旁邊就是手動移除步驟
+- [x] 使用者說明文件的每個語言版本涵蓋相同項目——使用者既然用自己的語言看到警告，就要能用同一個語言讀到說明。以機械方式檢查過：標題數量與層級相同、表格相同、程式碼區塊相同，十個揭露項目在每一份裡都在
 
 ## 安全網檢查清單
 
