@@ -118,21 +118,38 @@ function normalizeContainer(input: Record<string, unknown>): DockerContainer {
   };
 }
 
+/**
+ * `docker compose ps --format json` emits **JSON Lines** — one object per line,
+ * not an array — and has done since Compose v2.21. Parsing the whole text first
+ * and only then falling back to line-by-line looks equivalent and is not: with
+ * two or more containers the whole-text parse throws, and the fallback below it
+ * was never reached. It went unnoticed because the test fed a single line, which
+ * happens to be valid JSON on its own.
+ *
+ * The consequence was quiet and wide: every caller of `ps` — `dns status`,
+ * `doctor`, the mapping refresh in `up`, the setup restart check — saw a parse
+ * failure on any project with more than one container, which is every real one.
+ */
 function parsePsOutput(stdout: string): DockerContainer[] {
   const text = stdout.trim();
   if (!text) {
     return [];
   }
 
-  const parsed = JSON.parse(text) as unknown;
-  if (Array.isArray(parsed)) {
-    return parsed.map((item) => normalizeContainer(item as Record<string, unknown>));
-  }
+  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
 
-  return text
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => normalizeContainer(JSON.parse(line) as Record<string, unknown>));
+  try {
+    // An array document, or a single object — both are valid JSON on their own.
+    const parsed = JSON.parse(text) as unknown;
+    return (Array.isArray(parsed) ? parsed : [parsed]).map((item) =>
+      normalizeContainer(item as Record<string, unknown>)
+    );
+  } catch {
+    // Two or more objects separated by newlines are not a valid document as a
+    // whole, which is exactly why this fallback has to sit behind a `catch`
+    // rather than behind an `Array.isArray` check that never runs.
+    return lines.map((line) => normalizeContainer(JSON.parse(line) as Record<string, unknown>));
+  }
 }
 
 export const composeService = {

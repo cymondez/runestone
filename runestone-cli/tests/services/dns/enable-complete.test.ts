@@ -197,4 +197,42 @@ describe('completing an enable (spec 10.1 steps 5 to 7)', () => {
       expect(completeEnable(config(), plan, prepared(plan), deps).nameservers).toEqual(['1.2.3.4']);
     });
   });
+  describe('when this run wrote nothing to the daemon file', () => {
+    // The `--no-restart` shape: one run writes the file and stops at prepared,
+    // a later one restarts. If that later restart fails there is nothing to
+    // invert, and inverting anyway would be actively harmful.
+    function preparedEarlier() {
+      const plan = makePlan();
+      // The entries are already in the file, so this run changes nothing.
+      return { ...plan, changesFile: false, before: plan.after };
+    }
+
+    it('keeps the ownership record instead of orphaning entries the daemon points at', () => {
+      const plan = preparedEarlier();
+      const deps = spies({ restart: jest.fn(() => ({ status: 'timed-out', waitedMs: 120000 })) });
+
+      const result = completeEnable(config(), plan, prepared(plan), deps);
+
+      expect(result.failure).toBe('restart');
+      expect(result.invertedDaemon).toBe(false);
+      // Cleared, `disable` would refuse to remove the entries for want of a
+      // record, and the daemon would keep pointing at a service nobody owns.
+      expect(deps.clearRecord).not.toHaveBeenCalled();
+      expect(deps.writeRecord).toHaveBeenCalledWith(
+        expect.objectContaining({ phase: 'prepared', preparedReason: 'no-restart' })
+      );
+    });
+
+    it('leaves the dns service running, because the daemon is still pointed at it', () => {
+      const plan = preparedEarlier();
+      const deps = spies({ restart: jest.fn(() => ({ status: 'timed-out', waitedMs: 120000 })) });
+
+      completeEnable(config(), plan, prepared(plan), deps);
+
+      expect(deps.stopService).not.toHaveBeenCalled();
+      expect(deps.writeDaemon).not.toHaveBeenCalled();
+      expect(deps.deleteDaemon).not.toHaveBeenCalled();
+    });
+  });
+
 });

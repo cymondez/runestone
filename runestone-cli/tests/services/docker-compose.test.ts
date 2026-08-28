@@ -121,6 +121,23 @@ describe('composeService', () => {
     ]);
   });
 
+  it('parses JSON Lines with more than one container, which is every real project', () => {
+    // The single-line case parses as JSON on its own, so it hid the bug: the
+    // whole-text parse threw here and the line-by-line fallback below it was
+    // never reached.
+    spawnSyncMock.mockReturnValueOnce(
+      ok(
+        '{"ID":"a","Name":"runestone","State":"running","Status":"Up","Service":"runestone"}\n'
+        + '{"ID":"b","Name":"runestone-dns","State":"running","Status":"Up","Service":"dns"}\n'
+      ) as never
+    );
+
+    const containers = composeService.ps('compose.yml');
+
+    expect(containers).toHaveLength(2);
+    expect(containers.map((c) => c.Service)).toEqual(['runestone', 'dns']);
+  });
+
   it('parses docker compose ps JSON-lines output', () => {
     spawnSyncMock.mockReturnValueOnce(
       ok('{"ID":"a","Name":"one","State":"running","Status":"Up","Service":"app"}\n') as never

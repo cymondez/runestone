@@ -541,6 +541,24 @@ export function completeEnable(
     result.failure = failure;
     result.failureMessage = message;
 
+    // A run that wrote nothing to the daemon file has nothing to invert, and the
+    // entries already sitting in it are not this run's to forget. This is the
+    // `--no-restart` shape: one run writes and stops, a later one restarts. If
+    // that later restart fails, clearing the record would **orphan** the entries
+    // — the daemon would still point at us while `disable` refused to touch the
+    // file for want of an ownership record — and stopping the service would take
+    // DNS away from every container on the machine while it is still pointed
+    // here. So: keep both, and report the failure.
+    if (!plan.changesFile) {
+      try {
+        deps.writeRecord({ ...prepared, phase: 'prepared', preparedReason: 'no-restart', updatedAt: deps.now() });
+      } catch (thrown) {
+        result.rollbackError = thrown instanceof Error ? thrown.message : String(thrown);
+      }
+
+      return result;
+    }
+
     try {
       if (plan.changesFile) {
         if (plan.createdDaemonFile) {
