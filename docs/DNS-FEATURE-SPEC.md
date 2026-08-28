@@ -800,10 +800,13 @@ The dind harness can run in CI. That turns "write `daemon.json` → restart → 
 
 ### 16.5 One-time safety net before M5
 
-- Copy the current `daemon.json` outside version control and record its hash. This is a safety net for the human, not a Runestone-managed backup — the 9.3 prohibition on whole-file restoration is unchanged.
+`docker/dns/test/m6b-safety-net.sh` does the mechanical parts: `capture` before, `status` at any point, `restore` when something is left in a state nobody planned, `clean` afterwards. It snapshots the daemon file with its hash, the Runestone tool state, and every running container **with its restart policy** — the policy being what decides whether a container returns by itself after the daemon restarts, or has to be started again.
+
+- Copy the current `daemon.json` outside version control and record its hash. This is a safety net for the human, not a Runestone-managed backup — the 9.3 prohibition on whole-file restoration is unchanged. **The script restores whole files, and the CLI never invokes it**: it is run by hand, by the person who scheduled the window, over a snapshot taken minutes earlier, and it prints the diff it is about to discard before discarding it.
 - Confirm that M4's `disable --assume-entry` genuinely works against a hand-planted entry with no ownership record.
 - Walk the manual recovery path once by hand: edit `daemon.json`, remove the entry, restart Docker.
 - Before M6b, additionally save `docker ps -a`, because that step restarts every container on the machine.
+- **Restart Docker only for the file Docker actually reads.** The script derives that path itself and refuses to restart when pointed elsewhere through `RUNESTONE_DNS_DAEMON_PATH`. This guard exists because the script restarted a working machine once, during its own testing, while operating on a temporary file — a safety net that interrupts the machine it is protecting is not one.
 
 ### 16.6 Milestone deadlines for the section 15 decisions
 

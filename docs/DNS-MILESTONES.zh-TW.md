@@ -374,6 +374,14 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **這台機器上的 WSL 發行版確認了「取代 WSL 偵測」的那個拒絕。** `Ubuntu-26.04` 有 systemd、systemd-resolved 與 Docker Desktop 整合，但沒有自己的 daemon；從它裡面執行 `docker info` 會回報 `Docker Desktop`——正是 `docker-desktop-elsewhere` 所依據的訊號，在舊的核心字串偵測分辨不出任何東西的地方，它確實存在而且正確。
 
+**安全網現在是一個腳本**，`docker/dns/test/m6b-safety-net.sh`，取代了檢查清單原本那兩行 `cp`——見規格 16.5。它負責擷取、比對與還原，而且會拒絕為「Docker 並不會讀的那個 daemon 檔」重啟 Docker。這道防護不是假設出來的：這個腳本曾在自己的測試過程中，對著一個暫存檔操作卻重啟了一台正在工作的機器。
+
+**機器做了兩件不在任何人清單上的事**，兩件都是在測試安全網時發現的，而不是在里程碑本身的流程裡。兩件都還沒寫進規格，因為都還沒有被乾淨地量過。
+
+**`unless-stopped` 可能撐不過 `docker desktop restart`。** 重啟之後三十秒，六個 `unless-stopped` 的容器還躺著，而兩個 `always` 的都回來了。如果成立，影響遠不只是整潔問題：規格 8.3 正是靠 `restart: unless-stopped` 讓 dns 服務在 Docker 重啟後「完全不需要 CLI 介入」就回來，而 M6a 確實驗證過這件事——但它是用**砍掉** `dockerd` 的方式，那是崩潰，不是優雅關機。走這條路的話，`completeEnable` 會重啟 Docker、發現 dns 服務不見了、resolv.conf 與解析檢查失敗，然後把 daemon 的寫入反向還原。方向是安全的，但同時也等於 `dns enable` 在 Docker Desktop 上永遠不會成功。這次的觀察被「`docker start` 與重啟賽跑」污染了，所以**真正的那一輪必須把它量乾淨**：重啟，然後只看，什麼都不要碰。
+
+**在 Windows 上重啟 Docker，可能讓前一刻還在發佈的埠變成不可用。** Docker 停著的那段時間，`winnat` 把 TCP 1025–1124 收成動態排除範圍，於是 `runestone` 容器再也無法為 Mailpit 發佈 1025——`netsh int ipv4 show excludedportrange` 可以確認那個範圍，而釋放它需要以管理員權限執行 `net stop winnat`。53 埠不受影響，因為這台機器的動態範圍從 1025 起算；但這個功能發佈的任何高於它的埠都會受影響。
+
 **剩下什麼，以及為什麼。** 破壞性循環需要一個約好的時間窗：這台機器上跑著 12 個 container，其中好幾個是有狀態的，而重啟 Docker 會把它們全部終止。原生 Linux engine 則需要一台真的有的機器；這裡的 WSL 發行版只帶 Docker Desktop 整合，所以 `/etc/docker/daemon.json`、`sudo`、`systemctl restart docker` 與 systemd-resolved 的 `127.0.0.53` 全都還沒驗證。
 
 ## M7 — 生命週期整合與揭露
@@ -466,12 +474,15 @@ cp ~/.docker/daemon.json ~/daemon.json.pre-runestone-dns && sha256sum ~/daemon.j
 ### 進 M6b 前——那唯一一次刻意中斷
 
 ```bash
-docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}' > ~/containers-before-dns-m6b.txt
+sh docker/dns/test/m6b-safety-net.sh capture
 ```
 
-- [ ] 容器清單已存
+它會快照 daemon 檔與其雜湊、Runestone 的工具狀態，以及每個執行中的容器連同它的 restart policy。`status` 可在任何時候比對機器與快照；`restore` 會把 daemon 檔放回去、重啟 Docker 讓還原後的檔案真的被讀到，並把「先前在跑、現在沒在跑」的容器叫起來。
+
+- [x] 容器清單已存
 - [ ] 沒有任何長時間執行或帶狀態的工作正在容器內進行中
 - [ ] 已約好時間，因為機器上每個容器都會重啟
+- [ ] **每個執行中容器的 restart policy 都已記下。** 沒有 policy 的容器不會自己回來；而 `unless-stopped` 在**優雅的** `docker desktop restart` 之後會不會回來——相對於 M6a 演練的「把 daemon 砍掉」——在這個平台上還沒有定論
 
 ## 證據記錄
 

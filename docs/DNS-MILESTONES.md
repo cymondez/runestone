@@ -374,6 +374,14 @@ Fixed by deriving `DNS_BIND_PREFIX` from `DNS_BIND_IP`: empty for an all-interfa
 
 **The WSL distro on this machine confirmed the refusal that replaced WSL detection.** `Ubuntu-26.04` has systemd, systemd-resolved and the Docker Desktop integration but no daemon of its own, and `docker info` reports `Docker Desktop` from inside it — the exact signal `docker-desktop-elsewhere` keys on, present and correct where the old kernel-string detection could distinguish nothing.
 
+**The safety net is now a script**, `docker/dns/test/m6b-safety-net.sh`, rather than the two `cp` one-liners the checklist used to carry — see spec 16.5. It captures, compares and restores, and it refuses to restart Docker for a daemon file Docker does not read. That guard is not hypothetical: the script restarted a working machine once during its own testing, while operating on a temporary file.
+
+**Two things the machine did that were not on anyone's list**, both found while the safety net was being tested rather than during the milestone proper. Neither is written into the spec yet, because neither has been measured cleanly.
+
+**`unless-stopped` may not survive `docker desktop restart`.** After one, six `unless-stopped` containers were still down thirty seconds later while both `always` containers had returned. If that holds, it matters well beyond tidiness: spec 8.3 leans on `restart: unless-stopped` to bring the dns service back after a Docker restart "with no CLI involvement at all", and M6a confirmed exactly that — but by **killing** `dockerd`, which is a crash, not a graceful shutdown. On this path `completeEnable` would restart Docker, find the dns service gone, fail its resolv.conf and resolution checks, and invert the daemon write. That is the safe direction, and it is also `dns enable` never succeeding on Docker Desktop. The observation is contaminated by `docker start` calls racing the restart, so **the real run has to measure it cleanly**: restart, then watch, and touch nothing.
+
+**Restarting Docker on Windows can strand a port that was published a moment earlier.** While Docker was down, `winnat` claimed TCP 1025–1124 as a dynamic exclusion range, and the `runestone` container could no longer publish 1025 for Mailpit — `netsh int ipv4 show excludedportrange` confirms the range, and releasing it needs an elevated `net stop winnat`. Port 53 is not exposed to this, because the dynamic ranges on this machine begin at 1025, but any port the feature publishes above that is.
+
 **What is left, and why.** The destructive cycle needs an agreed window: this machine runs 12 containers, several of them stateful, and a Docker restart terminates all of them. The native Linux engine needs a machine that has one; the WSL distro carries only the Docker Desktop integration, so `/etc/docker/daemon.json`, `sudo`, `systemctl restart docker` and systemd-resolved's `127.0.0.53` are all still unverified.
 
 ## M7 — Lifecycle integration and disclosure
@@ -466,12 +474,15 @@ This snapshot is a safety net for the human. It is **not** a Runestone-managed b
 ### Before M6b — the one deliberate interruption
 
 ```bash
-docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}' > ~/containers-before-dns-m6b.txt
+sh docker/dns/test/m6b-safety-net.sh capture
 ```
 
-- [ ] Container list saved
+That snapshots the daemon file and its hash, the Runestone tool state, and every running container together with its restart policy. `status` compares the machine with the snapshot at any point; `restore` puts the daemon file back, restarts Docker so the restored file is actually read, and starts whatever was running before and is not now.
+
+- [x] Container list saved
 - [ ] Nothing long-running or stateful is mid-flight in any container
 - [ ] A window agreed, because every container on the machine restarts
+- [ ] **The restart policy of every running container noted.** A container with no policy does not come back on its own, and whether `unless-stopped` comes back after a *graceful* `docker desktop restart` — as opposed to the daemon being killed, which is what M6a exercised — is not yet established on this platform
 
 ## Evidence log
 
