@@ -20,7 +20,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | M1 | Daemon ownership engine | 0 | T0 | M0 | **done** |
 | M2 | runestone-dns image | 1 | T1 | — | **done on amd64**; arm64 unverified, see M2 |
 | M3 | Service plumbing and `dns status` | 0 | T1 | — | **done** |
-| M4 | `dns disable` | 2 (redirected) | T0 | M1, M3 | not started |
+| M4 | `dns disable` | 2 (redirected) | T0 | — | **done** |
 | M5 | `dns enable` to `prepared` | 2 | T1 | M4 | not started |
 | M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | M5 | not started |
 | M6b | Real machine and VM verification | 3 | T3 / T4 | M6a, decision 1 | not started |
@@ -205,23 +205,48 @@ Three spec deviations, all amended in the specification rather than left as surp
 
 **Goal.** The escape hatch, built before the trap. If enable landed first and misbehaved, there would be no tool to clean up with.
 
-**Risk level 2 (redirected path only) · Tier T0 · Blocked by M1, M3**
+**Risk level 2 (redirected path only) · Tier T0**
 
 **Deliverables**
 
-- [ ] `runestone dns disable` implementing spec 9.2 and 10.2
-- [ ] `--assume-entry <ip>` and `--assume-index <n>` (spec 9.3)
-- [ ] `--dry-run` printing the before/after diff and writing nothing (spec 10.2)
-- [ ] Ownership-conflict paths abort with the daemon path and manual recovery steps, never a guess
-- [ ] `runestone-cli/tests/commands/` entry-point tests
+- [x] `runestone dns disable` implementing spec 9.2 and 10.2
+- [x] `--assume-entry <ip>` and `--assume-index <n>` (spec 9.3)
+- [x] `--dry-run` printing the before/after diff and writing nothing (spec 10.2)
+- [x] Ownership-conflict paths abort with the daemon path and manual recovery steps, never a guess
+- [x] `runestone-cli/tests/commands/` entry-point tests
 
 **Gate**
 
-- [ ] Revokes an entry planted by hand with **no ownership record**, via `--assume-entry`
-- [ ] Every failure row in spec 12 that ends in "abort" actually aborts without writing
-- [ ] Our entry already removed by the user is treated as revoked: file untouched, state cleared, no error
-- [ ] All of it exercised against `RUNESTONE_DNS_DAEMON_PATH`, with the platform daemon file provably untouched
-- [ ] `--dry-run` output matches what a real run then produces
+- [x] Revokes an entry planted by hand with **no ownership record**, via `--assume-entry`
+- [x] Every failure row in spec 12 that ends in "abort" actually aborts without writing
+- [x] Our entry already removed by the user is treated as revoked: file untouched, state cleared, no error
+- [x] All of it exercised against `RUNESTONE_DNS_DAEMON_PATH`, with the platform daemon file provably untouched
+- [x] `--dry-run` output matches what a real run then produces
+
+**Landed.** `runestone dns disable`, with 53 tests behind it.
+
+The command is built as a **plan and an application**, so `--dry-run` is not a second implementation that could drift from the real one: the dry run prints the plan, and a real run applies that same plan. A test asserts the two outputs match line for line.
+
+| Refusal | What it does instead of guessing |
+| --- | --- |
+| No ownership record, nothing asserted | Names the file and tells the user how to state the entry: `--assume-entry <ip>` |
+| Several items match our value | Lists the clashing positions and asks for `--assume-index <n>` |
+| The record was written against a different file | Refuses to touch a file it did not write |
+| The daemon JSON is invalid | Aborts without writing, and says what is wrong with it |
+
+Each of those has a test proving the file on disk is byte-identical afterwards.
+
+Three properties worth stating, because each is a decision rather than an accident:
+
+- **Nothing changed means nothing restarted.** When the user has already removed our entry by hand, the file is left alone and Docker is **not** restarted — restarting would terminate every container on the machine in order to apply nothing at all. The rest of the cleanup still runs and the record is cleared, which is what spec 9.5 asks for.
+- **The lock is held for the write, not across the confirmation prompt.** A user who walks away from a prompt must not block every later run. The plan is therefore rebuilt inside the lock and compared with the one that was shown; if the file changed in between, nothing is written and the user is told to look again. "What you were shown is what happens" is checked rather than assumed.
+- **The diff marks positions, not values.** Comparing values would be wrong exactly where it matters most: when the user has duplicated our address, only one of two identical lines is ours, and the diff has to show which. An earlier draft got this wrong and a test caught it.
+
+Also added on the way: `composeService.removeServices()` with Compose profile support, since removing the dns service requires naming its profile (spec 8.2).
+
+**Verified end to end against a redirected daemon file** — a hand-planted entry with no ownership record, removed via `--assume-entry`: the user's own entry kept its value and position, the `builder` block with its nested inline object came through byte-identical, `.env` was flipped to `DNS_ENABLE=false`, and the dns service removal failed (no Compose file in the scratch project) and **said so** rather than reporting success. The platform `daemon.json` was confirmed untouched.
+
+Running it also caught a real defect that no unit test would have: with a blocker, the plan was printed first, so "Nothing to change" appeared above the error — reading as if the array were empty when the point was that Runestone does not own what is in it. Blockers are now printed instead of the plan.
 
 **Rollback.** Single revert.
 

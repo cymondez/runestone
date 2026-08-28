@@ -8,8 +8,16 @@ import { spawnCommand } from '../utils/spawn';
  * than an inline string literal.
  */
 export const COMPOSE_SERVICES = {
-  runestone: 'runestone'
+  runestone: 'runestone',
+  dns: 'dns'
 } as const;
+
+/**
+ * The dns service sits behind this Compose profile, so it is invisible to any
+ * command that does not name the profile (spec 8.2). That is what keeps the
+ * feature off while it is being built.
+ */
+export const DNS_PROFILE = 'dns';
 
 export type ComposeServiceName = (typeof COMPOSE_SERVICES)[keyof typeof COMPOSE_SERVICES];
 
@@ -29,13 +37,26 @@ export interface DockerContainer {
   Service: string;
 }
 
-function composeArgs(composePath: string, args: string[]): string[] {
+function composeArgs(composePath: string, args: string[], profiles: string[] = []): string[] {
   const absolutePath = path.resolve(composePath);
-  return ['compose', '--project-directory', path.dirname(absolutePath), '-f', absolutePath, ...args];
+  return [
+    'compose',
+    '--project-directory',
+    path.dirname(absolutePath),
+    '-f',
+    absolutePath,
+    ...profiles.flatMap((profile) => ['--profile', profile]),
+    ...args
+  ];
 }
 
-function runCompose(args: string[], composePath: string, timeout = 120000): SpawnSyncReturns<string> {
-  const result = spawnCommand('docker', composeArgs(composePath, args), {
+function runCompose(
+  args: string[],
+  composePath: string,
+  timeout = 120000,
+  profiles: string[] = []
+): SpawnSyncReturns<string> {
+  const result = spawnCommand('docker', composeArgs(composePath, args, profiles), {
     encoding: 'utf8',
     timeout
   });
@@ -125,6 +146,19 @@ export const composeService = {
     }
 
     runCompose(['restart', ...services], composePath);
+  },
+
+  /**
+   * Stops and removes the named services in one step. Used when revoking DNS:
+   * the service has to go, and leaving a stopped container behind would keep
+   * `status` reporting a service that is no longer meant to exist.
+   */
+  removeServices(composePath: string, services: string[], options?: { profiles?: string[] }): void {
+    if (services.length === 0) {
+      throw new Error('composeService.removeServices requires at least one service name');
+    }
+
+    runCompose(['rm', '--stop', '--force', ...services], composePath, 120000, options?.profiles ?? []);
   },
 
   ps(composePath: string): DockerContainer[] {

@@ -5,6 +5,7 @@
 ### Added
 
 - `runestone dns status` reports the DNS state and every invasive setting currently in effect: the Docker daemon configuration path, which entries Runestone owns and where they actually sit, the upstream resolvers and where each came from, and whether the web UI has any authentication.
+- `runestone dns disable` removes the entries Runestone added to the Docker daemon DNS configuration and leaves everything else exactly where it was. `--dry-run` shows what would change without writing anything, and `--assume-entry` / `--assume-index` let you state which entry is Runestone's when it cannot tell on its own. When it cannot tell and you have not said, it refuses rather than guessing.
 
 ### Changed
 
