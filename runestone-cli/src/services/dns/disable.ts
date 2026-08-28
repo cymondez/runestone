@@ -3,7 +3,12 @@ import { DnsOwnershipState, toolState } from '../../utils/tool-state';
 import { COMPOSE_SERVICES, DNS_PROFILE, composeService } from '../docker-compose';
 import { Identification, OwnedEntry, readDnsArray, removeOwnedEntries } from './daemon-config';
 import { deleteDaemonConfig, readDaemonConfig, writeDaemonConfig } from './daemon-file';
-import { DockerRestartPlan, resolveDaemonConfigTarget, resolveDockerRestartPlan } from './daemon-target';
+import {
+  DockerRestartPlan,
+  resolveDaemonConfigTarget,
+  resolveDockerRestartPlan,
+  sameDaemonPath
+} from './daemon-target';
 import { RestartOutcome, restartDocker } from './docker-restart';
 import { isDnsEnabled } from './settings';
 import { syncDnsUiRoute } from './ui-route';
@@ -156,7 +161,7 @@ export function planDisable(
   // An explicit assumption is the user overriding Runestone's own bookkeeping,
   // so it also overrides the recorded-path check that exists to protect that
   // bookkeeping.
-  if (record && source !== 'assumption' && record.daemonPath !== target.path) {
+  if (record && source !== 'assumption' && !sameDaemonPath(record.daemonPath, target.path)) {
     blockers.push({ kind: 'daemon-path-mismatch', recorded: record.daemonPath, actual: target.path });
     return empty;
   }

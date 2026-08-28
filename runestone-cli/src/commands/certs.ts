@@ -7,7 +7,7 @@ import {
   listDomainCertificates,
   removeDomainCertificate
 } from '../services/cert-manager';
-import { envLoader } from '../utils/env-loader';
+import { RunestoneEnv, envLoader } from '../utils/env-loader';
 import { logger } from '../utils/logger';
 import { t } from '../i18n';
 import { createCommand } from '../utils/command';
@@ -15,9 +15,28 @@ import { installRootCa } from '../services/root-ca-installer';
 import { runInDynamicConfigBatch } from '../services/dynamic-config-manager';
 import { findCoveringCertificate } from '../services/service-manager';
 import { readTraefikSnapshot, TraefikNamedResource } from '../services/traefik-api';
+import { syncDnsMappings } from '../services/dns/lifecycle';
+import { printMappingSync } from './dns-notices';
 
 interface RemoveOptions {
   force?: boolean;
+}
+
+/**
+ * Spec 10.4: a certificate change regenerates the dnsmasq mappings, and only
+ * when the set of certificate-covered domains actually changed.
+ *
+ * It never fails the certificate command that triggered it. The certificate is
+ * already written; refusing to report that because the dns container could not
+ * be reached would be reporting the wrong failure.
+ */
+function refreshDnsMappings(config: RunestoneEnv): void {
+  try {
+    printMappingSync(syncDnsMappings(config));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(t('dns.certs.error', { message }));
+  }
 }
 
 function formatCertificateTable(items: CertificateListItem[], options: { header: boolean }): string {
@@ -162,6 +181,7 @@ export function createCertsCommand(): Command {
         console.log(`  Certificate: ${result.artifacts.certFile}`);
         console.log(`  Key: ${result.artifacts.keyFile}`);
         console.log(`  Traefik TLS config: ${result.artifacts.dynamicConfigFile}`);
+        refreshDnsMappings(config);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to create certificate: ${message}`);
@@ -250,6 +270,7 @@ export function createCertsCommand(): Command {
 
         if (changed) {
           logger.success(`Certificate configuration removed for '${result.artifacts.domain}'`);
+          refreshDnsMappings(config);
         } else {
           logger.warn(`No certificate configuration found for '${result.artifacts.domain}'`);
         }

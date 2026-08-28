@@ -43,6 +43,11 @@ DNS 功能會改動機器的全域狀態（`daemon.json` 與重啟 Docker），�
 - 這兩個變數刻意不出現在 `.env` 與 `runestone setup`，不是使用者設定。它們的存在理由是：沒有它們，無法重啟 Docker 的接手者根本無法開發這個功能。
 - 兩者本身就是風險——路徑填錯就是寫錯檔案——所以 `dns status` 與 `doctor` 在它們生效時必須明顯回報，風險揭露也必須印出實際生效的值。
 
+### 生命週期接線的兩條規則（spec 10.4、11.2）
+
+- **日常指令不重啟 Docker。** `up` 可能會寫 `daemon.json`（Target IP 輪替、自動重排），但寫完就停，並且必須說出「下次重啟 Docker 才生效」。重啟會終止機器上每一個 container，那不是 `up` 這種一天跑好幾次的指令該有的權力。重啟 *dns 服務* 是另一回事，可以。
+- **`setup` 不寫 `DNS_ENABLE`。** 它只記錄 `DNS_UPSTREAM`、`DNS_DAEMON_FALLBACK`、`DNS_AUTO_REORDER` 三個設定，然後把使用者交給 `dns enable`。寫 `true` 等於在 daemon 設定空無一物時宣稱已啟用；寫 `false` 會讓已存在的項目變成孤兒。那個鍵屬於 `dns enable` 與 `dns disable`。
+
 ### 動到真實 daemon 設定檔之前的安全網（spec 16.5）
 
 只要一個里程碑會寫入真實的 `daemon.json`（M5 起），先做完這四件事：

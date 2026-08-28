@@ -138,8 +138,14 @@ export const composeService = {
     runCompose(args, composePath);
   },
 
-  stop(composePath: string): void {
-    runCompose(['stop'], composePath);
+  /**
+   * Without a service list this stops the whole project, which is what `stop`
+   * has always done. The list exists so that `stop` can leave the dns service
+   * running: the Docker daemon points at it, so stopping it would break name
+   * resolution for every container on the machine (spec 10.4).
+   */
+  stop(composePath: string, options?: ComposeOptions): void {
+    runCompose(['stop', ...(options?.services ?? [])], composePath, 120000, options?.profiles ?? []);
   },
 
   /**

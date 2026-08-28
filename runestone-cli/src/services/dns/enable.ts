@@ -1,4 +1,3 @@
-import { getServers } from 'dns';
 import { RunestoneEnv, envLoader } from '../../utils/env-loader';
 import { osDetector } from '../../utils/os-detector';
 import { ensureProjectFiles } from '../../utils/project-files';
@@ -28,7 +27,12 @@ import {
 } from './environment';
 import { isAutoReorderEnabled, ownedEntryInputs } from './settings';
 import { syncDnsUiRoute } from './ui-route';
-import { UpstreamResolution, determineBindIp, determineUpstreams } from './upstream';
+import {
+  UpstreamResolution,
+  defaultHostResolvers,
+  determineBindIp,
+  determineUpstreams
+} from './upstream';
 
 /**
  * `runestone dns enable` (spec 10.1).
@@ -85,16 +89,10 @@ export const defaultPreflightDependencies: PreflightDependencies = {
   probes: {},
   readDaemon: readDaemonConfig,
   hasRequiredVars: (config) => envLoader.hasRequiredVars(config),
-  hostResolvers: () => {
-    try {
-      return getServers();
-    } catch {
-      return [];
-    }
-  }
+  hostResolvers: defaultHostResolvers
 };
 
-function verificationImage(config: RunestoneEnv): string {
+export function verificationImage(config: RunestoneEnv): string {
   return `${config.RUNESTONE_IMAGE}:${config.RUNESTONE_TAG}`;
 }
 

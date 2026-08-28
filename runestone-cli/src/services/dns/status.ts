@@ -16,7 +16,8 @@ import {
   ResolutionSource,
   activeOverrides,
   resolveDaemonConfigTarget,
-  resolveDockerRestartPlan
+  resolveDockerRestartPlan,
+  sameDaemonPath
 } from './daemon-target';
 import {
   daemonFallbackValue,
@@ -185,7 +186,7 @@ export function buildDnsStatusReport(
     identifications,
     atFront: identifications ? ownedEntriesAtFront(identifications) : undefined,
     unownedTargetDuplicates: Math.max(0, totalTargetOccurrences - ownedTargetMatches),
-    recordPathMismatch: Boolean(record && record.daemonPath !== target.path),
+    recordPathMismatch: Boolean(record && !sameDaemonPath(record.daemonPath, target.path)),
     service,
     serviceError
   };

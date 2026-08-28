@@ -13,6 +13,10 @@ import { installRootCa } from '../services/root-ca-installer';
 import { checkDomainResolvesToThisMachine, DomainResolutionCheck } from '../services/domain-checker';
 import { checkEnvironment, DoctorReport, formatDoctorCheck } from '../services/environment-doctor';
 import { isPortAvailable } from '../services/port-checker';
+import { DnsSetupFacts, dnsSetupFacts } from '../services/dns/lifecycle';
+import { preflight } from '../services/dns/enable';
+import { DEFAULT_UPSTREAM, parseUpstreamList } from '../services/dns/upstream';
+import { printPreflight } from './dns-enable';
 import { pathHelpers } from '../utils/path-helpers';
 import { createCommand } from '../utils/command';
 import { loadRunestoneLogo } from '../utils/logo';
@@ -26,7 +30,14 @@ export interface SetupOptions {
 
 type ReviewAction = 'apply' | 'back' | 'cancel';
 type StepResult = 'next' | 'back';
-type SetupStep = (canBack: boolean) => Promise<StepResult>;
+/**
+ * `direction` is what the previous step returned. A step that does not apply —
+ * the three DNS follow-up questions when DNS is off (spec 11.2) — returns it
+ * unchanged, so skipping works the same going backwards as going forwards
+ * instead of trapping the user in a step that answers itself.
+ */
+type SetupStep = (canBack: boolean, direction: StepResult) => Promise<StepResult>;
+type DnsUpstreamAction = 'keep' | 'replace' | 'append';
 type PromptResult<T> = T | typeof STEP_BACK;
 
 const STEP_BACK = Symbol('runestone:step-back');
@@ -45,6 +56,10 @@ interface SetupDraft {
   webSecureEntrypointPort?: string;
   smtpPort?: string;
   installMkcert?: boolean;
+  enableDns?: boolean;
+  dnsUpstream?: string;
+  dnsFallback?: boolean;
+  dnsAutoReorder?: boolean;
 }
 
 interface PromptFrame {
@@ -197,6 +212,10 @@ function resetConfiguredValues(draft: SetupDraft): void {
   draft.webSecureEntrypointPort = undefined;
   draft.smtpPort = undefined;
   draft.installMkcert = undefined;
+  draft.enableDns = undefined;
+  draft.dnsUpstream = undefined;
+  draft.dnsFallback = undefined;
+  draft.dnsAutoReorder = undefined;
 }
 
 function setupConfigInput(draft: SetupDraft): EnvInput {
@@ -212,8 +231,24 @@ function setupConfigInput(draft: SetupDraft): EnvInput {
     RUNESTONE_TAG: '5.2',
     MKCERT_INSTALLED: String(Boolean(draft.installMkcert)),
     WEB_ENTRYPOINT_NAME: draft.webEntrypointName,
-    WEB_SECURE_ENTRYPOINT_NAME: draft.webSecureEntrypointName
+    WEB_SECURE_ENTRYPOINT_NAME: draft.webSecureEntrypointName,
+    // The three DNS settings are written; `DNS_ENABLE` is not. Setup never
+    // touches the Docker daemon configuration, so claiming DNS is on before
+    // `dns enable` has passed preflight and written the entry would be claiming
+    // something that is not true (spec 11.2, 13).
+    DNS_UPSTREAM: draft.enableDns ? draft.dnsUpstream : undefined,
+    DNS_DAEMON_FALLBACK: draft.enableDns && draft.dnsFallback ? dnsFallbackValue(draft) : undefined,
+    DNS_AUTO_REORDER: draft.enableDns ? String(Boolean(draft.dnsAutoReorder)) : undefined
   };
+}
+
+/**
+ * The value the spec 9.7 fallback entry takes: the first upstream, which is the
+ * resolver this machine was already using. Anything else would be Runestone
+ * choosing a resolver for the user's whole machine on their behalf.
+ */
+function dnsFallbackValue(draft: SetupDraft): string {
+  return parseUpstreamList(draft.dnsUpstream)[0] ?? DEFAULT_UPSTREAM;
 }
 
 function reviewLines(draft: SetupDraft): string[] {
@@ -227,7 +262,19 @@ function reviewLines(draft: SetupDraft): string[] {
     `${activeT('setup.httpsName.prompt')}: ${draft.webSecureEntrypointName}`,
     `${activeT('setup.httpsPort.prompt')}: ${draft.webSecureEntrypointPort}`,
     `${activeT('setup.mailpit.prompt')}: ${draft.smtpPort}`,
-    `${activeT('setup.localCa.prompt')} ${draft.installMkcert ? activeT('common.yes') : activeT('common.no')}`
+    `${activeT('setup.localCa.prompt')} ${draft.installMkcert ? activeT('common.yes') : activeT('common.no')}`,
+    `${activeT('setup.dns.title')}: ${draft.enableDns ? activeT('setup.dns.review.enabled') : activeT('common.no')}`,
+    ...(draft.enableDns
+      ? [
+          `${activeT('setup.dns.upstream.title')}: ${draft.dnsUpstream}`,
+          `${activeT('setup.dns.fallback.title')}: ${
+            draft.dnsFallback ? dnsFallbackValue(draft) : activeT('common.no')
+          }`,
+          `${activeT('setup.dns.autoReorder.title')}: ${
+            draft.dnsAutoReorder ? activeT('common.yes') : activeT('common.no')
+          }`
+        ]
+      : [])
   ];
 }
 
@@ -242,6 +289,32 @@ function environmentCheckDescription(report: DoctorReport): string[] {
 
 function logPromptDescription(message: string, description: string[]): void {
   console.log(promptHeader('initial', message, { description }).trimEnd());
+}
+
+const IP_ADDRESS = /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|[0-9a-f:]+)$/i;
+
+/**
+ * Per `AGENTS.md`, a correctable input error returns to the same prompt with the
+ * message in its description rather than aborting setup.
+ */
+function validateUpstreamList(value: string): string | undefined {
+  const entries = parseUpstreamList(value);
+  if (entries.length === 0) {
+    return activeT('setup.dns.upstream.required');
+  }
+
+  const invalid = entries.filter((entry) => {
+    if (!IP_ADDRESS.test(entry)) {
+      return true;
+    }
+
+    const octets = entry.split('.');
+    return octets.length === 4 && octets.some((octet) => Number(octet) > 255);
+  });
+
+  return invalid.length > 0
+    ? activeT('setup.dns.upstream.invalid', { values: invalid.join(', ') })
+    : undefined;
 }
 
 function validatePort(value: string): string | undefined {
@@ -506,6 +579,34 @@ async function createDefaultCertificates(projectDir: string, domain: string): Pr
   }
 }
 
+/**
+ * Setup writes the DNS settings; it never writes the Docker daemon
+ * configuration. What it does do is run the read-only preflight straight away,
+ * so a user who asked for DNS on a machine that cannot have it finds out now
+ * rather than at the end of `dns enable`.
+ *
+ * Spec 11.2: cancelling or failing preflight leaves no daemon configuration,
+ * service or state change behind — which is trivially true of a path that never
+ * writes any of the three.
+ */
+function reportDnsPreflight(config: RunestoneEnv): void {
+  const spinner = p.spinner();
+  spinner.start(activeT('setup.dns.preflight.spinner'));
+
+  let checks;
+  try {
+    checks = preflight(config);
+  } catch (error) {
+    spinner.stop(activeT('setup.dns.preflight.unavailable'));
+    p.log.warn(error instanceof Error ? error.message : String(error));
+    return;
+  }
+
+  spinner.stop(activeT('setup.dns.preflight.done'));
+  printPreflight(checks);
+  p.log.info(checks.ok ? activeT('setup.dns.nextStep') : activeT('setup.dns.preflight.failed'));
+}
+
 export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv> {
   p.intro(loadRunestoneLogo());
 
@@ -519,6 +620,15 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
     selectedLocale: initialSetupLocale(toolState.readLocale())
   };
   setActiveLocale(draft.selectedLocale);
+
+  // Read once: the daemon path and the host's resolvers do not change while
+  // setup is running, and asking again on every back-and-forth through the
+  // questions would leave the descriptions flickering.
+  let cachedDnsFacts: DnsSetupFacts | undefined;
+  const dnsFacts = (): DnsSetupFacts => {
+    cachedDnsFacts ??= dnsSetupFacts(draft.existingConfig ?? envLoader.load(draft.envPath, draft.projectDir));
+    return cachedDnsFacts;
+  };
 
   let announcedEnvPath: string | undefined;
   const announceExistingSettings = () => {
@@ -742,13 +852,155 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
 
       draft.installMkcert = installMkcert;
       return 'next';
+    },
+    // Spec 11.2, question 1. Its description carries disclosure items 1, 2, 3, 4
+    // and 7 with the daemon path this machine would actually use — the point of
+    // 11.3 being that the user consents to concrete actions, not to a warning.
+    async (canBack) => {
+      const facts = dnsFacts();
+      const enableDns = await promptConfirm({
+        message: activeT('setup.dns.prompt'),
+        initialValue: draft.enableDns ?? false,
+        canBack,
+        frame: {
+          description: [
+            activeT('setup.dns.description'),
+            activeT('setup.dns.disclose.1', { path: facts.daemonPath }),
+            activeT('setup.dns.disclose.2'),
+            activeT('setup.dns.disclose.3'),
+            activeT('setup.dns.disclose.4'),
+            activeT('setup.dns.disclose.7'),
+            activeT('setup.dns.appliesLater')
+          ]
+        }
+      });
+      if (isStepBack(enableDns)) {
+        return 'back';
+      }
+
+      draft.enableDns = enableDns;
+      return 'next';
+    },
+    // Question 2. The computed list is shown with the origin of every value, so
+    // "keep" is a decision about something visible rather than about a default.
+    async (canBack, direction) => {
+      if (!draft.enableDns) {
+        return direction;
+      }
+
+      const facts = dnsFacts();
+      const computed = draft.dnsUpstream ?? facts.upstreams.upstreams.join(',');
+      const description = [
+        activeT('setup.dns.upstream.description'),
+        activeT('setup.dns.upstream.computed', { values: computed }),
+        ...facts.upstreams.origins.map((entry) =>
+          activeT(`setup.dns.upstream.origin.${entry.origin}`, { value: entry.value })
+        ),
+        activeT('setup.dns.upstream.pool')
+      ];
+
+      const action = await promptSelect<DnsUpstreamAction>({
+        message: activeT('setup.dns.upstream.prompt'),
+        options: [
+          { value: 'keep', label: activeT('setup.dns.upstream.keep') },
+          { value: 'replace', label: activeT('setup.dns.upstream.replace') },
+          { value: 'append', label: activeT('setup.dns.upstream.append') }
+        ],
+        initialValue: 'keep',
+        canBack,
+        frame: { description }
+      });
+      if (isStepBack(action)) {
+        return 'back';
+      }
+
+      if (action === 'keep') {
+        draft.dnsUpstream = computed;
+        return 'next';
+      }
+
+      const entered = await promptText(
+        activeT(`setup.dns.upstream.${action}.prompt`),
+        action === 'append' ? '' : computed,
+        validateUpstreamList,
+        canBack,
+        { description }
+      );
+      if (isStepBack(entered)) {
+        return 'back';
+      }
+
+      draft.dnsUpstream =
+        action === 'append'
+          ? [...parseUpstreamList(computed), ...parseUpstreamList(entered)].join(',')
+          : parseUpstreamList(entered).join(',');
+      return 'next';
+    },
+    // Question 3. Spec 9.7 requires **both** directions: describing only the
+    // benefit hides the cost, describing only the cost hides the benefit, and
+    // either one alone is a verdict dressed up as advice.
+    async (canBack, direction) => {
+      if (!draft.enableDns) {
+        return direction;
+      }
+
+      const dnsFallback = await promptConfirm({
+        message: activeT('setup.dns.fallback.prompt'),
+        initialValue: draft.dnsFallback ?? false,
+        canBack,
+        frame: {
+          description: [
+            activeT('setup.dns.fallback.description', { value: dnsFallbackValue(draft) }),
+            activeT('setup.dns.fallback.benefit'),
+            activeT('setup.dns.fallback.cost'),
+            activeT('setup.dns.fallback.adviceShared'),
+            activeT('setup.dns.fallback.adviceSolo'),
+            activeT('setup.dns.fallback.adviceUnsure')
+          ]
+        }
+      });
+      if (isStepBack(dnsFallback)) {
+        return 'back';
+      }
+
+      draft.dnsFallback = dnsFallback;
+      return 'next';
+    },
+    // Question 4. Both modes carry a risk, and the description states both:
+    // leaving it off can silently stop DNS taking effect, turning it on means
+    // Runestone rewrites the daemon configuration on every `up`.
+    async (canBack, direction) => {
+      if (!draft.enableDns) {
+        return direction;
+      }
+
+      const dnsAutoReorder = await promptConfirm({
+        message: activeT('setup.dns.autoReorder.prompt'),
+        initialValue: draft.dnsAutoReorder ?? false,
+        canBack,
+        frame: {
+          description: [
+            activeT('setup.dns.autoReorder.description'),
+            activeT('setup.dns.autoReorder.riskOff'),
+            activeT('setup.dns.autoReorder.riskOn')
+          ]
+        }
+      });
+      if (isStepBack(dnsAutoReorder)) {
+        return 'back';
+      }
+
+      draft.dnsAutoReorder = dnsAutoReorder;
+      return 'next';
     }
   );
 
   let stepIndex = 0;
+  let direction: StepResult = 'next';
   while (true) {
     while (stepIndex < steps.length) {
-      const stepResult = await steps[stepIndex](stepIndex > 0);
+      const stepResult = await steps[stepIndex](stepIndex > 0, direction);
+      direction = stepResult;
       stepIndex += stepResult === 'back' ? -1 : 1;
     }
 
@@ -761,6 +1013,7 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
       process.exit(0);
     }
 
+    direction = 'back';
     stepIndex = Math.max(steps.length - 1, 0);
   }
 
@@ -802,6 +1055,10 @@ export async function runSetup(options: SetupOptions = {}): Promise<RunestoneEnv
         p.log.warn(activeT('setup.restart.notRunning'));
       }
     }
+  }
+
+  if (draft.enableDns) {
+    reportDnsPreflight(config);
   }
 
   p.log.success(activeT('setup.result.path', { path: config.PROJECT_DIR }));

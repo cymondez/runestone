@@ -90,7 +90,6 @@ describe('runestone CLI integration', () => {
     const commands = [
       ['setup'],
       ['doctor'],
-      ['stop'],
       ['status'],
       ['certs'],
       ['certs', 'create'],
@@ -118,6 +117,13 @@ describe('runestone CLI integration', () => {
     expect(up.status).toBe(0);
     expect(up.stdout).toContain('Options:');
     expect(up.stdout).toContain('--force-recreate');
+
+    // `stop` gained one in M7: --all is the only way to stop the dns service,
+    // and it has to be visible for the disclosure about it to mean anything.
+    const stop = runCli(['stop', '--help']);
+    expect(stop.status).toBe(0);
+    expect(stop.stdout).toContain('Options:');
+    expect(stop.stdout).toContain('--all');
     expect(up.stdout).toContain('--no-deps');
 
     const down = runCli(['down', '--help']);

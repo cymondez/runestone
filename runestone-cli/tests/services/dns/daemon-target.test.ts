@@ -8,7 +8,8 @@ import {
   parseRestartCommand,
   platformDaemonPath,
   resolveDaemonConfigTarget,
-  resolveDockerRestartPlan
+  resolveDockerRestartPlan,
+  sameDaemonPath
 } from '../../../src/services/dns/daemon-target';
 import { osDetector } from '../../../src/utils/os-detector';
 
@@ -21,6 +22,36 @@ describe('dns daemon target resolution', () => {
   afterAll(() => {
     delete process.env[DAEMON_PATH_OVERRIDE_ENV];
     delete process.env[RESTART_CMD_OVERRIDE_ENV];
+  });
+
+  describe('comparing recorded daemon paths', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('treats the two Windows spellings of one file as the same file', () => {
+      jest.spyOn(osDetector, 'platform').mockReturnValue('win32');
+
+      // The mismatch check is what makes `dns disable` refuse to act, so a false
+      // mismatch refuses to remove an entry that is genuinely ours and prints
+      // two paths the user reads as identical.
+      const backslashes = ['C:', 'Users', 'me', '.docker', 'daemon.json'].join('\\');
+      expect(sameDaemonPath('C:/Users/me/.docker/daemon.json', backslashes)).toBe(true);
+      expect(sameDaemonPath(backslashes.toLowerCase(), backslashes)).toBe(true);
+    });
+
+    it('still tells two different files apart', () => {
+      jest.spyOn(osDetector, 'platform').mockReturnValue('win32');
+
+      expect(sameDaemonPath('C:/Users/me/.docker/daemon.json', 'C:/etc/daemon.json')).toBe(false);
+    });
+
+    it('keeps case significant off Windows', () => {
+      jest.spyOn(osDetector, 'platform').mockReturnValue('linux');
+
+      expect(sameDaemonPath('/etc/docker/daemon.json', '/etc/docker/daemon.json')).toBe(true);
+      expect(sameDaemonPath('/etc/Docker/daemon.json', '/etc/docker/daemon.json')).toBe(false);
+    });
   });
 
   describe('platform defaults (spec 6.2)', () => {

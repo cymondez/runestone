@@ -192,6 +192,29 @@ export function resolveDaemonConfigTarget(environment?: DaemonEnvironment): Daem
   };
 }
 
+/**
+ * Whether two recorded daemon paths name the same file.
+ *
+ * A byte comparison is wrong on Windows, where `C:/x/daemon.json` and
+ * `C:\x\daemon.json` are the same file and differ only in how someone typed
+ * them. Getting this wrong is expensive in one direction in particular: the
+ * mismatch check is what makes `dns disable` refuse to act, so a false mismatch
+ * refuses to remove an entry that really is ours, and prints two paths the user
+ * will read as identical.
+ *
+ * Case is folded only on Windows. macOS filesystems are usually case-insensitive
+ * too, but "usually" is not something to build a refusal on, and being strict
+ * there costs nothing that has ever been observed.
+ */
+export function sameDaemonPath(left: string, right: string): boolean {
+  const normalise = (value: string): string => {
+    const resolved = path.resolve(value);
+    return osDetector.platform() === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+
+  return normalise(left) === normalise(right);
+}
+
 export function resolveDockerRestartPlan(environment?: DaemonEnvironment): DockerRestartPlan {
   const resolved = environment ?? detectDaemonEnvironment();
   const override = readOverride(RESTART_CMD_OVERRIDE_ENV);

@@ -24,7 +24,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | M5 | `dns enable` to `prepared` | 2 | T1 | — | **done**, real-machine gate items pending the 16.5 safety net |
 | M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | — | **done**, CI gate pending a runner |
 | M6b | Real machine and VM verification | 3 | T3 / T4 | M6a, decision 1 | not started |
-| M7 | Lifecycle integration and disclosure | 3 | T1 / T2 | M6a | not started |
+| M7 | Lifecycle integration and disclosure | 3 | T1 / T2 | — | **done** |
 | M8 | Platform matrix and release | 3 | T3 / T4 | M6b, M7 | not started |
 
 M2 is independent of M1 and can run in parallel with it. Everything else is a chain.
@@ -357,32 +357,58 @@ The risk that row guarded is real and is still handled, by asking a question tha
 
 **Goal.** Wire DNS into the commands users already run. This is the first point at which an existing command touches DNS code, so it is also the first point at which a DNS defect can affect someone who never ran `dns enable`.
 
-**Risk level 3 · Tier T1 / T2 · Blocked by M6a**
+**Risk level 3 · Tier T1 / T2**
 
 **Deliverables**
 
-- [ ] `up`, `stop`, `stop --all`, `down`, `certs create`, `certs remove`, `doctor` per spec 10.4
-- [ ] The four setup questions with their descriptions (spec 11.2), including the upstream keep/replace/append action and the fallback opt-in
-- [ ] The complete spec 11.3 disclosure matrix
-- [ ] `DNS_AUTO_REORDER` behaviour in both modes (spec 9.6), never restarting Docker
-- [ ] Full `en` / `zh-TW` / `ja-JP` translations
+- [x] `up`, `stop`, `stop --all`, `down`, `certs create`, `certs remove`, `doctor` per spec 10.4
+- [x] The four setup questions with their descriptions (spec 11.2), including the upstream keep/replace/append action and the fallback opt-in
+- [x] The complete spec 11.3 disclosure matrix — every row but the two documentation ones, which are files rather than moments and belong to M8
+- [x] `DNS_AUTO_REORDER` behaviour in both modes (spec 9.6), never restarting Docker
+- [x] Full `en` / `zh-TW` / `ja-JP` translations — 461 keys per locale, at parity
 
 **Gate**
 
-- [ ] Spec 14.2 green, with one test per row of the spec 11.3 timing table
-- [ ] Disclosures carry real values, and `--yes` still prints them
-- [ ] Disclosure item 11 states **both** the benefit and the cost of the 9.7 fallback, and the setup question reads as advice rather than a verdict
-- [ ] `stop` leaves the dns service running; `stop --all` warns before stopping it
-- [ ] `down` aborts without destructive cleanup when disable fails
-- [ ] `certs` changes regenerate mappings only when the domain set actually changed
-- [ ] `doctor` reports and never auto-corrects
-- [ ] With DNS disabled, every one of these commands is byte-for-byte unchanged in behaviour
+- [x] Spec 14.2 green, with one test per row of the spec 11.3 timing table
+- [x] Disclosures carry real values, and `--yes` still prints them
+- [x] Disclosure item 11 states **both** the benefit and the cost of the 9.7 fallback, and the setup question reads as advice rather than a verdict
+- [x] `stop` leaves the dns service running; `stop --all` warns before stopping it
+- [x] `down` aborts without destructive cleanup when disable fails
+- [x] `certs` changes regenerate mappings only when the domain set actually changed — covered at the service level; the command wiring is one call and is not separately driven, because `certs create` runs mkcert
+- [x] `doctor` reports and never auto-corrects
+- [x] With DNS disabled, every one of these commands is byte-for-byte unchanged in behaviour
+
+**Landed.** `services/dns/lifecycle.ts` and `commands/dns-notices.ts`, plus the four setup questions. 41 new tests; the unit suite is 515 of 517, with the one failure the pre-existing Windows harness bug of M6a.
+
+**The whole file exists to hold one rule: nothing in a routine command restarts Docker.** `up` may detect that the Target IP rotated, or that something inserted an entry ahead of ours, and in both cases it writes the daemon configuration and stops there — saying, in the same breath, that the change takes effect at the next Docker restart. A command people run several times a day is not allowed to terminate every container on the machine. The ownership record goes back to `phase: prepared` when that happens, because that is precisely what it now is: a written change Docker has not read.
+
+**`stop` deliberately leaves the dns service running.** The daemon still points at it, so stopping it would break name resolution for every container on the machine, including projects that have nothing to do with Runestone. `--all` stops it too, and says both of those things *before* the containers go down — a warning that arrives once DNS is already broken machine-wide is a post-mortem, not a disclosure.
+
+**`down` revokes before it destroys, and aborts if it cannot.** Removing the dns container while the daemon still points at it is the exact failure this feature exists to prevent, so a blocked disable, a restart that did not happen, or an unverified file each stop the teardown with nothing removed.
+
+**Certificate changes ask the container, not a remembered list.** "Did the domain set change" is really "does the running container's `managed.conf` match the certificates on disk", and only the container knows: an image pull, a crash restart or a host reboot all regenerate it with no CLI involved (spec 8.3). A remembered set would drift from all three. When it differs, one service-scoped restart — one container, ours.
+
+**`doctor` reports and never corrects.** Every dependency it uses is a read, and a test asserts the daemon file is byte-identical afterwards. Auto-correcting a `dns` array from a diagnostic is exactly the guessing spec 9.3 forbids: the array holds entries that are not ours, and a diagnostic is the last place that should be deciding which.
+
+**Setup asks the four questions and enables nothing** — see the addition to spec 11.2. It writes the three settings, runs the read-only preflight so an unsuitable machine says so at once, and hands the user to `dns enable`. It never writes `DNS_ENABLE` in either direction: `true` would claim DNS is on with nothing in the daemon configuration, and `false` would silently orphan an entry already there.
+
+**The disclosure matrix is a test per row, not a summary of one.** `tests/commands/dns-disclosure.test.ts` drives every moment in the spec 11.3 timing table, including the four setup questions, which it reaches by driving `runSetup` with the clack prompt classes faked so the rendered descriptions can be read back. The `dns enable` row asserts all eleven items **by number** rather than a sample, and the `--dry-run` and `--yes` paths prove the disclosure survives skipping the prompt.
+
+A companion block asserts the other half of the milestone: with DNS off, `up` starts the project without the profile, `stop` is the unscoped project stop it always was, `down` tears down with no revocation and no restart, and `doctor` says nothing at all.
+
+**Two defects came out of running `doctor` for real, neither of which a unit test would have found.**
+
+The first: **daemon paths were compared byte for byte**, so on Windows `C:/x/daemon.json` and `C:\x\daemon.json` — the same file, differing only in how someone typed it — read as a mismatch. That comparison is what makes `dns disable` refuse to act, so the failure mode was a *false* refusal to remove an entry that really is Runestone's, reported by printing two paths the user reads as identical. `sameDaemonPath()` now resolves both and folds case on Windows only; it was pre-existing in `disable`, and M7 would have spread it to `up` and `doctor`.
+
+The second: **`doctor` reported a failed DNS check and then signed off with "Environment checks passed"**, because its verdict came only from the host tool checks. With DNS enabled a stopped dns service is not cosmetic — the machine's Docker daemon is pointing at it — so a DNS failure now makes `doctor` exit non-zero, with its own outro: the host environment is fine and nothing needs installing, which is the opposite of what the existing failure message tells the user to do.
+
+**Rollback.** Single revert of the wiring commit. The DNS services themselves are untouched by it, so reverting returns the existing commands to their pre-M7 behaviour without disturbing an installation that already has DNS applied.
 
 ## M8 — Platform matrix and release
 
 **Goal.** Ship it.
 
-**Risk level 3 · Tier T3 / T4 · Blocked by M6b, M7**
+**Risk level 3 · Tier T3 / T4 · Blocked by M6b**
 
 **Deliverables**
 
@@ -438,9 +464,9 @@ M6b and M8 produce findings that cannot be re-derived from the code. Record them
 
 ## Current state of the repository
 
-Recorded so that M1 and M2 are not mistaken for work already begun:
+Refreshed after M7:
 
-- `docker/dns/` now holds M2's image, entrypoint, publish script, README and verification script; nothing from commit `3581211` survives in it. `runestone-cli/src/services/dns/` holds M0's `daemon-target.ts` and M1's `json-edit.ts`, `daemon-config.ts`, `daemon-file.ts` and `upstream.ts`. **Nothing outside `tests/` imports any of them yet**, which is what keeps every milestone so far revertible on its own.
-- The dnsmasq and webproc code that commit `3581211` added to the runestone image — `start_dnsmasq()` in `docker/traefik/entrypoint.sh` and the `{{ if env "DNS_ENABLE" }}` blocks in `docker/traefik/dynamic/traefik.dynamic.yml` — is still present and must be removed in M3 (spec 5.3, 13).
-- There is no multi-arch build and publish path this feature can rely on, and no CI workflow in the repository. Establishing one is decision 2 and blocks M2.
+- `docker/dns/` holds M2's image, entrypoint, publish script, README and verification script, plus M6a's dind harness; nothing from commit `3581211` survives in it. `runestone-cli/src/services/dns/` holds the whole engine, and **M7 is the point at which existing command paths began importing it**: `up`, `stop`, `down`, `certs` and `doctor` all reach into `lifecycle.ts` now. Milestones M0 to M6a remain individually revertible; from M7 on, a revert takes the lifecycle wiring with it.
+- The dnsmasq and webproc code that commit `3581211` added to the runestone image — `start_dnsmasq()` in `docker/traefik/entrypoint.sh` and the `{{ if env "DNS_ENABLE" }}` blocks in `docker/traefik/dynamic/traefik.dynamic.yml` — was removed in M3 (spec 5.3, 13).
+- CI is `.drone.yml`, with `.github/workflows/dns-harness.yml` kept for the GitHub mirror; both invoke the same scripts. **Neither has ever run**, which needs a Drone runner pointed at the repository. Publishing the image is still the committed `docker/dns/publish.sh` and still needs a registry token (decision 2).
 - **The `make/` directory is inherited from [druidfi/stonehenge](https://github.com/druidfi/stonehenge) and is void.** Replacing that Makefile-based installation and management flow with the npm CLI is the reason this fork exists (see the README), so nothing in the build or release plan may be derived from it. It is debris, not a baseline — and the image build path decided in decision 2 should fit the CLI's release flow.

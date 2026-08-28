@@ -1,3 +1,4 @@
+import { getServers } from 'dns';
 import { DaemonHost } from './daemon-target';
 
 /**
@@ -29,6 +30,19 @@ export interface UpstreamResolution {
   upstreams: string[];
   /** Where each value came from, which the disclosure in 11.3 item 10 must show. */
   origins: Array<{ value: string; origin: UpstreamOrigin }>;
+}
+
+/**
+ * The host's own resolvers, the second detection source of spec 8.4. It is the
+ * one impure part of upstream determination, so it lives here alone and every
+ * caller passes it in.
+ */
+export function defaultHostResolvers(): string[] {
+  try {
+    return getServers();
+  } catch {
+    return [];
+  }
 }
 
 export function parseUpstreamList(value: string | string[] | undefined): string[] {

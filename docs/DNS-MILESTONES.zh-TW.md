@@ -24,7 +24,7 @@
 | M5 | `dns enable` 到 `prepared` | 2 | T1 | — | **已完成**，真機通過條件待 16.5 安全網 |
 | M6a | dind 載具內端到端 | 宿主 2／載具內 3 | T2 | — | **已完成**，CI 通過條件待 runner |
 | M6b | 真機與 VM 驗證 | 3 | T3／T4 | M6a、裁決 1 | 未開始 |
-| M7 | 生命週期整合與揭露 | 3 | T1／T2 | M6a | 未開始 |
+| M7 | 生命週期整合與揭露 | 3 | T1／T2 | — | **已完成** |
 | M8 | 平台矩陣與發布 | 3 | T3／T4 | M6b、M7 | 未開始 |
 
 M2 與 M1 互不相依，可以並行。其餘是一條鏈。
@@ -357,32 +357,58 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **目標。** 把 DNS 接進使用者本來就會執行的指令。這是既有指令第一次碰到 DNS 程式碼，因此也是 DNS 缺陷第一次可能影響到「從未執行 `dns enable` 的人」。
 
-**風險等級 3 · 層級 T1／T2 · 前置：M6a**
+**風險等級 3 · 層級 T1／T2**
 
 **交付項目**
 
-- [ ] 依規格 10.4 處理 `up`、`stop`、`stop --all`、`down`、`certs create`、`certs remove`、`doctor`
-- [ ] setup 的四個題目與其說明（規格 11.2），含上游的沿用／更換／追加動作與備援的選用開關
-- [ ] 完整的規格 11.3 揭露矩陣
-- [ ] `DNS_AUTO_REORDER` 兩種模式的行為（規格 9.6），且絕不重啟 Docker
-- [ ] 完整的 `en` / `zh-TW` / `ja-JP` 翻譯
+- [x] 依規格 10.4 處理 `up`、`stop`、`stop --all`、`down`、`certs create`、`certs remove`、`doctor`
+- [x] setup 的四個題目與其說明（規格 11.2），含上游的沿用／更換／追加動作與備援的選用開關
+- [x] 完整的規格 11.3 揭露矩陣——除了文件那兩列，它們是檔案而不是時機，屬於 M8
+- [x] `DNS_AUTO_REORDER` 兩種模式的行為（規格 9.6），且絕不重啟 Docker
+- [x] 完整的 `en` / `zh-TW` / `ja-JP` 翻譯——每個語系 461 個鍵，數量一致
 
 **通過條件**
 
-- [ ] 規格 14.2 全綠，且規格 11.3 揭露時機表每一列都有測試
-- [ ] 揭露帶入實際數值，且 `--yes` 仍會輸出
-- [ ] 揭露第 11 項**同時**陳述 9.7 備援的好處與代價，且 setup 題目讀起來像建議而非判決
-- [ ] `stop` 保留 dns 服務執行；`stop --all` 停掉它之前先警告
-- [ ] disable 失敗時 `down` 中止且不進行任何破壞性清理
-- [ ] 只有在 domain 集合確實變化時，`certs` 變更才重建 mapping
-- [ ] `doctor` 只回報，絕不自動修正
-- [ ] DNS 停用時，上述每個指令的行為逐字不變
+- [x] 規格 14.2 全綠，且規格 11.3 揭露時機表每一列都有測試
+- [x] 揭露帶入實際數值，且 `--yes` 仍會輸出
+- [x] 揭露第 11 項**同時**陳述 9.7 備援的好處與代價，且 setup 題目讀起來像建議而非判決
+- [x] `stop` 保留 dns 服務執行；`stop --all` 停掉它之前先警告
+- [x] disable 失敗時 `down` 中止且不進行任何破壞性清理
+- [x] 只有在 domain 集合確實變化時，`certs` 變更才重建 mapping——在服務層有覆蓋；指令端的接線只有一次呼叫，沒有另外驅動，因為 `certs create` 會實際跑 mkcert
+- [x] `doctor` 只回報，絕不自動修正
+- [x] DNS 停用時，上述每個指令的行為逐字不變
+
+**已落地。** `services/dns/lifecycle.ts` 與 `commands/dns-notices.ts`，加上 setup 的四個題目。新增 41 個測試；單元測試 517 中通過 515，唯一的失敗是 M6a 就已存在的 Windows 載具問題。
+
+**這個檔案存在的目的只為守住一條規則：日常指令裡沒有任何東西會重啟 Docker。** `up` 可能偵測到 Target IP 換了，或是有東西插到我方前面；這兩種情況它都只寫入 daemon 設定就停手——並且在同一口氣裡說清楚：這個變更要等下次重啟 Docker 才生效。一個一天會跑好幾次的指令，不可以有權力終止整台機器上的每一個 container。發生這種情況時，所有權紀錄會退回 `phase: prepared`，因為它現在正是那個狀態：一筆已寫入、但 Docker 還沒讀到的變更。
+
+**`stop` 是刻意保留 dns 服務執行的。** daemon 還指著它，停掉它會讓這台機器上每一個 container 的名稱解析壞掉，包含與 Runestone 毫無關係的專案。`--all` 會連它一起停，而且是在 container 倒下**之前**就把這兩件事講出來——等 DNS 已經全機壞掉才出現的警告是驗屍報告，不是揭露。
+
+**`down` 先撤銷再破壞，撤不掉就中止。** 在 daemon 還指著它的時候移除 dns container，正是這個功能存在要防止的那種失敗；因此撤銷被阻擋、重啟沒有發生、或檔案驗證不過，任何一種都會讓拆除停下來，而且什麼都不移除。
+
+**憑證變更是去問容器，不是去查一份記住的清單。** 「domain 集合有沒有變」真正的問法是「執行中容器的 `managed.conf` 跟磁碟上的憑證還一不一致」，而答案只存在容器裡：image 拉取、crash 重啟、主機重開，三者都會在完全沒有 CLI 參與的情況下重新產生它（規格 8.3），一份記住的清單會跟這三件事全部脫節。不一致時，就做一次服務範圍的重啟——一個容器，我方自己的。
+
+**`doctor` 只回報，絕不修正。** 它用到的每一個相依都是讀取，而且有測試斷言結束後 daemon 檔案逐位元組相同。從診斷指令自動修正 `dns` 陣列，正是規格 9.3 禁止的那種猜測：那個陣列裡有不屬於我方的項目，而診斷指令是最不該去決定「哪一個是」的地方。
+
+**setup 問完四題，什麼都不啟用**——見規格 11.2 的增補。它寫入三個設定、跑一次唯讀的前置檢查（讓不適合的機器當場說出來），然後把使用者交給 `dns enable`。它在任何方向上都不會寫 `DNS_ENABLE`：寫 `true` 等於在 daemon 設定空無一物的情況下宣稱 DNS 已開啟，寫 `false` 則會安靜地讓一筆已經存在的項目變成孤兒。
+
+**揭露矩陣是「每一列一個測試」，不是一個總結。** `tests/commands/dns-disclosure.test.ts` 驅動規格 11.3 揭露時機表的每一個時機，包含 setup 那四題——做法是把 clack 的 prompt 類別換成假件後直接驅動 `runSetup`，於是渲染出來的 description 可以被讀回來斷言。`dns enable` 那一列是**按編號**斷言全部十一項，而不是抽樣；`--dry-run` 與 `--yes` 兩條路徑則證明了跳過提示不會連揭露一起跳掉。
+
+另有一段配套斷言守住這個里程碑的另一半：DNS 關閉時，`up` 不帶 profile 啟動專案、`stop` 就是它一直以來那個不分服務的專案停止、`down` 直接拆除不撤銷也不重啟、`doctor` 一個字都不提。
+
+**真的去跑一次 `doctor` 又抓到兩個缺陷，兩個都不是單元測試會抓到的。**
+
+第一個：**daemon 路徑是逐位元組比對的**，所以在 Windows 上 `C:/x/daemon.json` 與 `C:\x\daemon.json`——同一個檔案，差別只在誰怎麼打的——會被判定為不一致。而那個比對正是讓 `dns disable` 拒絕動作的依據，於是失效模式是「**誤判**而拒絕移除一筆真的屬於 Runestone 的項目」，並且印出兩條使用者看起來一模一樣的路徑。`sameDaemonPath()` 現在會把兩邊 resolve 過，並且只在 Windows 上折疊大小寫；這個問題在 `disable` 裡本來就存在，而 M7 差一點把它擴散到 `up` 與 `doctor`。
+
+第二個：**`doctor` 回報了一個失敗的 DNS 檢查，然後在結尾說「環境檢查已通過」**，因為它的判定只看主機工具檢查。DNS 啟用時，dns 服務沒在跑不是外觀問題——機器的 Docker daemon 正指著它——所以 DNS 檢查失敗現在會讓 `doctor` 以非零結束，並且用自己的結語：主機環境沒問題、沒有東西需要安裝，這跟原本那句失敗訊息叫使用者去做的事正好相反。
+
+**回退。** 單一 revert 接線的那個 commit。DNS 服務本身不受影響，所以回退會讓既有指令回到 M7 之前的行為，而不會動到已經套用 DNS 的安裝。
 
 ## M8 — 平台矩陣與發布
 
 **目標。** 出貨。
 
-**風險等級 3 · 層級 T3／T4 · 前置：M6b、M7**
+**風險等級 3 · 層級 T3／T4 · 前置：M6b**
 
 **交付項目**
 
@@ -438,9 +464,9 @@ M6b 與 M8 產出的結論無法從程式碼重新推導。記錄在這裡，並
 
 ## repo 現況
 
-記錄於此，避免把 M1 與 M2 誤認為已經開工：
+M7 之後更新：
 
-- `docker/dns/` 現在放著 M2 的 image、entrypoint、發佈腳本、README 與驗證腳本；commit `3581211` 的東西沒有在裡面留下任何檔案。`runestone-cli/src/services/dns/` 內有 M0 的 `daemon-target.ts` 與 M1 的 `json-edit.ts`、`daemon-config.ts`、`daemon-file.ts`、`upstream.ts`。**`tests/` 之外還沒有任何地方 import 它們**，這正是目前每個里程碑都能各自 revert 的原因。
-- commit `3581211` 加進 runestone image 的 dnsmasq 與 webproc 相關程式——`docker/traefik/entrypoint.sh` 的 `start_dnsmasq()` 與 `docker/traefik/dynamic/traefik.dynamic.yml` 的 `{{ if env "DNS_ENABLE" }}` 區塊——仍然存在，必須在 M3 移除（規格 5.3、13）。
-- repo 內沒有這個功能可以依賴的多架構建置發佈路徑，也沒有 CI workflow。建立一條是裁決 2，並且卡住 M2。
+- `docker/dns/` 放著 M2 的 image、entrypoint、發佈腳本、README 與驗證腳本，加上 M6a 的 dind 載具；commit `3581211` 的東西沒有在裡面留下任何檔案。`runestone-cli/src/services/dns/` 已是完整的引擎，而 **M7 正是既有指令路徑開始 import 它的那一刻**：`up`、`stop`、`down`、`certs`、`doctor` 現在都會進到 `lifecycle.ts`。M0 到 M6a 仍然可以各自 revert；從 M7 開始，revert 會連生命週期接線一起帶走。
+- commit `3581211` 加進 runestone image 的 dnsmasq 與 webproc 相關程式——`docker/traefik/entrypoint.sh` 的 `start_dnsmasq()` 與 `docker/traefik/dynamic/traefik.dynamic.yml` 的 `{{ if env "DNS_ENABLE" }}` 區塊——已在 M3 移除（規格 5.3、13）。
+- CI 是 `.drone.yml`，另保留 `.github/workflows/dns-harness.yml` 給 GitHub 鏡像；兩者呼叫同一批腳本。**兩者都還沒有跑過**，那需要一個指向這個 repo 的 Drone runner。image 發佈仍然是進版控的 `docker/dns/publish.sh`，仍然需要一個 registry token（裁決 2）。
 - **`make/` 目錄是從 [druidfi/stonehenge](https://github.com/druidfi/stonehenge) 繼承來的，已作廢。** 把那套 Makefile 式的安裝與管理換成 npm CLI 正是這個 fork 存在的理由（見 README），因此建置與發布計畫不得從它推導任何東西。它是殘骸，不是基準——裁決 2 決定的 image 建置路徑應該貼合 CLI 的發布流程。

@@ -5,6 +5,7 @@ import {
   CompleteResult,
   EnablePlan,
   EnableResult,
+  Preflight,
   applyEnable,
   completeEnable,
   planEnable
@@ -26,8 +27,12 @@ function warn(text: string): void {
   console.log(`  ${yellow(text)}`);
 }
 
-function printPreflight(plan: EnablePlan): void {
-  const checks = plan.preflight;
+/**
+ * Shared with setup, which runs preflight on its own to tell the user whether
+ * this machine can do DNS at all — reads only, and long before anything is
+ * written.
+ */
+export function printPreflight(checks: Preflight): void {
   logger.info(t('dns.enable.section.preflight'));
 
   if (!checks.ok) {
@@ -246,7 +251,7 @@ export function createDnsEnableCommand(): Command {
 
         const plan = planEnable(config);
 
-        printPreflight(plan);
+        printPreflight(plan.preflight);
         if (!plan.preflight.ok) {
           process.exit(1);
         }

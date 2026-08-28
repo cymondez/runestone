@@ -72,7 +72,7 @@ export function printDisablePlan(plan: DisablePlan): void {
   warn(t('dns.disable.plan.restart'));
 }
 
-function printBlockers(plan: DisablePlan): void {
+export function printDisableBlockers(plan: DisablePlan): void {
   for (const blocker of plan.blockers) {
     switch (blocker.kind) {
       case 'no-ownership':
@@ -168,7 +168,7 @@ export function createDnsDisableCommand(): Command {
         // as if the array were empty when the point is that Runestone does not
         // own what is in it.
         if (plan.blockers.length > 0) {
-          printBlockers(plan);
+          printDisableBlockers(plan);
           process.exit(1);
         }
 

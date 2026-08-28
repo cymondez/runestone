@@ -557,6 +557,14 @@ Four DNS questions in a fixed order; the second, third and fourth appear only wh
 - The review summary must show all four values.
 - Cancelling, or failing preflight, must leave no daemon configuration, service or state changes behind.
 
+**Setup records the settings; it does not enable DNS.** It writes `DNS_UPSTREAM`, `DNS_DAEMON_FALLBACK` and `DNS_AUTO_REORDER`, runs the read-only preflight of 10.1 step 1 so that a machine which cannot do this says so immediately, and then directs the user to `runestone dns enable`. Three reasons, and the third is the one that settles it:
+
+- **`DNS_ENABLE` is never written by setup, in either direction.** Writing `true` would claim DNS is on while nothing is in the daemon configuration, which is the state `up` and `doctor` exist to warn about. Writing `false` would silently orphan an entry that is already there. That key belongs to `dns enable` and `dns disable`, because they own the file behind it.
+- The two mandatory confirmations of 11.3 — before the write, and again before the restart — belong to one command that the user invoked to do exactly that, not to the tail of a wizard they ran for something else.
+- **The enable flow needs an environment that setup has not created yet**: `applyEnable` starts the dns service, and the Compose project's network is created by `up`. Enabling from inside setup would work on a second run and fail on a first.
+
+The constraint above is therefore satisfied by construction rather than by rollback: setup writes no daemon configuration, creates no service and records no ownership state, so there is nothing for a cancellation to undo.
+
 ### 11.3 Risk disclosure requirements
 
 Principle: **the user consents to concrete actions, not to abstract warnings.** Disclosures must contain real values (daemon path, Target IP, Bind IP, UI URL), never vague text such as "Docker configuration will be modified". They must also be repeated before every operation that touches global state — stating them once during setup and assuming the user remembers is not acceptable.
