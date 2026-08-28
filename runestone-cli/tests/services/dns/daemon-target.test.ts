@@ -136,12 +136,17 @@ describe('dns daemon target resolution', () => {
       });
     });
 
-    it('tries docker desktop restart and allows a manual fallback', () => {
+    it('offers no automatic step on Docker Desktop, and says a human must do it', () => {
+      // `docker desktop restart` restarts the *application*, which stops the
+      // containers — and `unless-stopped` means "restart unless it was stopped",
+      // so those never come back. Measured twice on Docker Desktop for Windows.
+      // The engine restart Docker Desktop performs for its own Settings screen
+      // is the supported way to apply this file, and it is not on the CLI.
       expect(resolveDockerRestartPlan({ host: 'docker-desktop', homeDir: '/home/me' })).toEqual({
         source: 'platform',
         host: 'docker-desktop',
         allowManualFallback: true,
-        steps: [{ command: 'docker', args: ['desktop', 'restart'] }]
+        steps: []
       });
     });
   });

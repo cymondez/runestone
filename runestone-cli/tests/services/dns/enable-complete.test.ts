@@ -179,9 +179,14 @@ describe('completing an enable (spec 10.1 steps 5 to 7)', () => {
       const result = completeEnable(config(), plan, prepared(plan), deps);
 
       // Nothing is wrong: the write stands and takes effect at the user's own
-      // restart, which is the same resting place as --no-restart.
-      expect(result.failure).toBe('restart');
+      // restart, which is the same resting place as --no-restart. Treating it as
+      // a failure would invert a configuration that is correct.
+      expect(result.failure).toBeUndefined();
       expect(result.restart.status).toBe('manual-required');
+      expect(result.phase).toBe('prepared');
+      expect(deps.writeDaemon).not.toHaveBeenCalled();
+      expect(deps.stopService).not.toHaveBeenCalled();
+      expect(deps.clearRecord).not.toHaveBeenCalled();
     });
   });
 

@@ -177,10 +177,13 @@ Traefik、Mailpit、nginx 合併在 runestone image 是為了管理方便 — �
 
 | 平台 | daemon 設定檔 | 重啟方式 |
 | --- | --- | --- |
-| Windows / macOS Docker Desktop | `~/.docker/daemon.json` | 優先嘗試 `docker desktop restart`（待驗證），不可用則提示使用者手動重啟 Docker Desktop |
+| Windows / macOS Docker Desktop | `~/.docker/daemon.json` | **不嘗試自動重啟。** 套用這一步交還給使用者，並附上說明——見下 |
 | Linux rootful Docker Engine | `/etc/docker/daemon.json` | `sudo systemctl restart docker`，不可用則 `sudo service docker restart` |
 
-- 兩種重啟路徑都必須輪詢 `docker info` 直到 Docker 恢復（上限 120 秒）才算成功。
+- **自動重啟只能是「重啟 daemon 本身」。** `systemctl restart docker` 符合：daemon 下去再上來，沒有任何東西**停止**過那些容器，`always` 與 `unless-stopped` 都會恢復。重啟「包在 daemon 外面的應用程式」不符合，因為那種關閉會把容器停掉，而 `unless-stopped` 之後就會讓它們一直躺著（見第 15 節裁決 1）。
+- **Runestone 不對自己無法驗證的環境用猜的。** Colima、OrbStack、Rancher Desktop、rootless Docker，以及 systemd 以外的 init，各自重啟 daemon 的方式都不同；與其伸手去抓一個可能是「重啟應用程式」的東西，Runestone 選擇把這一步交還出去，並指出 `RUNESTONE_DNS_RESTART_CMD`（7.4）就是告訴它「這套環境的正確指令」的地方。
+- 有嘗試重啟時，必須輪詢 `docker info` 直到 Docker 恢復（上限 120 秒）才算成功——而且「有回應」不是終點：dns 服務會被明確地帶回來，驗證也會在一個時間窗內重試，因為「daemon 會回應」還不等於「機器上的容器都回來了」。
+- 交還給使用者的重啟**不算失敗**：設定已寫入且正確，不會反向還原，紀錄就停在 `phase: prepared`，與 `--no-restart` 留下的狀態完全相同。
 - Remote context 與 Windows container 模式（`docker info` 的 OSType 非 linux）一律在修改 daemon 設定前中止。
 
 **這裡刻意沒有 WSL 那一列。** 先前的版本有，指向「在 WSL 裡跑 CLI、對著 Docker Desktop」時 Windows 端的 `/mnt/<drive>/Users/<user>/.docker/daemon.json`。它有兩個問題：
@@ -741,7 +744,11 @@ privileged 的 `docker:dind` 容器有自己的 `/etc/docker/daemon.json`、自�
 
 以下每一項都有對應的里程碑截止點，見 16.6。**四項現在都已定案。**
 
-1. **已定案——`docker desktop restart` 存在，而偵測與手動備援兩者都保留。** M6b 期間在 Windows 上實測：Docker Desktop CLI plugin `v0.4.3` 提供 `docker desktop restart`，而且除非給 `--detach`，否則它是同步的——這正是 `restartDocker` 先執行指令、再輪詢 `docker info` 時所假設的。自動路徑**不會**被省略：這個 plugin 有自己的版本號，與 Docker Desktop 本身分開，因此不能從「這是 Docker Desktop」推論出它一定在，較舊的安裝也不會有。一台機器有，不構成每台機器都有的證據。見 [M6b 證據](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)。
+1. **已定案——`docker desktop restart` 存在，而 Runestone 不該用它。** 它確實存在（Docker Desktop CLI plugin `v0.4.3`），除非給 `--detach` 否則是同步的。但按它自己的說明文字，它重啟的是 *Docker Desktop*——那個應用程式，不是 daemon；而 `docker desktop engine` 只負責切換 Windows／Linux 容器模式，所以那個介面根本沒有「只重啟 engine」這件事。
+
+   **重啟應用程式不是「比較重的重啟 daemon」，而是另一種操作，並且帶著永久性的副作用。** 應用程式關閉時會把執行中的容器**停掉**，而 `unless-stopped` 的意思是「除非被停止，否則重啟」——於是那些容器之後就一直躺著，等再久也不會回來。在 Docker Desktop for Windows 上實測兩次：`always` 的全部回來，`unless-stopped` 的一個都沒有。
+
+   因此自動重啟只保留在「它重啟的確實是 daemon 本身」的地方——原生 Linux engine 上的 `systemctl restart docker`，那裡容器會正常恢復，因為沒有任何東西停止過它們。其餘環境一律由 Runestone 寫入設定、把套用交還出去，也就是 `--no-restart` 本來就會停下的地方。見 6.2 與 [M6b 證據](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)。
 2. **暫定——image 由放在它旁邊的腳本建置與發佈。** `docker/dns/publish.sh` 執行 `docker buildx build --platform linux/amd64,linux/arm64 --push`，發佈 `cymondez/runestone-dns:1.0`，由維護者手動執行。**這明確是一個過渡答案。** 手動發佈出去的 image 不會留下「它是怎麼來的」的紀錄，所以 CI 仍然是目的地；延後的唯一理由是申請 registry token 並把 workflow 跑通需要時間，而 M2 不該等它。**CI 用 Drone**，跑在作為 `origin` 的自架 Gitea 上。另外保留一份 GitHub Actions workflow 給鏡像用；兩者跑的是同樣三項檢查（單元測試、image 驗證、沙箱載具），而且都是去呼叫同一批腳本，因此沒有任何一邊是另一邊的第二份實作。在那之前**腳本本身必須進版控**，讓一個已發佈的 image 至少是可以回推出來的；而且腳本必須要求明確給定 tag 才發佈，不得預設成 `latest`。
 3. **已定案——`TODO` 寫的「必須讓使用者設定其他 dns 作為備援」由兩個位置共同回答。** dnsmasq 上游（8.4）是**必要且永不為空**，預設 `1.1.1.1`，因為少了它全機 container 就失去對外名稱解析；setup 提供沿用／更換／追加。daemon `dns` 陣列裡的備援（9.7）則是**選用且預設關閉**，因為實測顯示它會把明確的 DNS 失敗換成 Runestone domain 安靜地解析成 `127.0.0.1`。`insertedEntries` 因此是一個自有項目的陣列，M1 一開始就必須照此實作。
 4. **已定案——`compose.yml` 依版本標記自動重生。** 標記是 Compose 檔自己標頭裡的一行註解；與 CLI 自身的模板版本不同時就重生 Compose 檔並告知使用者，而磁碟上原有的檔案會先在原地旁邊備份（見第 13 節）。

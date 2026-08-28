@@ -609,6 +609,14 @@ export function completeEnable(
     return result;
   };
 
+  // A restart that has to be done by hand is not a failure and must not be
+  // inverted: the configuration is written and correct, and the person who runs
+  // the restart is the one who can do it without stripping their machine. This
+  // is the same resting place `--no-restart` reaches.
+  if (restart.status === 'manual-required') {
+    return result;
+  }
+
   if (restart.status !== 'restarted') {
     return invert('restart', restart.error ?? restart.status);
   }

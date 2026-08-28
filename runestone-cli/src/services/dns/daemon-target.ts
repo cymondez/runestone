@@ -164,9 +164,28 @@ export function platformRestartPlan(environment: DaemonEnvironment): Omit<Docker
     };
   }
 
+  // **Docker Desktop gets no automatic step, deliberately.**
+  //
+  // Its CLI offers exactly one restart, and its own help calls it what it is:
+  // "Restart Docker Desktop" — the application, not the daemon. There is no
+  // engine-only restart on that surface (`docker desktop engine` only switches
+  // between Windows and Linux container modes).
+  //
+  // That difference is not cosmetic. An application shutdown *stops* the running
+  // containers, and `unless-stopped` means "restart unless it was stopped" — so
+  // by definition those containers stay down afterwards, permanently. Measured
+  // twice on Docker Desktop for Windows: every `always` container returned and
+  // every `unless-stopped` one did not. Waiting does not help, because nothing
+  // is pending.
+  //
+  // Runestone will not reach for a bigger hammer than the job needs and leave
+  // someone's machine stripped of its containers. `daemon.json` is Docker
+  // Desktop's own file, and the supported way to apply a change to it is Docker
+  // Desktop's own engine restart. So the write happens here and the applying is
+  // handed back, which is the same place `--no-restart` stops.
   return {
     host: environment.host,
-    steps: [{ command: 'docker', args: ['desktop', 'restart'] }],
+    steps: [],
     allowManualFallback: true
   };
 }

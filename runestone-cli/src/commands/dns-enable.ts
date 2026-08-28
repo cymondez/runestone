@@ -196,6 +196,10 @@ export function printCompleteResult(plan: EnablePlan, result: CompleteResult): v
 
   if (result.restart.status === 'manual-required') {
     warn(t('dns.enable.restart.manualRequired'));
+    line(t('dns.enable.restart.manualWhy'));
+    line(t('dns.enable.restart.manualDesktop'));
+    line(t('dns.enable.restart.manualOther'));
+    line(t('dns.enable.restart.manualThen'));
     return;
   }
 
@@ -299,10 +303,15 @@ export function createDnsEnableCommand(): Command {
           return;
         }
 
+        // On a platform with no automatic restart there is nothing to consent to
+        // and nothing to announce: `completeEnable` will report that applying the
+        // change is the user's to do, and how.
+        const attemptsRestart = plan.preflight.restartPlan.steps.length > 0;
+
         // A second, separate confirmation: this one is the destructive step
         // (spec 11.3), and consenting to the write is not consenting to
         // terminating every container on the machine.
-        if (!options.yes) {
+        if (attemptsRestart && !options.yes) {
           const confirmed = await p.confirm({
             message: t('dns.enable.confirmRestart'),
             initialValue: false,
@@ -316,7 +325,10 @@ export function createDnsEnableCommand(): Command {
           }
         }
 
-        logger.info(t('dns.enable.restart.progress'));
+        if (attemptsRestart) {
+          logger.info(t('dns.enable.restart.progress'));
+        }
+
         const completed = withDnsLock('dns enable', () => completeEnable(config, plan, result.record as never));
         printCompleteResult(plan, completed);
 
