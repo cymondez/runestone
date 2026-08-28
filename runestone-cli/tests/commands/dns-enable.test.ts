@@ -145,7 +145,7 @@ describe('dns enable command', () => {
   it('inserts our entry and stops at prepared, having restarted nothing', async () => {
     writeDaemon(['8.8.8.8']);
 
-    await enable('--yes');
+    await enable('--yes', '--no-restart');
 
     expect(JSON.parse(fs.readFileSync(daemonPath, 'utf8')).dns).toEqual([TARGET, '8.8.8.8']);
     expect(toolState.readDnsState()).toMatchObject({ phase: 'prepared', targetIp: TARGET });
@@ -232,7 +232,7 @@ describe('dns enable command', () => {
     // First call resolves the Target IP, the second is the verification query.
     replies.containerOutputs = [TARGET, ''];
 
-    await enable('--yes');
+    await enable('--yes', '--no-restart');
 
     expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
     expect(removeServicesMock).toHaveBeenCalledTimes(1);
@@ -250,7 +250,7 @@ describe('dns enable command', () => {
     ])('%s', async (_label, dns) => {
       const before = writeDaemon(dns as string[] | undefined);
 
-      await enable('--yes');
+      await enable('--yes', '--no-restart');
       expect(fs.readFileSync(daemonPath, 'utf8')).not.toBe(before);
 
       await disable('--yes');
@@ -263,9 +263,9 @@ describe('dns enable command', () => {
   it('does not insert a second entry when run twice', async () => {
     writeDaemon(['8.8.8.8']);
 
-    await enable('--yes');
+    await enable('--yes', '--no-restart');
     const afterFirst = fs.readFileSync(daemonPath, 'utf8');
-    await enable('--yes');
+    await enable('--yes', '--no-restart');
 
     expect(fs.readFileSync(daemonPath, 'utf8')).toBe(afterFirst);
     expect(JSON.parse(afterFirst).dns).toEqual([TARGET, '8.8.8.8']);

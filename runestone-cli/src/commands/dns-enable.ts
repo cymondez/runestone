@@ -1,7 +1,14 @@
 import { Command } from 'commander';
 import * as p from '@clack/prompts';
 import { green, yellow } from 'kleur';
-import { EnablePlan, EnableResult, applyEnable, planEnable } from '../services/dns/enable';
+import {
+  CompleteResult,
+  EnablePlan,
+  EnableResult,
+  applyEnable,
+  completeEnable,
+  planEnable
+} from '../services/dns/enable';
 import { DnsLockHeldError, dnsLockPath, withDnsLock } from '../services/dns/lock';
 import { readDnsArray } from '../services/dns/daemon-config';
 import { daemonFallbackValue, isAutoReorderEnabled, isDnsUiAuthConfigured } from '../services/dns/settings';
@@ -176,16 +183,58 @@ function printResult(config: RunestoneEnv, plan: EnablePlan, result: EnableResul
   line(t('dns.enable.result.restartHint'));
 }
 
+export function printCompleteResult(plan: EnablePlan, result: CompleteResult): void {
+  const targetIp = plan.preflight.targetIp ?? '';
+
+  if (result.restart.status === 'manual-required') {
+    warn(t('dns.enable.restart.manualRequired'));
+    return;
+  }
+
+  switch (result.failure) {
+    case 'restart':
+      logger.error(t('dns.enable.restart.failed', { message: result.failureMessage ?? '' }));
+      break;
+    case 'resolv-conf':
+      logger.error(
+        t('dns.enable.restart.resolvConf', {
+          value: targetIp,
+          actual: (result.nameservers ?? []).join(', ') || '(none)'
+        })
+      );
+      break;
+    case 'resolution':
+      logger.error(
+        t('dns.enable.restart.resolution', {
+          domain: plan.verifyDomain,
+          value: targetIp,
+          message: result.failureMessage ?? ''
+        })
+      );
+      break;
+    default:
+      logger.success(t('dns.enable.restart.applied', { value: targetIp, domain: plan.verifyDomain }));
+      return;
+  }
+
+  if (result.rollbackError) {
+    warn(
+      t('dns.enable.restart.rollbackFailed', {
+        message: result.rollbackError,
+        path: plan.preflight.daemonPath
+      })
+    );
+  }
+}
+
 export function createDnsEnableCommand(): Command {
   return createCommand('enable')
     .description(t('commands.dns.enable.description'))
     .option('-y, --yes', t('dns.enable.option.yes'))
     .option('--dry-run', t('dns.enable.option.dryRun'))
     .option('--upstream <ips>', t('dns.enable.option.upstream'))
-    // `--no-restart` is deliberately absent until the restart itself exists.
-    // This command always stops at `phase=prepared`, so a flag naming the only
-    // behaviour there is would claim a choice the user does not have.
-    .action(async (options: { yes?: boolean; dryRun?: boolean; upstream?: string }) => {
+    .option('--no-restart', t('dns.enable.option.noRestart'))
+    .action(async (options: { yes?: boolean; dryRun?: boolean; upstream?: string; restart?: boolean }) => {
       try {
         const loaded = envLoader.load();
         const config: RunestoneEnv = options.upstream
@@ -231,6 +280,39 @@ export function createDnsEnableCommand(): Command {
         printResult(config, plan, result);
 
         if (result.failure) {
+          process.exit(1);
+          return;
+        }
+
+        // Spec 10.1 step 5: with --no-restart, stop here. The daemon
+        // configuration is written and takes effect when the user restarts
+        // Docker themselves, which is what makes the write safe to rehearse.
+        if (options.restart === false || !result.record) {
+          return;
+        }
+
+        // A second, separate confirmation: this one is the destructive step
+        // (spec 11.3), and consenting to the write is not consenting to
+        // terminating every container on the machine.
+        if (!options.yes) {
+          const confirmed = await p.confirm({
+            message: t('dns.enable.confirmRestart'),
+            initialValue: false,
+            active: t('common.yes'),
+            inactive: t('common.no')
+          });
+
+          if (p.isCancel(confirmed) || !confirmed) {
+            logger.info(t('dns.enable.result.restartHint'));
+            return;
+          }
+        }
+
+        logger.info(t('dns.enable.restart.progress'));
+        const completed = withDnsLock('dns enable', () => completeEnable(config, plan, result.record as never));
+        printCompleteResult(plan, completed);
+
+        if (completed.failure) {
           process.exit(1);
         }
       } catch (error) {

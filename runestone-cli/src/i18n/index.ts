@@ -377,6 +377,14 @@ const messages = {
     'dns.enable.result.prepared': 'Written and waiting. Nothing has taken effect yet: restart Docker for containers to start using it.',
     'dns.enable.result.restartHint': 'Restart Docker, then run runestone dns status to confirm.',
     'dns.enable.result.ui': 'The dns web UI will be at {url}.',
+    'dns.enable.confirmRestart': 'Restart Docker now? This terminates every container on this machine.',
+    'dns.enable.restart.progress': 'Restarting Docker and waiting for it to answer',
+    'dns.enable.restart.applied': 'DNS is active. A new container is given {value} as its first nameserver, and {domain} resolves to it.',
+    'dns.enable.restart.manualRequired': 'Runestone could not restart Docker itself. The daemon configuration is written and takes effect once you restart Docker; then run runestone dns status.',
+    'dns.enable.restart.failed': 'Docker did not come back: {message}. The daemon change was inverted, so nothing of Runestone is left in it.',
+    'dns.enable.restart.resolvConf': 'After restarting, a new container was not given {value} as its first nameserver (it got {actual}). The daemon change was inverted.',
+    'dns.enable.restart.resolution': 'After restarting, {domain} did not resolve to {value}: {message}. The daemon change was inverted.',
+    'dns.enable.restart.rollbackFailed': 'The inversion itself failed: {message}. {path} may still hold the Runestone entry and the record is kept at prepared. Edit that file by hand, remove the entry, and restart Docker.',
     'dns.enable.failed': 'Failed to enable DNS: {message}'
   },
   'zh-TW': {
@@ -738,6 +746,14 @@ const messages = {
     'dns.enable.result.prepared': '已寫入，等待生效。目前還沒有任何東西生效：重啟 Docker 之後容器才會開始使用它。',
     'dns.enable.result.restartHint': '請重啟 Docker，然後執行 runestone dns status 確認。',
     'dns.enable.result.ui': 'dns web UI 之後會在 {url}。',
+    'dns.enable.confirmRestart': '現在重啟 Docker？這會終止這台機器上的每一個 container。',
+    'dns.enable.restart.progress': '正在重啟 Docker 並等待它恢復回應',
+    'dns.enable.restart.applied': 'DNS 已生效。新建立的 container 會拿到 {value} 作為第一個 nameserver，而 {domain} 會解析到它。',
+    'dns.enable.restart.manualRequired': 'Runestone 無法自行重啟 Docker。daemon 設定已寫入，重啟 Docker 之後就會生效；之後請執行 runestone dns status。',
+    'dns.enable.restart.failed': 'Docker 沒有恢復：{message}。daemon 的變更已被反向還原，裡面不再留有 Runestone 的任何東西。',
+    'dns.enable.restart.resolvConf': '重啟之後，新建立的 container 拿到的第一個 nameserver 不是 {value}（拿到的是 {actual}）。daemon 的變更已被反向還原。',
+    'dns.enable.restart.resolution': '重啟之後，{domain} 沒有解析到 {value}：{message}。daemon 的變更已被反向還原。',
+    'dns.enable.restart.rollbackFailed': '反向還原本身失敗了：{message}。{path} 可能仍留有 Runestone 的項目，紀錄維持在 prepared。請手動編輯該檔案、移除該項目，然後重啟 Docker。',
     'dns.enable.failed': '啟用 DNS 失敗：{message}'
   },
   'ja-JP': {
@@ -1103,6 +1119,14 @@ const messages = {
     'dns.enable.result.prepared': '書き込み済みで待機中です。まだ何も有効になっていません: Docker を再起動するとコンテナが使い始めます。',
     'dns.enable.result.restartHint': 'Docker を再起動してから runestone dns status で確認してください。',
     'dns.enable.result.ui': 'dns Web UI は {url} になります。',
+    'dns.enable.confirmRestart': '今すぐ Docker を再起動しますか? これはこのマシン上のすべてのコンテナを終了させます。',
+    'dns.enable.restart.progress': 'Docker を再起動し、応答を待っています',
+    'dns.enable.restart.applied': 'DNS が有効になりました。新しいコンテナには最初の nameserver として {value} が渡され、{domain} はそこへ解決されます。',
+    'dns.enable.restart.manualRequired': 'Runestone は Docker を自分で再起動できませんでした。daemon 設定は書き込み済みで、Docker を再起動すれば有効になります。その後 runestone dns status を実行してください。',
+    'dns.enable.restart.failed': 'Docker が戻ってきませんでした: {message}。daemon の変更は元に戻したので、Runestone のものは何も残っていません。',
+    'dns.enable.restart.resolvConf': '再起動後、新しいコンテナの最初の nameserver が {value} ではありませんでした ({actual} でした)。daemon の変更は元に戻しました。',
+    'dns.enable.restart.resolution': '再起動後、{domain} が {value} に解決されませんでした: {message}。daemon の変更は元に戻しました。',
+    'dns.enable.restart.rollbackFailed': '元に戻す処理自体が失敗しました: {message}。{path} には Runestone の項目が残っている可能性があり、レコードは prepared のままです。そのファイルを手動で編集して項目を削除し、Docker を再起動してください。',
     'dns.enable.failed': 'DNS の有効化に失敗しました: {message}'
   }
 } as const;

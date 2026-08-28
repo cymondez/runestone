@@ -11,13 +11,15 @@ import {
   reconcileOwnedEntries,
   removeOwnedEntries
 } from './daemon-config';
-import { readDaemonConfig, writeDaemonConfig } from './daemon-file';
-import { DaemonHost, resolveDaemonConfigTarget } from './daemon-target';
+import { deleteDaemonConfig, readDaemonConfig, writeDaemonConfig } from './daemon-file';
+import { DaemonHost, DockerRestartPlan, resolveDaemonConfigTarget, resolveDockerRestartPlan } from './daemon-target';
+import { RestartOutcome, restartDocker } from './docker-restart';
 import {
   DockerContextInfo,
   DockerProbes,
   ResolutionCheck,
   defaultDockerProbes,
+  readContainerNameservers,
   readDockerContext,
   resolveTargetIp,
   verifyDomainResolution
@@ -58,6 +60,7 @@ export interface Preflight {
   host: DaemonHost;
   /** True when the upstream list fell back to the shipped public default. */
   upstreamIsFallback: boolean;
+  restartPlan: DockerRestartPlan;
 }
 
 export interface PreflightDependencies {
@@ -165,7 +168,8 @@ export function preflight(
     daemonText,
     requiresPrivilege: target.requiresPrivilege,
     host: target.host,
-    upstreamIsFallback: upstreams.origins.every((origin) => origin.origin === 'default')
+    upstreamIsFallback: upstreams.origins.every((origin) => origin.origin === 'default'),
+    restartPlan: resolveDockerRestartPlan()
   };
 }
 
@@ -456,5 +460,122 @@ export function applyEnable(
 
   result.stage = 'prepared';
   result.record = state;
+  return result;
+}
+
+export interface CompleteDependencies {
+  restart: (plan: DockerRestartPlan) => RestartOutcome;
+  nameservers: (image: string) => string[];
+  verify: (image: string, domain: string, serverIp: string) => ResolutionCheck;
+  writeDaemon: (path: string, text: string) => void;
+  deleteDaemon: (path: string) => void;
+  stopService: (composePath: string) => void;
+  writeRecord: (state: DnsOwnershipState) => void;
+  clearRecord: () => void;
+  now: () => string;
+}
+
+export const defaultCompleteDependencies: CompleteDependencies = {
+  restart: (plan) => restartDocker(plan),
+  nameservers: (image) => readContainerNameservers(image),
+  verify: (image, domain, serverIp) => verifyDomainResolution(image, domain, serverIp),
+  writeDaemon: writeDaemonConfig,
+  deleteDaemon: deleteDaemonConfig,
+  stopService: defaultEnableApplyDependencies.stopService,
+  writeRecord: (state) => toolState.writeDnsState(state),
+  clearRecord: () => toolState.clearDnsState(),
+  now: () => new Date().toISOString()
+};
+
+export interface CompleteResult {
+  restart: RestartOutcome;
+  /** Nameservers a fresh container was given, in order (spec 10.1 step 6). */
+  nameservers?: string[];
+  resolution?: ResolutionCheck;
+  phase: 'applied' | 'prepared';
+  failure?: 'restart' | 'resolv-conf' | 'resolution';
+  failureMessage?: string;
+  /** Whether the daemon change was inverted after a failure. */
+  invertedDaemon: boolean;
+  /** Set when the inversion itself failed, which needs a human (spec 10.1). */
+  rollbackError?: string;
+}
+
+/**
+ * Spec 10.1 steps 5 to 7: restart Docker, prove it took, and only then call it
+ * applied.
+ *
+ * This is the destructive half. Everything before it can be rehearsed; this
+ * terminates every container on the machine, so it runs only after the caller
+ * has consent. When it fails, the daemon change is inverted and Docker is
+ * restarted again — leaving a half-applied global DNS setting behind is the one
+ * outcome worse than not enabling at all.
+ */
+export function completeEnable(
+  config: RunestoneEnv,
+  plan: EnablePlan,
+  prepared: DnsOwnershipState,
+  dependencies: Partial<CompleteDependencies> = {}
+): CompleteResult {
+  const deps = { ...defaultCompleteDependencies, ...dependencies };
+  const image = verificationImage(config);
+  const targetIp = plan.preflight.targetIp as string;
+
+  const restart = deps.restart(plan.preflight.restartPlan);
+  const result: CompleteResult = { restart, phase: 'prepared', invertedDaemon: false };
+
+  const invert = (failure: CompleteResult['failure'], message: string): CompleteResult => {
+    result.failure = failure;
+    result.failureMessage = message;
+
+    try {
+      if (plan.changesFile) {
+        if (plan.createdDaemonFile) {
+          deps.deleteDaemon(plan.preflight.daemonPath);
+        } else {
+          deps.writeDaemon(plan.preflight.daemonPath, plan.before);
+        }
+        result.invertedDaemon = true;
+        // The inversion is only real once Docker has read it again.
+        deps.restart(plan.preflight.restartPlan);
+      }
+
+      deps.stopService(config.COMPOSE_FILE_PATH);
+      deps.clearRecord();
+    } catch (thrown) {
+      // Spec 10.1: keep phase=prepared and let the caller print the daemon path
+      // and manual recovery steps. Pretending this succeeded would leave the
+      // machine pointing at a container that is about to be removed.
+      result.rollbackError = thrown instanceof Error ? thrown.message : String(thrown);
+      deps.writeRecord({ ...prepared, phase: 'prepared', preparedReason: 'rollback-failed', updatedAt: deps.now() });
+    }
+
+    return result;
+  };
+
+  if (restart.status !== 'restarted') {
+    return invert('restart', restart.error ?? restart.status);
+  }
+
+  const nameservers = deps.nameservers(image);
+  result.nameservers = nameservers;
+  if (nameservers[0] !== targetIp) {
+    return invert(
+      'resolv-conf',
+      `expected ${targetIp} first, got ${nameservers.join(', ') || '(none)'}`
+    );
+  }
+
+  const resolution = deps.verify(image, plan.verifyDomain, targetIp);
+  result.resolution = resolution;
+  if (!resolution.ok) {
+    return invert('resolution', resolution.error ?? 'the domain did not resolve');
+  }
+
+  const applied: DnsOwnershipState = { ...prepared, phase: 'applied', updatedAt: deps.now() };
+  delete applied.preparedReason;
+  deps.writeRecord(applied);
+  result.phase = 'applied';
+
   return result;
 }

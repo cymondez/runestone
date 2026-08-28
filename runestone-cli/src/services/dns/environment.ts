@@ -113,6 +113,27 @@ export function resolveTargetIp(image: string, probes: Partial<DockerProbes> = {
   return candidate ? { ip: candidate } : { error: `no IPv4 address in: ${outcome.stdout || '(no output)'}` };
 }
 
+/**
+ * Spec 10.1 step 6: a newly created container's resolv.conf must list the Target
+ * IP **first**. Anything else means the daemon setting did not take, or that
+ * something else is being consulted before us.
+ */
+export function readContainerNameservers(image: string, probes: Partial<DockerProbes> = {}): string[] {
+  const deps = { ...defaultDockerProbes, ...probes };
+  const outcome = deps.runInContainer(image, 'cat /etc/resolv.conf', { addHostGateway: false });
+
+  if (!outcome.ok) {
+    return [];
+  }
+
+  return outcome.stdout
+    .split(/\r?\n/)
+    .map((row) => row.trim())
+    .filter((row) => row.startsWith('nameserver'))
+    .map((row) => row.replace(/^nameserver\s+/, '').trim())
+    .filter((row) => row !== '');
+}
+
 export interface ResolutionCheck {
   ok: boolean;
   answers: string[];
