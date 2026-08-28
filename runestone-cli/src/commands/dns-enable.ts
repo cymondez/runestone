@@ -42,6 +42,9 @@ function printPreflight(plan: EnablePlan): void {
         case 'windows-containers':
           logger.error(t('dns.enable.failed.windows', { osType: failure.osType }));
           break;
+        case 'docker-desktop-elsewhere':
+          logger.error(t('dns.enable.failed.desktopElsewhere', { operatingSystem: failure.operatingSystem }));
+          break;
         case 'remote-context':
           logger.error(t('dns.enable.failed.remote', { name: failure.name, endpoint: failure.endpoint }));
           break;

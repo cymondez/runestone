@@ -118,10 +118,7 @@ describe('bind IP determination (spec 6.1)', () => {
     expect(determineBindIp({ host: 'linux-engine', targetIp: '172.17.0.1' })).toBe('172.17.0.1');
   });
 
-  it.each([['docker-desktop' as const], ['wsl-docker-desktop' as const]])(
-    'binds every interface on %s, because the Target IP is inside the Docker VM',
-    (host) => {
-      expect(determineBindIp({ host, targetIp: '192.168.65.254' })).toBe('0.0.0.0');
-    }
-  );
+  it('binds every interface on Docker Desktop, because the Target IP is inside the Docker VM', () => {
+    expect(determineBindIp({ host: 'docker-desktop', targetIp: '192.168.65.254' })).toBe('0.0.0.0');
+  });
 });

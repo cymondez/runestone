@@ -34,21 +34,8 @@ describe('dns daemon target resolution', () => {
       expect(platformDaemonPath({ host: 'linux-engine', homeDir: '/home/me' })).toBe('/etc/docker/daemon.json');
     });
 
-    it('uses the Windows-side path under WSL', () => {
-      expect(
-        platformDaemonPath({ host: 'wsl-docker-desktop', homeDir: '/home/me', windowsHomeDir: '/mnt/c/Users/me' })
-      ).toBe('/mnt/c/Users/me/.docker/daemon.json');
-    });
-
-    it('refuses to guess the Windows-side path and points at the override', () => {
-      expect(() => platformDaemonPath({ host: 'wsl-docker-desktop', homeDir: '/home/me' })).toThrow(
-        DAEMON_PATH_OVERRIDE_ENV
-      );
-    });
-
     it('requires privilege escalation only for the native Linux engine', () => {
       jest.spyOn(osDetector, 'platform').mockReturnValue('linux');
-      jest.spyOn(osDetector, 'isWsl').mockReturnValue(false);
 
       expect(resolveDaemonConfigTarget().requiresPrivilege).toBe(true);
       expect(resolveDaemonConfigTarget({ host: 'docker-desktop', homeDir: '/home/me' }).requiresPrivilege).toBe(false);
@@ -65,17 +52,12 @@ describe('dns daemon target resolution', () => {
       expect(detectDaemonEnvironment().host).toBe(host);
     });
 
-    it('treats WSL as the Docker Desktop endpoint unless told otherwise', () => {
+    it('treats Linux as a native engine, whatever kernel it reports', () => {
+      // Deliberately not asking whether this is WSL. Docker Desktop runs its VM
+      // on WSL2, so the kernel string cannot tell WSL apart from a container on
+      // Docker Desktop — and the question that actually matters, which daemon
+      // this is, is answered by `docker info` in preflight instead.
       jest.spyOn(osDetector, 'platform').mockReturnValue('linux');
-      jest.spyOn(osDetector, 'isWsl').mockReturnValue(true);
-
-      expect(detectDaemonEnvironment().host).toBe('wsl-docker-desktop');
-      expect(detectDaemonEnvironment({ dockerDesktopEndpoint: false }).host).toBe('linux-engine');
-    });
-
-    it('treats plain Linux as a native engine', () => {
-      jest.spyOn(osDetector, 'platform').mockReturnValue('linux');
-      jest.spyOn(osDetector, 'isWsl').mockReturnValue(false);
 
       expect(detectDaemonEnvironment().host).toBe('linux-engine');
     });

@@ -254,7 +254,7 @@ describe('dns disable command', () => {
   it('leaves the platform daemon file alone, whatever it does', async () => {
     // The gate for this milestone: everything is exercised through the redirected
     // path, and the file a real machine actually uses is never opened for writing.
-    const platformPath = platformDaemonPath({ ...detectDaemonEnvironment(), windowsHomeDir: '/mnt/c/Users/none' });
+    const platformPath = platformDaemonPath(detectDaemonEnvironment());
     const existedBefore = fs.existsSync(platformPath);
     const contentBefore = existedBefore ? fs.readFileSync(platformPath, 'utf8') : undefined;
 

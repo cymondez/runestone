@@ -1,0 +1,65 @@
+name: DNS harness
+
+# The one step this feature cannot rehearse on a developer's machine is the
+# Docker daemon restart, because it terminates every container they have. The
+# harness does it inside a sandbox instead, which is what makes it something CI
+# can run — and a check that runs on every change is worth more than a manual
+# verification performed once and then never again.
+#
+# This file is deliberately written to the subset Gitea Actions also understands,
+# because `origin` for this repository is a self-hosted Gitea and GitHub is a
+# mirror. Copy it to `.gitea/workflows/` to run it there.
+
+on:
+  push:
+    paths:
+      - 'docker/dns/**'
+      - 'runestone-cli/src/services/dns/**'
+      - 'runestone-cli/src/commands/dns*.ts'
+      - '.github/workflows/dns-harness.yml'
+  pull_request:
+    paths:
+      - 'docker/dns/**'
+      - 'runestone-cli/src/services/dns/**'
+      - 'runestone-cli/src/commands/dns*.ts'
+  workflow_dispatch:
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        working-directory: runestone-cli
+        run: npm install --no-audit --no-fund
+      - name: Test
+        working-directory: runestone-cli
+        run: npm run test:unit
+
+  image:
+    name: runestone-dns image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the image
+        run: sh docker/dns/test/verify-image.sh
+
+  harness:
+    name: End to end in the sandbox
+    runs-on: ubuntu-latest
+    # A privileged container is required: the sandbox runs its own Docker daemon,
+    # which is the entire point.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        working-directory: runestone-cli
+        run: npm install --no-audit --no-fund
+      - name: Run the harness
+        run: sh docker/dns/test/dind-harness.sh

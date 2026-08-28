@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -33,18 +32,5 @@ export const osDetector = {
 
   sshDir(): string {
     return path.join(this.homeDir(), '.ssh');
-  },
-
-  isWsl(): boolean {
-    try {
-      if (!fs.existsSync('/proc/version')) {
-        return false;
-      }
-
-      const version = fs.readFileSync('/proc/version', 'utf8').toLowerCase();
-      return version.includes('microsoft') || version.includes('wsl');
-    } catch {
-      return false;
-    }
   }
 };

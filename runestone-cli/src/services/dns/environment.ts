@@ -17,7 +17,12 @@ export interface CommandOutcome {
 }
 
 export interface DockerProbes {
-  /** `docker info` OSType — anything but `linux` means Windows container mode. */
+  /**
+   * `docker info`, as `<OSType>|<OperatingSystem>`. The first tells Windows
+   * container mode apart from Linux; the second says **which daemon this is**,
+   * which is the only reliable way to know whether its configuration file is the
+   * Docker Desktop one or a native engine's.
+   */
   osType: () => CommandOutcome;
   /** The active context's name and endpoint. */
   context: () => CommandOutcome;
@@ -40,7 +45,7 @@ function run(command: string, args: string[], timeout = 60_000): CommandOutcome 
 }
 
 export const defaultDockerProbes: DockerProbes = {
-  osType: () => run('docker', ['info', '--format', '{{.OSType}}'], 30_000),
+  osType: () => run('docker', ['info', '--format', '{{.OSType}}|{{.OperatingSystem}}'], 30_000),
   context: () => run('docker', ['context', 'inspect', '--format', '{{.Name}}|{{.Endpoints.docker.Host}}'], 30_000),
   runInContainer: (image, script, options) =>
     run(
@@ -60,6 +65,27 @@ export const defaultDockerProbes: DockerProbes = {
       120_000
     )
 };
+
+export interface DaemonInfo {
+  osType: string;
+  operatingSystem: string;
+  /** Docker Desktop keeps its configuration in the user's home, not /etc. */
+  isDockerDesktop: boolean;
+}
+
+export function readDaemonInfo(probes: Partial<DockerProbes> = {}): DaemonInfo | undefined {
+  const outcome = { ...defaultDockerProbes, ...probes }.osType();
+  if (!outcome.ok) {
+    return undefined;
+  }
+
+  const [osType = '', operatingSystem = ''] = outcome.stdout.split('|');
+  return {
+    osType: osType.trim(),
+    operatingSystem: operatingSystem.trim(),
+    isDockerDesktop: operatingSystem.trim().toLowerCase().includes('docker desktop')
+  };
+}
 
 /** A context whose endpoint is not a local socket is a machine we must not touch. */
 export function isRemoteEndpoint(endpoint: string): boolean {

@@ -17,6 +17,20 @@ import { DockerRestartPlan, DockerRestartStep } from './daemon-target';
 export const RESTART_POLL_LIMIT_MS = 120_000;
 const POLL_INTERVAL_MS = 2_000;
 
+/**
+ * Development override, in the same family as those in spec 7.4 and equally
+ * absent from `.env` and setup. Without it the rollback-on-timeout path can only
+ * be exercised by waiting two minutes, which is long enough that nobody tests it
+ * — and it is the path that matters most.
+ */
+export const RESTART_TIMEOUT_OVERRIDE_ENV = 'RUNESTONE_DNS_RESTART_TIMEOUT_MS';
+
+export function restartPollLimit(): number {
+  const raw = process.env[RESTART_TIMEOUT_OVERRIDE_ENV];
+  const parsed = Number.parseInt(raw ?? '', 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : RESTART_POLL_LIMIT_MS;
+}
+
 export type RestartStatus =
   /** A restart command succeeded and Docker answered again. */
   | 'restarted'
@@ -79,7 +93,7 @@ export const defaultRestartDependencies: RestartDependencies = {
 /** Waits for Docker to answer again, which is the only proof a restart finished. */
 export function waitForDocker(
   dependencies: Partial<RestartDependencies> = {},
-  limitMs = RESTART_POLL_LIMIT_MS
+  limitMs = restartPollLimit()
 ): { responded: boolean; waitedMs: number } {
   const deps = { ...defaultRestartDependencies, ...dependencies };
   const started = deps.now();
@@ -100,7 +114,7 @@ export function waitForDocker(
 export function restartDocker(
   plan: DockerRestartPlan,
   dependencies: Partial<RestartDependencies> = {},
-  limitMs = RESTART_POLL_LIMIT_MS
+  limitMs = restartPollLimit()
 ): RestartOutcome {
   const deps = { ...defaultRestartDependencies, ...dependencies };
   let lastError: string | undefined;

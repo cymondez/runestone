@@ -36,6 +36,22 @@ That builds the image for the local architecture and runs the spec 14.4 checks: 
 
 It **never uses port 53** — the service is published on 15353 instead — so running it cannot fight the host for the real DNS port. It also uses no host paths: the fixture `/ssl` directory is a Docker volume populated by a helper container, so it behaves the same in Git Bash on Windows as in a Linux shell.
 
+## The end-to-end harness
+
+```bash
+sh docker/dns/test/dind-harness.sh
+```
+
+The one step this feature cannot rehearse on a developer's machine is the Docker daemon restart: it terminates every container they have. So the harness does it somewhere else. A privileged `docker:dind` container has its own daemon, its own `/etc/docker/daemon.json`, its own port 53 and its own set of containers — **restarting that daemon is the same operation with a blast radius of exactly one container.** What is risk level 3 on a real machine is level 2 here, which is why any contributor can run it and why CI can run it on every change.
+
+The daemon inside the sandbox runs under a small supervisor loop rather than as the container's entrypoint. That is the whole trick: killing it is a real daemon restart, and the container — with the CLI and the checks running inside it — survives to observe the result. A pause file lets the harness also make the daemon *not* come back, which is how the rollback-on-timeout path is exercised in seconds rather than the two minutes the real poll limit would take.
+
+What it proves, in one run: the Target IP resolved from inside Docker, the daemon configuration written, a real restart, a new container given our address as its first nameserver, a wildcard subdomain resolving, `restart: unless-stopped` bringing dnsmasq back after a bare daemon restart with no CLI command involved, an injected restart failure restoring the file rather than leaving it half-applied, `disable` returning the file to its starting state, and — checked explicitly — the host's own daemon configuration and container list untouched throughout.
+
+It needs `docker`, `node` and `npm` on the host. No virtual machine.
+
+`KEEP=1` leaves the sandbox running afterwards for inspection.
+
 ## Publishing
 
 ```bash

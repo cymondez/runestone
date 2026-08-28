@@ -175,11 +175,17 @@ Build our own **`cymondez/runestone-dns`**, located in `docker/dns/`:
 | Platform | Daemon configuration file | Restart mechanism |
 | --- | --- | --- |
 | Windows / macOS Docker Desktop | `~/.docker/daemon.json` | Try `docker desktop restart` first (to be confirmed); if unavailable, instruct the user to restart Docker Desktop manually |
-| WSL2 (Docker Desktop endpoint) | The Windows-side `/mnt/<drive>/Users/<user>/.docker/daemon.json` | As above |
 | Native Linux Docker Engine | `/etc/docker/daemon.json` | `sudo systemctl restart docker`, falling back to `sudo service docker restart` |
 
 - Both restart paths must poll `docker info` until Docker responds again (120 second limit) before reporting success.
 - Remote contexts and Windows container mode (`docker info` reporting an OSType other than linux) must abort before any daemon configuration is modified.
+
+**There is deliberately no WSL row.** An earlier version of this table had one, pointing at the Windows-side `/mnt/<drive>/Users/<user>/.docker/daemon.json` for a CLI running inside WSL against Docker Desktop. Two things are wrong with it:
+
+- **Windows support means running the CLI on Windows.** Whether the user's Docker happens to live in WSL is Docker Desktop's business, not Runestone's; a supported path that nobody runs and nobody can test is worse than no path at all.
+- **The detection it needed cannot work.** Docker Desktop runs its Linux VM on WSL2, so *every container on it* reports a Microsoft kernel in `/proc/version` — the string that would have identified WSL identifies an ordinary Linux container just as well. Guessing from it sent the daemon path hunting for a Windows drive from inside a container.
+
+The risk that row was guarding is real and is still handled, but by asking a question that has a reliable answer. **If `docker info` reports the daemon as Docker Desktop while the CLI is running on Linux, preflight refuses**: that daemon's configuration is on the Windows side, so writing this filesystem's `~/.docker/daemon.json` would report success while changing a file Docker never reads — the exact silent-wrong-answer failure this feature exists to remove. The message says to run Runestone on Windows, or to set `RUNESTONE_DNS_DAEMON_PATH` explicitly.
 
 ## 7. Configuration and Files
 
@@ -672,7 +678,7 @@ The disclosure this feature owes its users does not fit in a README, and burying
 | --- | --- | --- |
 | Linux rootful | T2 for everything 14.5 covers, T3 for the rest | Any contributor for the dind-covered part; maintainers for sudo and systemd-resolved |
 | Windows Docker Desktop | T4 | Maintainers only |
-| WSL2 | T4 | Maintainers only |
+| WSL2 (the CLI on Windows, Docker Desktop's WSL2 backend) | T4 | Maintainers only |
 | macOS Intel and Apple Silicon | T4 | Maintainers only |
 
 On each platform verify: enable → a new container's resolv.conf lists the Target IP first → a subdomain covered by a certificate resolves to the Target IP → after disabling, the daemon `dns` array is back to its original state, including the user's pre-existing entries.

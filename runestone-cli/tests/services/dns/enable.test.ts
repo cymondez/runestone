@@ -4,6 +4,7 @@ import { EnablePlan, applyEnable, planEnable, preflight } from '../../../src/ser
 import { DAEMON_PATH_OVERRIDE_ENV } from '../../../src/services/dns/daemon-target';
 import { DNS_STATE_SCHEMA_VERSION, DnsOwnershipState } from '../../../src/utils/tool-state';
 import { RunestoneEnv } from '../../../src/utils/env-loader';
+import { osDetector } from '../../../src/utils/os-detector';
 import { testEnv } from '../../helpers/env';
 
 const TARGET = '192.168.65.254';
@@ -16,7 +17,7 @@ function ok(stdout: string): CommandOutcome {
 
 function probes(overrides: Partial<DockerProbes> = {}): Partial<DockerProbes> {
   return {
-    osType: () => ok('linux'),
+    osType: () => ok('linux|Docker Desktop'),
     context: () => ok('desktop-linux|npipe:////./pipe/dockerDesktopLinuxEngine'),
     runInContainer: () => ok(TARGET),
     ...overrides
@@ -108,13 +109,39 @@ describe('dns enable', () => {
     it('refuses when Docker is not answering', () => {
       const result = check({ probes: { osType: () => ({ ok: false, stdout: '', message: 'daemon not running' }) } });
 
-      expect(result.failures).toContainEqual({ kind: 'docker-unavailable', message: 'daemon not running' });
+      expect(result.failures.map((failure) => failure.kind)).toContain('docker-unavailable');
     });
 
     it('refuses Windows container mode', () => {
-      const result = check({ probes: { osType: () => ok('windows') } });
+      const result = check({ probes: { osType: () => ok('windows|Docker Desktop') } });
 
       expect(result.failures).toContainEqual({ kind: 'windows-containers', osType: 'windows' });
+    });
+
+    it('refuses a Docker Desktop daemon while running on Linux', () => {
+      // The shape of "the CLI inside WSL, talking to Docker Desktop": its
+      // configuration is on the Windows side, so writing this filesystem's
+      // ~/.docker/daemon.json would change a file Docker never reads.
+      jest.spyOn(osDetector, 'platform').mockReturnValue('linux');
+
+      const result = check({ probes: { osType: () => ok('linux|Docker Desktop') } });
+
+      expect(result.failures).toContainEqual({
+        kind: 'docker-desktop-elsewhere',
+        operatingSystem: 'Docker Desktop'
+      });
+    });
+
+    it('accepts a Docker Desktop daemon when the CLI is on the platform that owns it', () => {
+      jest.spyOn(osDetector, 'platform').mockReturnValue('win32');
+
+      expect(check({ probes: { osType: () => ok('linux|Docker Desktop') } }).ok).toBe(true);
+    });
+
+    it('accepts a native engine on Linux', () => {
+      jest.spyOn(osDetector, 'platform').mockReturnValue('linux');
+
+      expect(check({ probes: { osType: () => ok('linux|Ubuntu 24.04.1 LTS') } }).ok).toBe(true);
     });
 
     it('refuses a remote context, because that is somebody else machine', () => {

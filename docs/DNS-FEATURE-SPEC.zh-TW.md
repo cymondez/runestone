@@ -175,11 +175,17 @@ Traefik、Mailpit、nginx 合併在 runestone image 是為了管理方便 — �
 | 平台 | daemon 設定檔 | 重啟方式 |
 | --- | --- | --- |
 | Windows / macOS Docker Desktop | `~/.docker/daemon.json` | 優先嘗試 `docker desktop restart`（待驗證），不可用則提示使用者手動重啟 Docker Desktop |
-| WSL2（endpoint 為 Docker Desktop） | Windows 端的 `/mnt/<drive>/Users/<user>/.docker/daemon.json` | 同上 |
 | Linux rootful Docker Engine | `/etc/docker/daemon.json` | `sudo systemctl restart docker`，不可用則 `sudo service docker restart` |
 
 - 兩種重啟路徑都必須輪詢 `docker info` 直到 Docker 恢復（上限 120 秒）才算成功。
 - Remote context 與 Windows container 模式（`docker info` 的 OSType 非 linux）一律在修改 daemon 設定前中止。
+
+**這裡刻意沒有 WSL 那一列。** 先前的版本有，指向「在 WSL 裡跑 CLI、對著 Docker Desktop」時 Windows 端的 `/mnt/<drive>/Users/<user>/.docker/daemon.json`。它有兩個問題：
+
+- **Windows 的支援就是在 Windows 上執行 CLI。** 使用者的 Docker 剛好裝在 WSL 裡是 Docker Desktop 的事，不是 Runestone 的事；一條沒有人跑、也沒有人測得到的「受支援路徑」，比沒有這條路徑更糟。
+- **它需要的偵測根本做不到。** Docker Desktop 的 Linux VM 跑在 WSL2 上，因此**它上面的每一個容器**讀 `/proc/version` 都會看到 Microsoft 的核心字串——那個原本要用來辨識 WSL 的字串，同樣會把一個普通的 Linux 容器辨識成 WSL。照它去猜，等於從容器裡去找一顆不存在的 Windows 磁碟。
+
+那一列原本要防的風險是真的，而且仍然有處理，只是改成問一個有可靠答案的問題。**若 `docker info` 回報 daemon 是 Docker Desktop，而 CLI 卻跑在 Linux 上，前置檢查一律拒絕**：那個 daemon 的設定在 Windows 那一側，因此寫入這個檔案系統的 `~/.docker/daemon.json` 會回報成功，卻只改到一個 Docker 從來不讀的檔案——正是這個功能要消滅的「安靜地給出錯誤答案」。訊息會告訴使用者改在 Windows 上執行 Runestone，或明確設定 `RUNESTONE_DNS_DAEMON_PATH`。
 
 ## 7. 設定與檔案
 
@@ -672,7 +678,7 @@ DNS 相關共四題，順序固定，第二三四題僅在啟用時出現：
 | --- | --- | --- |
 | Linux rootful | 14.5 涵蓋的部分為 T2，其餘為 T3 | dind 涵蓋的部分任何接手者都可做；sudo 與 systemd-resolved 由維護者 |
 | Windows Docker Desktop | T4 | 僅維護者 |
-| WSL2 | T4 | 僅維護者 |
+| WSL2（CLI 在 Windows、Docker Desktop 使用 WSL2 後端） | T4 | 僅維護者 |
 | macOS Intel 與 Apple Silicon | T4 | 僅維護者 |
 
 每個平台驗證：啟用 → 新 container 的 resolv.conf 首筆為 Target IP → 解析憑證涵蓋的子網域得到 Target IP → 停用後 daemon `dns` 陣列回到原狀（含使用者原有項目）。

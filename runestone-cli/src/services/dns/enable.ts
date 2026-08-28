@@ -1,5 +1,6 @@
 import { getServers } from 'dns';
 import { RunestoneEnv, envLoader } from '../../utils/env-loader';
+import { osDetector } from '../../utils/os-detector';
 import { ensureProjectFiles } from '../../utils/project-files';
 import { DnsOwnershipState, toolState } from '../../utils/tool-state';
 import { COMPOSE_SERVICES, DNS_PROFILE, composeService } from '../docker-compose';
@@ -20,6 +21,7 @@ import {
   ResolutionCheck,
   defaultDockerProbes,
   readContainerNameservers,
+  readDaemonInfo,
   readDockerContext,
   resolveTargetIp,
   verifyDomainResolution
@@ -42,6 +44,14 @@ export type PreflightFailure =
   | { kind: 'setup-incomplete' }
   | { kind: 'docker-unavailable'; message: string }
   | { kind: 'windows-containers'; osType: string }
+  /**
+   * The CLI is running on Linux but the daemon is Docker Desktop — the shape of
+   * "the CLI inside WSL, talking to Docker Desktop through its integration".
+   * Its configuration lives on the Windows side, so writing this machine's
+   * `~/.docker/daemon.json` would report success while changing nothing that
+   * Docker ever reads.
+   */
+  | { kind: 'docker-desktop-elsewhere'; operatingSystem: string }
   | { kind: 'remote-context'; name: string; endpoint: string }
   | { kind: 'target-ip'; message: string }
   | { kind: 'daemon-unreadable'; message: string };
@@ -106,11 +116,13 @@ export function preflight(
     failures.push({ kind: 'setup-incomplete' });
   }
 
-  const osType = { ...defaultDockerProbes, ...deps.probes }.osType();
-  if (!osType.ok) {
-    failures.push({ kind: 'docker-unavailable', message: osType.message ?? 'docker info failed' });
-  } else if (osType.stdout.trim().toLowerCase() !== 'linux') {
-    failures.push({ kind: 'windows-containers', osType: osType.stdout.trim() });
+  const daemon = readDaemonInfo(deps.probes);
+  if (!daemon) {
+    failures.push({ kind: 'docker-unavailable', message: 'docker info did not answer' });
+  } else if (daemon.osType.toLowerCase() !== 'linux') {
+    failures.push({ kind: 'windows-containers', osType: daemon.osType });
+  } else if (daemon.isDockerDesktop && osDetector.platform() === 'linux') {
+    failures.push({ kind: 'docker-desktop-elsewhere', operatingSystem: daemon.operatingSystem });
   }
 
   const context = readDockerContext(deps.probes);

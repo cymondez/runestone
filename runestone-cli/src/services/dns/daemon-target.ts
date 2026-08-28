@@ -19,22 +19,25 @@ import { osDetector } from '../../utils/os-detector';
 export const DAEMON_PATH_OVERRIDE_ENV = 'RUNESTONE_DNS_DAEMON_PATH';
 export const RESTART_CMD_OVERRIDE_ENV = 'RUNESTONE_DNS_RESTART_CMD';
 
-/** Where the daemon configuration lives and how Docker is restarted (spec 6.2). */
-export type DaemonHost = 'docker-desktop' | 'wsl-docker-desktop' | 'linux-engine';
+/**
+ * Where the daemon configuration lives and how Docker is restarted (spec 6.2).
+ *
+ * There is deliberately no WSL variant. Running the CLI inside WSL against a
+ * Docker Desktop daemon would mean writing to the WSL home's
+ * `~/.docker/daemon.json` — a file Docker Desktop never reads — so the write
+ * would report success while DNS silently did nothing, which is the exact
+ * failure this whole feature exists to remove. That case is **refused** in
+ * preflight instead, on the strength of what `docker info` says the daemon is,
+ * rather than guessed at from a kernel string that a container reports too.
+ */
+export type DaemonHost = 'docker-desktop' | 'linux-engine';
 
 export type ResolutionSource = 'override' | 'platform';
 
 export interface DaemonEnvironment {
   host: DaemonHost;
-  /** Native home directory; used by the Docker Desktop hosts. */
+  /** Native home directory; used by the Docker Desktop host. */
   homeDir: string;
-  /**
-   * Windows-side home directory as seen from inside WSL, e.g.
-   * `/mnt/c/Users/me`. Required by the `wsl-docker-desktop` host and not
-   * determinable offline, so callers that can inspect the Docker context must
-   * supply it.
-   */
-  windowsHomeDir?: string;
 }
 
 export interface DaemonConfigTarget {
@@ -132,39 +135,20 @@ export function parseRestartCommand(input: string): DockerRestartStep {
   return { command: tokens[0], args: tokens.slice(1) };
 }
 
-export function detectDaemonEnvironment(options?: { dockerDesktopEndpoint?: boolean }): DaemonEnvironment {
+export function detectDaemonEnvironment(): DaemonEnvironment {
   const homeDir = osDetector.homeDir();
   const platform = osDetector.platform();
 
-  if (platform === 'win32' || platform === 'darwin') {
-    return { host: 'docker-desktop', homeDir };
-  }
-
-  // A native engine inside WSL keeps its configuration on the Linux side. The
-  // caller must say so, because telling the two apart needs the Docker context.
-  if (osDetector.isWsl() && options?.dockerDesktopEndpoint !== false) {
-    return { host: 'wsl-docker-desktop', homeDir };
-  }
-
-  return { host: 'linux-engine', homeDir };
+  return platform === 'win32' || platform === 'darwin'
+    ? { host: 'docker-desktop', homeDir }
+    : { host: 'linux-engine', homeDir };
 }
 
 /** The platform default from spec 6.2, ignoring any override. */
 export function platformDaemonPath(environment: DaemonEnvironment): string {
-  switch (environment.host) {
-    case 'docker-desktop':
-      return path.join(environment.homeDir, '.docker', 'daemon.json');
-    case 'wsl-docker-desktop':
-      if (!environment.windowsHomeDir) {
-        throw new Error(
-          'Cannot determine the Windows-side Docker Desktop configuration path from inside WSL. ' +
-            `Set ${DAEMON_PATH_OVERRIDE_ENV} to state it explicitly.`
-        );
-      }
-      return path.posix.join(environment.windowsHomeDir, '.docker', 'daemon.json');
-    case 'linux-engine':
-      return '/etc/docker/daemon.json';
-  }
+  return environment.host === 'docker-desktop'
+    ? path.join(environment.homeDir, '.docker', 'daemon.json')
+    : '/etc/docker/daemon.json';
 }
 
 /** The platform default from spec 6.2, ignoring any override. */
