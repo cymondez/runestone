@@ -151,8 +151,20 @@ export function platformDaemonPath(environment: DaemonEnvironment): string {
     : '/etc/docker/daemon.json';
 }
 
+export interface RestartPlanOptions {
+  /**
+   * Whether this Docker Desktop is new enough that restarting it leaves the
+   * machine's containers recoverable. **Defaults to false**: not knowing is not
+   * the same as knowing it is safe.
+   */
+  desktopRestartIsSafe?: boolean;
+}
+
 /** The platform default from spec 6.2, ignoring any override. */
-export function platformRestartPlan(environment: DaemonEnvironment): Omit<DockerRestartPlan, 'source' | 'raw'> {
+export function platformRestartPlan(
+  environment: DaemonEnvironment,
+  options: RestartPlanOptions = {}
+): Omit<DockerRestartPlan, 'source' | 'raw'> {
   if (environment.host === 'linux-engine') {
     return {
       host: environment.host,
@@ -164,28 +176,22 @@ export function platformRestartPlan(environment: DaemonEnvironment): Omit<Docker
     };
   }
 
-  // **Docker Desktop gets no automatic step, deliberately.**
+  // **Whether Docker Desktop may be restarted automatically depends on its
+  // version.**
   //
-  // Its CLI offers exactly one restart, and its own help calls it what it is:
-  // "Restart Docker Desktop" — the application, not the daemon. There is no
-  // engine-only restart on that surface (`docker desktop engine` only switches
-  // between Windows and Linux container modes).
+  // Older releases stopped the running containers on restart, and
+  // `unless-stopped` means "restart unless it was stopped" — so by definition
+  // those stayed down afterwards, permanently. Measured twice on this platform:
+  // every `always` container returned and every `unless-stopped` one did not,
+  // and waiting never helped because nothing was pending. From
+  // `DESKTOP_SAFE_RESTART_VERSION` on, that is fixed and the restart is safe to
+  // attempt.
   //
-  // That difference is not cosmetic. An application shutdown *stops* the running
-  // containers, and `unless-stopped` means "restart unless it was stopped" — so
-  // by definition those containers stay down afterwards, permanently. Measured
-  // twice on Docker Desktop for Windows: every `always` container returned and
-  // every `unless-stopped` one did not. Waiting does not help, because nothing
-  // is pending.
-  //
-  // Runestone will not reach for a bigger hammer than the job needs and leave
-  // someone's machine stripped of its containers. `daemon.json` is Docker
-  // Desktop's own file, and the supported way to apply a change to it is Docker
-  // Desktop's own engine restart. So the write happens here and the applying is
+  // Below it, Runestone attempts nothing: the write stands and the applying is
   // handed back, which is the same place `--no-restart` stops.
   return {
     host: environment.host,
-    steps: [],
+    steps: options.desktopRestartIsSafe ? [{ command: 'docker', args: ['desktop', 'restart'] }] : [],
     allowManualFallback: true
   };
 }
@@ -234,7 +240,10 @@ export function sameDaemonPath(left: string, right: string): boolean {
   return normalise(left) === normalise(right);
 }
 
-export function resolveDockerRestartPlan(environment?: DaemonEnvironment): DockerRestartPlan {
+export function resolveDockerRestartPlan(
+  environment?: DaemonEnvironment,
+  options: RestartPlanOptions = {}
+): DockerRestartPlan {
   const resolved = environment ?? detectDaemonEnvironment();
   const override = readOverride(RESTART_CMD_OVERRIDE_ENV);
 
@@ -248,7 +257,7 @@ export function resolveDockerRestartPlan(environment?: DaemonEnvironment): Docke
     };
   }
 
-  return { source: 'platform', ...platformRestartPlan(resolved) };
+  return { source: 'platform', ...platformRestartPlan(resolved, options) };
 }
 
 /** What `dns status` and `doctor` must report prominently (spec 7.4). */

@@ -4,6 +4,7 @@ import {
   resolveTargetIp,
   verifyDomainResolution
 } from '../../../src/services/dns/environment';
+import { desktopRestartIsSafe, readDesktopVersion } from '../../../src/services/dns/environment';
 
 const TARGET = '192.168.65.254';
 
@@ -101,4 +102,41 @@ describe('docker environment probes', () => {
       expect(result).toEqual({ ok: false, answers: [], error: 'network unreachable' });
     });
   });
+describe('deciding whether Docker Desktop may be restarted automatically', () => {
+  // Older Docker Desktop stopped the running containers when it restarted, and
+  // `unless-stopped` means "restart unless it was stopped" — so those never came
+  // back. Fixed in DESKTOP_SAFE_RESTART_VERSION, which is what makes an
+  // automatic restart safe to attempt at all.
+  function version(raw: string) {
+    return readDesktopVersion({ platformName: () => ({ ok: true, stdout: raw }) });
+  }
+
+  it('reads the application version, not the CLI plugin version', () => {
+    expect(version('Docker Desktop 4.88.1 (237512)')).toEqual({
+      raw: 'Docker Desktop 4.88.1 (237512)',
+      version: '4.88.1'
+    });
+  });
+
+  it('accepts the version that fixed it, and anything newer', () => {
+    expect(desktopRestartIsSafe(version('Docker Desktop 4.86.0 (1)'))).toBe(true);
+    expect(desktopRestartIsSafe(version('Docker Desktop 4.86.1 (1)'))).toBe(true);
+    expect(desktopRestartIsSafe(version('Docker Desktop 4.88.1 (237512)'))).toBe(true);
+    expect(desktopRestartIsSafe(version('Docker Desktop 5.0.0 (1)'))).toBe(true);
+  });
+
+  it('refuses anything older, including the release just before it', () => {
+    expect(desktopRestartIsSafe(version('Docker Desktop 4.85.9 (1)'))).toBe(false);
+    expect(desktopRestartIsSafe(version('Docker Desktop 4.85.0 (1)'))).toBe(false);
+    // 4.9 is older than 4.86 — a string comparison would get this backwards.
+    expect(desktopRestartIsSafe(version('Docker Desktop 4.9.0 (1)'))).toBe(false);
+  });
+
+  it('treats an unreadable version as unsafe, because not knowing is not knowing it is fine', () => {
+    expect(desktopRestartIsSafe(undefined)).toBe(false);
+    expect(desktopRestartIsSafe(version('Docker Desktop'))).toBe(false);
+    expect(readDesktopVersion({ platformName: () => ({ ok: false, stdout: '' }) })).toBeUndefined();
+  });
+});
+
 });

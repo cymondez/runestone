@@ -47,6 +47,24 @@ export interface RestartOutcome {
   /** Output of the last command that failed, for the error message. */
   error?: string;
   waitedMs: number;
+  /** Containers started again afterwards, only ever when asked to (see `RestartOptions`). */
+  restored?: string[];
+  /** Containers that were running before and refused to start again. */
+  lost?: string[];
+}
+
+export interface RestartOptions {
+  /**
+   * Record what is running before the restart and start back whatever does not
+   * return. **Off unless the user asks for it.**
+   *
+   * Runestone has no business starting containers it does not own, so this is
+   * never a default and never silent. It exists for one situation: a Docker
+   * Desktop older than `DESKTOP_SAFE_RESTART_VERSION`, whose restart leaves
+   * `unless-stopped` containers down for good. Offered as a choice, alongside
+   * updating Docker Desktop and restarting by hand, and taken only if chosen.
+   */
+  restoreContainers?: boolean;
 }
 
 export interface RestartDependencies {
@@ -54,6 +72,8 @@ export interface RestartDependencies {
   dockerResponds: () => boolean;
   sleep: (ms: number) => void;
   now: () => number;
+  runningContainers: () => string[];
+  startContainer: (name: string) => boolean;
 }
 
 function runStepWithDocker(step: DockerRestartStep): { ok: boolean; message?: string } {
@@ -83,12 +103,67 @@ function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function runningContainersWithDocker(): string[] {
+  const result = spawnCommand('docker', ['ps', '--format', '{{.Names}}'], {
+    encoding: 'utf8',
+    timeout: 30_000
+  });
+
+  if (result.error || result.status !== 0) {
+    return [];
+  }
+
+  return (result.stdout ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+}
+
+function startContainerWithDocker(name: string): boolean {
+  const result = spawnCommand('docker', ['start', name], { encoding: 'utf8', timeout: 60_000 });
+  return !result.error && result.status === 0;
+}
+
 export const defaultRestartDependencies: RestartDependencies = {
   runStep: runStepWithDocker,
   dockerResponds: dockerRespondsWithDocker,
   sleep: sleepSync,
-  now: () => Date.now()
+  now: () => Date.now(),
+  runningContainers: runningContainersWithDocker,
+  startContainer: startContainerWithDocker
 };
+
+/** Long enough for containers that recover on their own to have done so. */
+const SETTLE_MS = 5_000;
+
+function restoreContainers(
+  before: string[],
+  deps: RestartDependencies
+): { restored: string[]; lost: string[] } {
+  if (before.length === 0) {
+    return { restored: [], lost: [] };
+  }
+
+  deps.sleep(SETTLE_MS);
+
+  const running = new Set(deps.runningContainers());
+  const restored: string[] = [];
+  const lost: string[] = [];
+
+  for (const name of before) {
+    if (running.has(name)) {
+      continue;
+    }
+
+    if (deps.startContainer(name)) {
+      restored.push(name);
+    } else {
+      lost.push(name);
+    }
+  }
+
+  return { restored, lost };
+}
 
 /** Waits for Docker to answer again, which is the only proof a restart finished. */
 export function waitForDocker(
@@ -114,10 +189,15 @@ export function waitForDocker(
 export function restartDocker(
   plan: DockerRestartPlan,
   dependencies: Partial<RestartDependencies> = {},
-  limitMs = restartPollLimit()
+  limitMs = restartPollLimit(),
+  options: RestartOptions = {}
 ): RestartOutcome {
   const deps = { ...defaultRestartDependencies, ...dependencies };
   let lastError: string | undefined;
+
+  // Only recorded when the user asked for the containers to be put back;
+  // otherwise nothing outside Runestone's own project is even looked at.
+  const before = options.restoreContainers ? deps.runningContainers() : [];
 
   for (const step of plan.steps) {
     const attempt = deps.runStep(step);
@@ -127,11 +207,15 @@ export function restartDocker(
     }
 
     const waited = waitForDocker(deps, limitMs);
+    if (!waited.responded) {
+      return { status: 'timed-out', step, waitedMs: waited.waitedMs, error: lastError };
+    }
+
     return {
-      status: waited.responded ? 'restarted' : 'timed-out',
+      status: 'restarted',
       step,
       waitedMs: waited.waitedMs,
-      ...(waited.responded ? {} : { error: lastError })
+      ...(options.restoreContainers ? restoreContainers(before, deps) : {})
     };
   }
 

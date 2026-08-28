@@ -11,6 +11,7 @@ import {
   planEnable
 } from '../services/dns/enable';
 import { DnsLockHeldError, dnsLockPath, withDnsLock } from '../services/dns/lock';
+import { DESKTOP_SAFE_RESTART_VERSION } from '../services/dns/environment';
 import { readDnsArray } from '../services/dns/daemon-config';
 import { daemonFallbackValue, isAutoReorderEnabled, isDnsUiAuthConfigured } from '../services/dns/settings';
 import { dnsUiUrl } from '../services/dns/ui-route';
@@ -225,6 +226,16 @@ export function printCompleteResult(plan: EnablePlan, result: CompleteResult): v
       );
       break;
     default:
+      if (result.restart.restored?.length) {
+        line(t('dns.restart.restored', {
+          count: result.restart.restored.length,
+          names: result.restart.restored.join(', ')
+        }));
+      }
+      if (result.restart.lost?.length) {
+        warn(t('dns.restart.lost', { names: result.restart.lost.join(', ') }));
+      }
+
       logger.success(t('dns.enable.restart.applied', { value: targetIp, domain: plan.verifyDomain }));
       return;
   }
@@ -246,7 +257,14 @@ export function createDnsEnableCommand(): Command {
     .option('--dry-run', t('dns.enable.option.dryRun'))
     .option('--upstream <ips>', t('dns.enable.option.upstream'))
     .option('--no-restart', t('dns.enable.option.noRestart'))
-    .action(async (options: { yes?: boolean; dryRun?: boolean; upstream?: string; restart?: boolean }) => {
+    .option('--restore-containers', t('dns.enable.option.restoreContainers'))
+    .action(async (options: {
+      yes?: boolean;
+      dryRun?: boolean;
+      upstream?: string;
+      restart?: boolean;
+      restoreContainers?: boolean;
+    }) => {
       try {
         const loaded = envLoader.load();
         const config: RunestoneEnv = options.upstream
@@ -303,6 +321,23 @@ export function createDnsEnableCommand(): Command {
           return;
         }
 
+        // Docker Desktop older than the version that fixed its restart leaves
+        // `unless-stopped` containers down for good, so no restart is attempted
+        // there. Say why, recommend the update, and name the two other ways out
+        // — rather than deciding for someone whose containers are at stake.
+        const outdatedDesktop =
+          plan.preflight.host === 'docker-desktop' && !plan.preflight.desktopRestartIsSafe;
+
+        if (outdatedDesktop) {
+          logger.info(t('dns.enable.desktop.outdated', {
+            version: plan.preflight.desktopVersion?.version ?? t('dns.enable.desktop.unknownVersion'),
+            minimum: DESKTOP_SAFE_RESTART_VERSION
+          }));
+          line(t('dns.enable.desktop.update'));
+          line(t('dns.enable.desktop.manual'));
+          line(t('dns.enable.desktop.restore'));
+        }
+
         // On a platform with no automatic restart there is nothing to consent to
         // and nothing to announce: `completeEnable` will report that applying the
         // change is the user's to do, and how.
@@ -329,7 +364,11 @@ export function createDnsEnableCommand(): Command {
           logger.info(t('dns.enable.restart.progress'));
         }
 
-        const completed = withDnsLock('dns enable', () => completeEnable(config, plan, result.record as never));
+        const completed = withDnsLock('dns enable', () =>
+          completeEnable(config, plan, result.record as never, {}, {
+            restoreContainers: Boolean(options.restoreContainers)
+          })
+        );
         printCompleteResult(plan, completed);
 
         if (completed.failure) {

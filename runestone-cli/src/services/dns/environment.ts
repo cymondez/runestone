@@ -28,6 +28,13 @@ export interface DockerProbes {
   context: () => CommandOutcome;
   /** Runs a short shell script in a throwaway container. */
   runInContainer: (image: string, script: string, options?: { addHostGateway?: boolean }) => CommandOutcome;
+  /**
+   * Docker Desktop's own version, as `Docker Desktop 4.88.1 (237512)`.
+   *
+   * Deliberately not `docker desktop version`, which reports the CLI plugin's
+   * version (`v0.4.3`) and says nothing about the application around it.
+   */
+  platformName: () => CommandOutcome;
 }
 
 function run(command: string, args: string[], timeout = 60_000): CommandOutcome {
@@ -47,6 +54,7 @@ function run(command: string, args: string[], timeout = 60_000): CommandOutcome 
 export const defaultDockerProbes: DockerProbes = {
   osType: () => run('docker', ['info', '--format', '{{.OSType}}|{{.OperatingSystem}}'], 30_000),
   context: () => run('docker', ['context', 'inspect', '--format', '{{.Name}}|{{.Endpoints.docker.Host}}'], 30_000),
+  platformName: () => run('docker', ['version', '--format', '{{.Server.Platform.Name}}'], 30_000),
   runInContainer: (image, script, options) =>
     run(
       'docker',
@@ -65,6 +73,60 @@ export const defaultDockerProbes: DockerProbes = {
       120_000
     )
 };
+
+/**
+ * The first Docker Desktop release whose restart leaves containers recoverable.
+ *
+ * Before it, `docker desktop restart` stopped the running containers, and
+ * `unless-stopped` means "restart unless it was stopped" — so those stayed down
+ * for good. From this version on that is fixed, which is what makes an automatic
+ * restart safe to attempt at all.
+ */
+export const DESKTOP_SAFE_RESTART_VERSION = '4.86.0';
+
+export interface DockerDesktopVersion {
+  raw: string;
+  /** Dotted version, e.g. `4.88.1`. Absent when the string could not be parsed. */
+  version?: string;
+}
+
+export function readDesktopVersion(probes: Partial<DockerProbes> = {}): DockerDesktopVersion | undefined {
+  const outcome = { ...defaultDockerProbes, ...probes }.platformName();
+  if (!outcome.ok || outcome.stdout.trim() === '') {
+    return undefined;
+  }
+
+  const raw = outcome.stdout.trim();
+  const match = /(\d+(?:\.\d+)+)/.exec(raw);
+  return { raw, version: match?.[1] };
+}
+
+function compareVersions(left: string, right: string): number {
+  const a = left.split('.').map(Number);
+  const b = right.split('.').map(Number);
+
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+
+  return 0;
+}
+
+/**
+ * Whether this Docker Desktop can be restarted without stranding the machine's
+ * containers. **Unknown counts as unsafe**: a version that could not be read is
+ * not evidence of a version that is new enough, and the cost of being wrong is
+ * someone's containers staying down.
+ */
+export function desktopRestartIsSafe(
+  version: DockerDesktopVersion | undefined,
+  minimum = DESKTOP_SAFE_RESTART_VERSION
+): boolean {
+  return version?.version !== undefined && compareVersions(version.version, minimum) >= 0;
+}
 
 export interface DaemonInfo {
   osType: string;

@@ -16,11 +16,14 @@ import { DaemonHost, DockerRestartPlan, resolveDaemonConfigTarget, resolveDocker
 import { RestartOutcome, restartDocker } from './docker-restart';
 import {
   DockerContextInfo,
+  DockerDesktopVersion,
   DockerProbes,
   ResolutionCheck,
   defaultDockerProbes,
+  desktopRestartIsSafe,
   readContainerNameservers,
   readDaemonInfo,
+  readDesktopVersion,
   readDockerContext,
   resolveTargetIp,
   verifyDomainResolution
@@ -76,6 +79,10 @@ export interface Preflight {
   /** True when the upstream list fell back to the shipped public default. */
   upstreamIsFallback: boolean;
   restartPlan: DockerRestartPlan;
+  /** Docker Desktop's own version, when this is Docker Desktop. */
+  desktopVersion?: DockerDesktopVersion;
+  /** Whether restarting it automatically would leave containers recoverable. */
+  desktopRestartIsSafe: boolean;
 }
 
 export interface PreflightDependencies {
@@ -123,6 +130,11 @@ export function preflight(
   } else if (daemon.isDockerDesktop && osDetector.platform() === 'linux') {
     failures.push({ kind: 'docker-desktop-elsewhere', operatingSystem: daemon.operatingSystem });
   }
+
+  // Read before deciding how to restart: on Docker Desktop the version is what
+  // says whether an automatic restart strands the machine's containers.
+  const desktopVersion = target.host === 'docker-desktop' ? readDesktopVersion(deps.probes) : undefined;
+  const restartIsSafe = target.host === 'docker-desktop' ? desktopRestartIsSafe(desktopVersion) : true;
 
   const context = readDockerContext(deps.probes);
   if (context?.remote) {
@@ -180,7 +192,9 @@ export function preflight(
     requiresPrivilege: target.requiresPrivilege,
     host: target.host,
     upstreamIsFallback: upstreams.origins.every((origin) => origin.origin === 'default'),
-    restartPlan: resolveDockerRestartPlan()
+    restartPlan: resolveDockerRestartPlan(undefined, { desktopRestartIsSafe: restartIsSafe }),
+    desktopVersion,
+    desktopRestartIsSafe: restartIsSafe
   };
 }
 
@@ -476,8 +490,13 @@ export function applyEnable(
   return result;
 }
 
+export interface CompleteOptions {
+  /** Put back containers the restart stopped. Only ever when the user asked. */
+  restoreContainers?: boolean;
+}
+
 export interface CompleteDependencies {
-  restart: (plan: DockerRestartPlan) => RestartOutcome;
+  restart: (plan: DockerRestartPlan, options: CompleteOptions) => RestartOutcome;
   nameservers: (image: string) => string[];
   verify: (image: string, domain: string, serverIp: string) => ResolutionCheck;
   writeDaemon: (path: string, text: string) => void;
@@ -509,7 +528,7 @@ function verifyLimitMs(): number {
 }
 
 export const defaultCompleteDependencies: CompleteDependencies = {
-  restart: (plan) => restartDocker(plan),
+  restart: (plan, options) => restartDocker(plan, {}, undefined, options),
   nameservers: (image) => readContainerNameservers(image),
   verify: (image, domain, serverIp) => verifyDomainResolution(image, domain, serverIp),
   writeDaemon: writeDaemonConfig,
@@ -553,13 +572,14 @@ export function completeEnable(
   config: RunestoneEnv,
   plan: EnablePlan,
   prepared: DnsOwnershipState,
-  dependencies: Partial<CompleteDependencies> = {}
+  dependencies: Partial<CompleteDependencies> = {},
+  options: CompleteOptions = {}
 ): CompleteResult {
   const deps = { ...defaultCompleteDependencies, ...dependencies };
   const image = verificationImage(config);
   const targetIp = plan.preflight.targetIp as string;
 
-  const restart = deps.restart(plan.preflight.restartPlan);
+  const restart = deps.restart(plan.preflight.restartPlan, options);
   const result: CompleteResult = { restart, phase: 'prepared', invertedDaemon: false };
 
   const invert = (failure: CompleteResult['failure'], message: string): CompleteResult => {
@@ -593,7 +613,7 @@ export function completeEnable(
         }
         result.invertedDaemon = true;
         // The inversion is only real once Docker has read it again.
-        deps.restart(plan.preflight.restartPlan);
+        deps.restart(plan.preflight.restartPlan, options);
       }
 
       deps.stopService(config.COMPOSE_FILE_PATH);
