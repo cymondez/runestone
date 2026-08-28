@@ -15,7 +15,7 @@ import { checkEnvironment, DoctorReport, formatDoctorCheck } from '../services/e
 import { isPortAvailable } from '../services/port-checker';
 import { DnsSetupFacts, dnsSetupFacts } from '../services/dns/lifecycle';
 import { preflight } from '../services/dns/enable';
-import { DEFAULT_UPSTREAM, parseUpstreamList } from '../services/dns/upstream';
+import { DEFAULT_UPSTREAM, invalidAddresses, parseUpstreamList } from '../services/dns/upstream';
 import { printPreflight } from './dns-enable';
 import { pathHelpers } from '../utils/path-helpers';
 import { createCommand } from '../utils/command';
@@ -291,27 +291,16 @@ function logPromptDescription(message: string, description: string[]): void {
   console.log(promptHeader('initial', message, { description }).trimEnd());
 }
 
-const IP_ADDRESS = /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|[0-9a-f:]+)$/i;
-
 /**
  * Per `AGENTS.md`, a correctable input error returns to the same prompt with the
  * message in its description rather than aborting setup.
  */
 function validateUpstreamList(value: string): string | undefined {
-  const entries = parseUpstreamList(value);
-  if (entries.length === 0) {
+  if (parseUpstreamList(value).length === 0) {
     return activeT('setup.dns.upstream.required');
   }
 
-  const invalid = entries.filter((entry) => {
-    if (!IP_ADDRESS.test(entry)) {
-      return true;
-    }
-
-    const octets = entry.split('.');
-    return octets.length === 4 && octets.some((octet) => Number(octet) > 255);
-  });
-
+  const invalid = invalidAddresses(value);
   return invalid.length > 0
     ? activeT('setup.dns.upstream.invalid', { values: invalid.join(', ') })
     : undefined;

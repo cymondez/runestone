@@ -45,6 +45,26 @@ export function defaultHostResolvers(): string[] {
   }
 }
 
+const IP_ADDRESS = /^(\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f:]+)$/i;
+
+/**
+ * The entries of a comma-separated list that are not addresses.
+ *
+ * Shared by `setup` and `dns enable` because they ask the same question, and a
+ * validator that lived in only one of them would let the other accept a value
+ * the first would have rejected.
+ */
+export function invalidAddresses(value: string | string[] | undefined): string[] {
+  return parseUpstreamList(value).filter((entry) => {
+    if (!IP_ADDRESS.test(entry)) {
+      return true;
+    }
+
+    const octets = entry.split('.');
+    return octets.length === 4 && octets.some((octet) => Number(octet) > 255);
+  });
+}
+
 export function parseUpstreamList(value: string | string[] | undefined): string[] {
   if (value === undefined) {
     return [];

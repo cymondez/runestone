@@ -134,7 +134,11 @@ So turning it on buys resilience for unrelated projects and costs you the loud f
 - **A machine used mainly for Runestone development, where broken DNS should be obvious at once** → leaving it off is usually right.
 - **Unsure** → leave it off. Turning it on later costs one more daemon write and one more Docker restart, nothing else.
 
-Set it either in `.env`, or on the command line:
+`runestone dns enable` asks you this, and asks about the upstream list, before it
+plans anything — the same two questions `runestone setup` asks, so a change of
+mind does not mean running setup again.
+
+To answer without being asked, set it in `.env` or give it on the command line:
 
 ```bash
 runestone dns enable --fallback 1.1.1.1
@@ -144,7 +148,14 @@ runestone dns enable --fallback 1.1.1.1
 runestone dns enable --no-fallback
 ```
 
-Whichever you use is written to `DNS_DAEMON_FALLBACK`, so the value in effect is always one you can read back.
+A flag answers its own question and suppresses that prompt; `--yes` suppresses
+every prompt, which is what makes the command usable from a script. Whichever
+way you answer is written to `DNS_DAEMON_FALLBACK`, so the value in effect is
+always one you can read back.
+
+Because it asks, the command needs a terminal. Off one — in a pipe, in CI — it
+stops and tells you to pass `--yes` rather than proceeding without your
+consent.
 
 ## Turning it on
 

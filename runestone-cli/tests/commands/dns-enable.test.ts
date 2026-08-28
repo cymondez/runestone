@@ -5,6 +5,7 @@ import { createProgram } from '../../src/cli';
 import { spawnCommand } from '../../src/utils/spawn';
 import { composeService } from '../../src/services/docker-compose';
 import { DAEMON_PATH_OVERRIDE_ENV } from '../../src/services/dns/daemon-target';
+import * as p from '@clack/prompts';
 import { toolState } from '../../src/utils/tool-state';
 
 const TARGET = '192.168.65.254';
@@ -28,10 +29,16 @@ jest.mock('../../src/utils/spawn', () => ({
 jest.mock('@clack/prompts', () => ({
   ...jest.requireActual('@clack/prompts'),
   confirm: jest.fn(async () => true),
+  select: jest.fn(async () => 'keep'),
+  text: jest.fn(async () => ''),
   isCancel: jest.fn(() => false)
 }));
 
 const spawnMock = spawnCommand as jest.MockedFunction<typeof spawnCommand>;
+const confirmMock = p.confirm as jest.MockedFunction<typeof p.confirm>;
+const selectMock = p.select as jest.MockedFunction<typeof p.select>;
+const textMock = p.text as jest.MockedFunction<typeof p.text>;
+const isCancelMock = p.isCancel as jest.MockedFunction<typeof p.isCancel>;
 
 interface DockerReplies {
   osType: string;
@@ -304,6 +311,106 @@ describe('dns enable command', () => {
       await enable('--dry-run', '--fallback', '9.9.9.9');
 
       expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
+    });
+  });
+
+  describe('the settings can be answered here, not only passed as flags', () => {
+    // The flags are the non-interactive form, not the only form. Reaching
+    // `dns enable` without them has to offer the same two questions setup asks,
+    // or re-running setup is the only way to change the daemon fallback.
+    beforeEach(() => {
+      // Jest's stdin is not a TTY, which is exactly what the guard below
+      // refuses; these tests are about the terminal case.
+      Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+      confirmMock.mockReset().mockResolvedValue(true as never);
+      selectMock.mockReset().mockResolvedValue('keep' as never);
+      textMock.mockReset().mockResolvedValue('' as never);
+      isCancelMock.mockReset().mockReturnValue(false);
+    });
+
+    afterEach(() => {
+      // Jest workers share one process, so a faked TTY must not outlive this
+      // block.
+      Object.defineProperty(process.stdin, 'isTTY', { value: undefined, configurable: true });
+    });
+
+    it('applies both answers, to the daemon file and to .env', async () => {
+      writeDaemon(['8.8.8.8']);
+      selectMock.mockResolvedValue('replace' as never);
+      // First text prompt is the upstream list, second the fallback address.
+      textMock.mockResolvedValueOnce('10.0.0.1,10.0.0.2' as never).mockResolvedValueOnce('10.0.0.9' as never);
+
+      await enable('--no-restart');
+
+      expect(JSON.parse(fs.readFileSync(daemonPath, 'utf8')).dns).toEqual([TARGET, '10.0.0.9', '8.8.8.8']);
+
+      const env = fs.readFileSync(path.join(projectDir, '.env'), 'utf8');
+      expect(env).toContain('DNS_UPSTREAM=10.0.0.1,10.0.0.2');
+      expect(env).toContain('DNS_DAEMON_FALLBACK=10.0.0.9');
+    });
+
+    it('takes no fallback entry when that answer is no', async () => {
+      writeDaemon(['8.8.8.8']);
+      confirmMock.mockResolvedValueOnce(false as never).mockResolvedValue(true as never);
+
+      await enable('--no-restart');
+
+      expect(JSON.parse(fs.readFileSync(daemonPath, 'utf8')).dns).toEqual([TARGET, '8.8.8.8']);
+      expect(fs.readFileSync(path.join(projectDir, '.env'), 'utf8')).toMatch(
+        /DNS_DAEMON_FALLBACK=\s*$/m
+      );
+    });
+
+    it('does not ask again about anything a flag already answered', async () => {
+      writeDaemon(['8.8.8.8']);
+
+      await enable('--no-restart', '--upstream', '10.0.0.1', '--no-fallback');
+
+      expect(selectMock).not.toHaveBeenCalled();
+      expect(textMock).not.toHaveBeenCalled();
+      expect(JSON.parse(fs.readFileSync(daemonPath, 'utf8')).dns).toEqual([TARGET, '8.8.8.8']);
+    });
+
+    it('asks nothing under --yes, so a script is never left waiting', async () => {
+      writeDaemon(['8.8.8.8']);
+
+      await enable('--yes', '--no-restart');
+
+      expect(selectMock).not.toHaveBeenCalled();
+      expect(textMock).not.toHaveBeenCalled();
+      expect(confirmMock).not.toHaveBeenCalled();
+    });
+
+    it('asks nothing under --dry-run either', async () => {
+      writeDaemon(['8.8.8.8']);
+
+      await enable('--dry-run');
+
+      expect(selectMock).not.toHaveBeenCalled();
+      expect(textMock).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing at all when the question is cancelled', async () => {
+      const before = writeDaemon(['8.8.8.8']);
+      isCancelMock.mockReturnValueOnce(true);
+
+      await enable('--no-restart');
+
+      expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
+      expect(toolState.readDnsState()).toBeUndefined();
+      expect(upMock).not.toHaveBeenCalled();
+    });
+
+    it('refuses off a terminal instead of dying inside a prompt', async () => {
+      const before = writeDaemon(['8.8.8.8']);
+      Object.defineProperty(process.stdin, 'isTTY', { value: undefined, configurable: true });
+
+      await enable('--no-restart');
+
+      expect(output()).toContain('--yes');
+      expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
+      expect(selectMock).not.toHaveBeenCalled();
+      expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
 

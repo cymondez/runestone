@@ -134,7 +134,9 @@ DNS_UI_ENABLE=false
 - **主要用於 Runestone 開發的機器，而且希望 DNS 一壞就立刻看得出來** → 通常應該關著。
 - **不確定** → 先關著。之後要開啟，成本只是再一次 daemon 寫入與再一次 Docker 重啟，沒有別的。
 
-可以在 `.env` 設定，也可以直接在指令上給：
+`runestone dns enable` 在規劃任何事情之前，會先問你這一題，也會問上游清單那一題——就是 `runestone setup` 問的同兩題，所以改變主意不代表要再跑一次 setup。
+
+若不想被問，可以在 `.env` 設定，也可以直接在指令上給：
 
 ```bash
 runestone dns enable --fallback 1.1.1.1
@@ -144,7 +146,9 @@ runestone dns enable --fallback 1.1.1.1
 runestone dns enable --no-fallback
 ```
 
-不論用哪一種，值都會被寫進 `DNS_DAEMON_FALLBACK`，所以「生效的值」永遠是你讀得回來的那個。
+給了旗標就等於回答了那一題，那一題便不再問；`--yes` 則是全部都不問，這正是它能用在腳本裡的原因。不論用哪一種方式回答，值都會被寫進 `DNS_DAEMON_FALLBACK`，所以「生效的值」永遠是你讀得回來的那個。
+
+因為它會問，這個指令需要終端機。不在終端機裡時——例如在管線中、在 CI 裡——它會停下來叫你加 `--yes`，而不是在沒有你同意的情況下逕行動手。
 
 ## 開啟它
 

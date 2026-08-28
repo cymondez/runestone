@@ -15,6 +15,8 @@ import { DESKTOP_SAFE_RESTART_VERSION } from '../services/dns/environment';
 import { readDnsArray } from '../services/dns/daemon-config';
 import { daemonFallbackValue, isAutoReorderEnabled, isDnsUiAuthConfigured } from '../services/dns/settings';
 import { dnsUiUrl } from '../services/dns/ui-route';
+import { dnsSetupFacts } from '../services/dns/lifecycle';
+import { DEFAULT_UPSTREAM, invalidAddresses, parseUpstreamList } from '../services/dns/upstream';
 import { RunestoneEnv, envLoader } from '../utils/env-loader';
 import { logger } from '../utils/logger';
 import { t } from '../i18n';
@@ -268,6 +270,128 @@ export function printCompleteResult(plan: EnablePlan, result: CompleteResult): v
   }
 }
 
+const CANCELLED = Symbol('runestone:cancelled');
+
+/**
+ * The settings `dns enable` asks for before it plans anything.
+ *
+ * These are the same two questions `runestone setup` asks, deliberately using
+ * the same message keys: two wordings for one question is how a disclosure ends
+ * up saying different things depending on which command you reached it through.
+ *
+ * The flags are the non-interactive form, not the only form. A flag already
+ * given is not asked about again, and `--yes` skips both — that is what makes it
+ * usable from a script.
+ */
+async function askDnsSettings(
+  config: RunestoneEnv,
+  options: { upstream?: string; fallback?: string | false }
+): Promise<Partial<RunestoneEnv> | typeof CANCELLED> {
+  const overrides: Partial<RunestoneEnv> = {};
+
+  // Computed without starting a container, so asking costs nothing: the same
+  // reads setup uses for its own version of this question.
+  const facts = dnsSetupFacts(config);
+  let upstreams = facts.upstreams.upstreams.join(',');
+
+  if (options.upstream === undefined) {
+    logger.info(t('setup.dns.upstream.title'));
+    line(t('setup.dns.upstream.description'));
+    line(t('setup.dns.upstream.computed', { values: upstreams }));
+    for (const entry of facts.upstreams.origins) {
+      line(t(`setup.dns.upstream.origin.${entry.origin}`, { value: entry.value }));
+    }
+    line(t('setup.dns.upstream.pool'));
+
+    const action = await p.select({
+      message: t('setup.dns.upstream.prompt'),
+      initialValue: 'keep',
+      options: [
+        { value: 'keep', label: t('setup.dns.upstream.keep') },
+        { value: 'replace', label: t('setup.dns.upstream.replace') },
+        { value: 'append', label: t('setup.dns.upstream.append') }
+      ]
+    });
+
+    if (p.isCancel(action)) {
+      return CANCELLED;
+    }
+
+    if (action !== 'keep') {
+      const entered = await p.text({
+        message: t(`setup.dns.upstream.${action as 'replace' | 'append'}.prompt`),
+        initialValue: action === 'append' ? '' : upstreams,
+        validate: (value) => {
+          if (parseUpstreamList(value).length === 0) {
+            return t('setup.dns.upstream.required');
+          }
+          const invalid = invalidAddresses(value);
+          return invalid.length > 0 ? t('setup.dns.upstream.invalid', { values: invalid.join(', ') }) : undefined;
+        }
+      });
+
+      if (p.isCancel(entered)) {
+        return CANCELLED;
+      }
+
+      upstreams =
+        action === 'append'
+          ? [...parseUpstreamList(upstreams), ...parseUpstreamList(entered)].join(',')
+          : parseUpstreamList(entered).join(',');
+    }
+
+    overrides.DNS_UPSTREAM = upstreams;
+  }
+
+  if (options.fallback === undefined) {
+    const suggested = parseUpstreamList(options.upstream ?? upstreams)[0] ?? DEFAULT_UPSTREAM;
+    const current = config.DNS_DAEMON_FALLBACK.trim();
+
+    logger.info(t('setup.dns.fallback.title'));
+    line(t('setup.dns.fallback.description', { value: current || suggested }));
+    line(t('setup.dns.fallback.benefit'));
+    line(t('setup.dns.fallback.cost'));
+    line(t('setup.dns.fallback.adviceShared'));
+    line(t('setup.dns.fallback.adviceSolo'));
+    line(t('setup.dns.fallback.adviceUnsure'));
+
+    const wanted = await p.confirm({
+      message: t('setup.dns.fallback.prompt'),
+      initialValue: current !== '',
+      active: t('common.yes'),
+      inactive: t('common.no')
+    });
+
+    if (p.isCancel(wanted)) {
+      return CANCELLED;
+    }
+
+    if (!wanted) {
+      overrides.DNS_DAEMON_FALLBACK = '';
+    } else {
+      const entered = await p.text({
+        message: t('dns.enable.fallback.which'),
+        initialValue: current || suggested,
+        validate: (value) => {
+          const invalid = invalidAddresses(value);
+          if (parseUpstreamList(value).length !== 1) {
+            return t('dns.enable.fallback.one');
+          }
+          return invalid.length > 0 ? t('setup.dns.upstream.invalid', { values: invalid.join(', ') }) : undefined;
+        }
+      });
+
+      if (p.isCancel(entered)) {
+        return CANCELLED;
+      }
+
+      overrides.DNS_DAEMON_FALLBACK = entered.trim();
+    }
+  }
+
+  return overrides;
+}
+
 export function createDnsEnableCommand(): Command {
   return createCommand('enable')
     .description(t('commands.dns.enable.description'))
@@ -301,6 +425,30 @@ export function createDnsEnableCommand(): Command {
           overrides.DNS_DAEMON_FALLBACK = options.fallback;
         } else if (options.fallback === false) {
           overrides.DNS_DAEMON_FALLBACK = '';
+        }
+
+        // Nothing here can be asked without a terminal: @clack calls
+        // `setRawMode` on stdin, and off a TTY that fails with
+        // `uv_tty_init returned EBADF` — measured, not assumed. Consent under
+        // spec 11.3 cannot be skipped, so the answer is to say what to pass
+        // rather than either crash or proceed unasked.
+        if (!options.yes && !options.dryRun && !process.stdin.isTTY) {
+          logger.error(t('dns.enable.needsTty'));
+          process.exit(1);
+          return;
+        }
+
+        // Asked only when this run is going to change something and the user has
+        // not already said. `--dry-run` stays scriptable, and `--yes` is the way
+        // to mean "use what is configured, ask me nothing".
+        if (!options.yes && !options.dryRun) {
+          const answers = await askDnsSettings({ ...loaded, ...overrides } as RunestoneEnv, options);
+          if (answers === CANCELLED) {
+            logger.info(t('dns.enable.cancelled'));
+            return;
+          }
+
+          Object.assign(overrides, answers);
         }
 
         const config: RunestoneEnv =
