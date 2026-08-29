@@ -89,7 +89,7 @@ container 層的解法都存在也都可行，但有共同的致命傷：
 
 - 修改主機作業系統本身的 DNS 設定。
 - Remote Docker context、Windows container 模式、無法綁定 53 port 的 rootless Docker。
-- IPv6 host-gateway 解析（只處理 IPv4）。
+- **IPv6 全部不在範圍內。這個功能從頭到尾都是 IPv4**：Target IP 以 `getent ahostsv4` 解析、daemon 項目與綁定位址與發佈的埠都是 IPv4、`address=/domain/<ipv4>` 只回答 A（其餘型別為 NODATA 且不轉發，已逐型別量測）。而在預設安裝下 container 本來就沒有 IPv6（`bridge` 的 `EnableIPv6=false`，量測確認 container 的 eth0 沒有任何 inet6 位址），所以 AAAA 的答案也無路可走。開啟 Docker IPv6 之後的行為**從未量測**——詳見 [`DOMAINS.zh-TW.md`](DOMAINS.zh-TW.md)。
 - 讓使用者更換 DNS image。Runestone 固定使用自家 image，不開放覆寫，避免相容性處理失控。
 
 ## 4. 名詞

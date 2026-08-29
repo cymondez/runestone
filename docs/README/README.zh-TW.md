@@ -76,6 +76,8 @@ Runestone 網域會解析到 `127.0.0.1`，而在容器裡那就是容器自己�
 
 啟用之前請先讀完整說明——它改動什麼、怎麼關掉、以及怎麼手動移除那筆項目：**[DNS 說明文件](DNS.zh-TW.md)**（[English](DNS.md) | [日本語](DNS.ja-JP.md)）。
 
+domain 本身是怎麼解析的——Runestone domain、`traefik.me` 的位址解碼、以及這個功能為什麼只支援 IPv4——寫在 **[DOMAINS.zh-TW.md](DOMAINS.zh-TW.md)**（[English](DOMAINS.md)）。
+
 ```bash
 runestone dns enable --dry-run
 ```

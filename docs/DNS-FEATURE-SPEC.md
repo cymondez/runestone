@@ -89,7 +89,7 @@ Costs we explicitly refuse to pay: we do not modify the host operating system's 
 
 - Changing the host operating system's own DNS configuration.
 - Remote Docker contexts, Windows container mode, and rootless Docker that cannot bind port 53.
-- IPv6 host-gateway resolution (IPv4 only).
+- **IPv6, entirely. The feature is IPv4 end to end**: the Target IP is resolved with `getent ahostsv4`, the daemon entry and the bind address and the published port are all IPv4, and `address=/domain/<ipv4>` answers A only (every other type is NODATA and is not forwarded — measured one type at a time). On a default installation containers have no IPv6 in the first place (`bridge` reports `EnableIPv6=false`, and a container's eth0 was measured to have no inet6 address at all), so an AAAA answer would have nothing to travel over. Behaviour with Docker IPv6 enabled has **never been measured** — see [`DOMAINS.md`](DOMAINS.md).
 - Letting users substitute the DNS image. Runestone pins its own image and does not allow overrides, to keep compatibility handling from spiralling.
 
 ## 4. Terminology

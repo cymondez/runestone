@@ -79,6 +79,8 @@ docker ps
 | 你的主機（Runestone 完全沒動） | `127.0.0.1` | `10.0.0.5` |
 | container 內、DNS 已啟用 | 你主機的位址 | **你主機的位址**，不是 `10.0.0.5` |
 
+[DOMAINS.zh-TW.md](DOMAINS.zh-TW.md) 有完整說明：Runestone 會碰到的三種 domain 各自的機制，以及為什麼這一種是異類。
+
 第一欄正是我們要這條 mapping 的理由：`127.0.0.1` 在 container 內指的是 container 自己，所以沒有它的話，`traefik.me` 名稱從 container 裡根本沒用。第二欄則是代價：container 再也不能用 `<ip>.traefik.me` 去連那個位址。如果你需要那個用法，就把 `traefik.me.crt` 從 certs 目錄移掉，或在 `dns/custom.conf` 裡加上你自己的規則——那個檔案 Runestone 永遠不會覆寫。
 
 ### 4. 主機的 53 埠會被佔用

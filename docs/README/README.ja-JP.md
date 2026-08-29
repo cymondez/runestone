@@ -76,6 +76,8 @@ Runestone のドメインは `127.0.0.1` に解決され、コンテナの中で
 
 有効にする前に完全な説明を読んでください — 何が変わるか、どう無効にするか、手動で項目を削除する方法: **[DNS ドキュメント](DNS.ja-JP.md)** ([English](DNS.md) | [繁體中文](DNS.zh-TW.md))。
 
+ドメイン自体の解決方法 — Runestone ドメイン、`traefik.me` のアドレス復号、そしてこの機能が IPv4 のみである理由 — は **[DOMAINS.md](DOMAINS.md)** (英語、[繁體中文](DOMAINS.zh-TW.md)) にあります。
+
 ```bash
 runestone dns enable --dry-run
 ```

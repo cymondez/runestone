@@ -79,6 +79,8 @@ That is the feature. It is also worth knowing when a certificate covers a domain
 | Your host (unchanged by Runestone) | `127.0.0.1` | `10.0.0.5` |
 | Inside a container, DNS enabled | your host's address | **your host's address**, not `10.0.0.5` |
 
+[DOMAINS.md](DOMAINS.md) has the full mechanics of all three kinds of domain Runestone deals with, and why this one is the odd one.
+
 The first column is why the mapping is wanted: `127.0.0.1` inside a container means the container itself, so without it a `traefik.me` name is useless from a container. The second is the cost: a container can no longer use `<ip>.traefik.me` to reach that address. If you need that, remove `traefik.me.crt` from your certs directory, or add your own rule to `dns/custom.conf`, which Runestone never overwrites.
 
 ### 4. Port 53 on the host is occupied

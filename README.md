@@ -76,6 +76,8 @@ It is off by default, and turning it on is invasive: it adds an entry to the **D
 
 Read the full explanation before enabling it — what it changes, how to turn it off, and how to remove the entry by hand: **[DNS documentation](docs/DNS.md)** ([繁體中文](docs/DNS.zh-TW.md) | [日本語](docs/DNS.ja-JP.md)).
 
+How the domains themselves resolve — the Runestone domain, `traefik.me`'s address-decoding, and why the feature is IPv4 only — is in **[DOMAINS.md](docs/DOMAINS.md)** ([繁體中文](docs/DOMAINS.zh-TW.md)).
+
 ```bash
 runestone dns enable --dry-run
 ```

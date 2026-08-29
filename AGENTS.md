@@ -36,6 +36,8 @@
 
 DNS 功能會改動機器的全域狀態（`daemon.json` 與重啟 Docker），因此規格與里程碑本身就是風險管控手段。動手前先讀 `docs/DNS-FEATURE-SPEC.md`（正體中文備查：`docs/DNS-FEATURE-SPEC.zh-TW.md`），進度與 gate 看 `docs/DNS-MILESTONES.md`。
 
+**在動任何「把 domain 對應到位址」的程式之前，先讀 `docs/DOMAINS.md`（正體中文：`docs/DOMAINS.zh-TW.md`）。** 它記錄三種 domain 各自的實測行為（Runestone domain、會從名稱解碼位址的 `traefik.me`、以及使用者自己簽憑證的 domain）、這個功能為什麼只支援 IPv4，以及一份「已經有人踩過」的陷阱清單。`traefik.me` 的機制比看起來複雜得多，憑直覺推理它幾乎一定會錯。
+
 ### 開發用覆寫（spec 7.4）
 
 - `RUNESTONE_DNS_DAEMON_PATH`：改寫 daemon 設定檔路徑，讓寫入／識別／撤銷可以對著暫存檔跑。
