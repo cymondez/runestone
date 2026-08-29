@@ -25,7 +25,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | — | **done**, CI gate pending a runner |
 | M6b | Real machine and VM verification | 3 | T3 / T4 | — | **Done**: both halves, Windows and Linux, with evidence |
 | M7 | Lifecycle integration and disclosure | 3 | T1 / T2 | — | **done** |
-| M8 | Platform matrix and release | 3 | T3 / T4 | M6b, M7 | not started |
+| M8 | Platform matrix and release | 3 | T3 / T4 | M6b, M7 | **in progress**: 6.2's decision table and the user documentation are done; two of 14.3's six rows are verified and the image is not published yet |
 
 M2 is independent of M1 and can run in parallel with it. Everything else is a chain.
 
@@ -66,7 +66,7 @@ The four items in spec 15 have milestone deadlines (spec 16.6). A milestone must
 Two things were left open deliberately:
 
 - **`npm test` is now green**, and the Windows integration failure that predated this milestone is fixed. `runestone-cli/tests/integration/execution.test.ts` intercepts Docker with a `docker.cmd` shim on `PATH`, and **Node resolves a bare command name without consulting `PATHEXT`** — so the shim was invisible to it, and it walked straight past to the real `docker.exe` further along `PATH`. The consequence was worse than the red result: the fake Docker had never been exercised on Windows at all. The fix is in the test, not in production code: the CLI is given a `PATH` containing the fake directory and nothing that could shadow it, so `spawnCommand` gets `ENOENT` and takes its existing shell retry, which does consult `PATHEXT`. 41 suites, 522 passed, 1 skipped.
-- **The WSL row of 6.2 cannot be resolved offline.** `platformDaemonPath()` needs the Windows-side home directory, which is only knowable by inspecting the Docker context, so it throws and names `RUNESTONE_DNS_DAEMON_PATH` rather than guessing a path to write to. M5 must supply it at the point where it already inspects the context.
+- **The WSL row of 6.2 cannot be resolved offline.** `platformDaemonPath()` needs the Windows-side home directory, which is only knowable by inspecting the Docker context, so it throws and names `RUNESTONE_DNS_DAEMON_PATH` rather than guessing a path to write to. M5 must supply it at the point where it already inspects the context. (**This was overturned twice; the settled answer is in M8.** The row was first deleted outright in M6a, then came back in M8 as row 2 of 6.2's decision table. It now neither throws nor guesses: `platformDaemonPath()` returns an empty string for `elsewhere`, and preflight refuses with an accurate reason.)
 
 **Rollback.** Single revert. The restart scoping fix is worth keeping on its own merit, so this milestone is safe to land ahead of any DNS decision.
 
@@ -330,6 +330,13 @@ One run proves: the Target IP resolved from inside Docker, the daemon configurat
 
 The risk that row guarded is real and is still handled, by asking a question that has a reliable answer: **if `docker info` reports the daemon as Docker Desktop while the CLI is running on Linux, preflight refuses.** That daemon's configuration is on the Windows side, so writing this filesystem's `~/.docker/daemon.json` would report success while changing a file Docker never reads — the exact silent-wrong-answer failure this feature exists to remove. `isWsl()` was dead code before M0 revived it, and is deleted.
 
+**That conclusion was overturned in M8.** The text above is kept because what was wrong was the reasoning rather than a slip, and each of the two reasons was half wrong:
+
+- The first treats "what the daemon is" and "where the CLI runs" as one question. They are two, and **every platform can be a plain Docker Engine and every platform can be Docker Desktop**: Windows can run docker-ce inside WSL2 and nothing else, macOS has Colima and Lima, Linux has Docker Desktop for Linux.
+- The second was measured in the wrong place. The observation that `isWsl()` returned true came from **inside the sandbox container** — Docker Desktop's VM runs on WSL2, so of course nothing there can be told apart. Where the CLI actually runs is the user's own userland, and there `WSL_DISTRO_NAME`, `/run/WSL` and `/proc/version` are three signals that do measure and do separate (spec 6.2).
+
+The refusal rule it left behind is therefore wrong: "Docker Desktop daemon plus a CLI on Linux, refuse" **refuses Docker Desktop for Linux too**, and tells those users their configuration is on a Windows side they do not have. The replacement is 6.2's decision table, with `isWsl()` back and doing one job — separating row 2 from row 3. See M8 and commit `66c5082`.
+
 **Rollback.** Single revert. This is the last milestone with that property.
 
 ## M6b — Real machine and VM verification
@@ -405,7 +412,7 @@ The incident validated an ordering by accident: **the inversion writes the file 
 
 The safety net did what it exists for: file back byte-for-byte, the discarded diff printed first, no restart attempted against a dead daemon, and the five containers that had not returned started again. The user's own Runestone installation was never in scope — the run used a sandbox project, and the real `.env` and state file are untouched.
 
-**What is left, and why.** The remaining gate items all need a restart that completes: a new container's `resolv.conf` listing the Target IP first, a subdomain resolving through the daemon setting rather than an explicit `@server`, `disable` restoring the array, and whether `restart: unless-stopped` survives a graceful `docker desktop restart`. None is reachable until `docker desktop restart` works on this machine, which is a Docker Desktop problem to resolve first. The destructive cycle needs an agreed window: this machine runs 12 containers, several of them stateful, and a Docker restart terminates all of them. The native Linux engine needs a machine that has one; the WSL distro carries only the Docker Desktop integration, so `/etc/docker/daemon.json`, `sudo`, `systemctl restart docker` and systemd-resolved's `127.0.0.53` are all still unverified.
+**What is left, and why.** The remaining gate items all need a restart that completes: a new container's `resolv.conf` listing the Target IP first, a subdomain resolving through the daemon setting rather than an explicit `@server`, `disable` restoring the array, and whether `restart: unless-stopped` survives a graceful `docker desktop restart`. None is reachable until `docker desktop restart` works on this machine, which is a Docker Desktop problem to resolve first. The destructive cycle needs an agreed window: this machine runs 12 containers, several of them stateful, and a Docker restart terminates all of them. **The native Linux half was completed afterwards, on a VM** (above, and [`m6b-linux-native.md`](evidence/dns/m6b-linux-native.md)): `/etc/docker/daemon.json`, the `sudo` escalation, `systemctl restart docker` and systemd-resolved's `127.0.0.53` are all verified, so what is left here is entirely on the Docker Desktop side.
 
 ## M7 — Lifecycle integration and disclosure
 
@@ -466,7 +473,7 @@ The second: **`doctor` reported a failed DNS check and then signed off with "Env
 
 **Deliverables**
 
-- [ ] Implement daemon-environment detection per the 6.2 decision table: **ask the daemon and where the CLI runs, stop inferring the type from the platform**; reintroduce `isWsl()` (signals in 6.2); refuse unverified combinations with an accurate reason pointing at 7.4. The gap is in `daemon-target.ts`'s `detectDaemonEnvironment()`, `enable.ts`'s preflight, and `m6b-safety-net.sh`'s `platform_daemon_path()`
+- [x] Implement daemon-environment detection per the 6.2 decision table: **ask the daemon and where the CLI runs, stop inferring the type from the platform**; reintroduce `isWsl()` (signals in 6.2); refuse unverified combinations with an accurate reason pointing at 7.4. The gap is in `daemon-target.ts`'s `detectDaemonEnvironment()`, `enable.ts`'s preflight, and `m6b-safety-net.sh`'s `platform_daemon_path()` — **landed** (commit `66c5082`): `classifyDaemonEnvironment()` is the table's five rows as a pure function with a test per row; `DaemonHost` gained `elsewhere`, for which `platformDaemonPath()` **returns an empty string rather than a guess**, read/write/delete all fail loudly on an empty path, and `dns status` prints "Path: unknown"; rows 2 and 5 each refuse with their own message. 575 tests pass on Windows, 580 on the Linux VM
 - [ ] Spec 14.3 platform matrix completed, with the T4 rows' output committed
 - [ ] The image published for both architectures **before** the CLI presents DNS as available (spec 13)
 - [x] `docs/DNS.md`, `docs/DNS.zh-TW.md` and `docs/DNS.ja-JP.md` — the complete user-facing explanation, one language per file with the same structure, covering disclosure items 1–8, 10 and 11 and the manual removal steps (spec 11.4). 317 lines each, identical structure, every internal anchor checked
@@ -515,7 +522,7 @@ M6b and M8 produce findings that cannot be re-derived from the code. Record them
 | Milestone | Platform | Date | Evidence | By |
 | --- | --- | --- | --- | --- |
 | M6b | Windows Docker Desktop | 2026-08-28 | [m6b-windows-docker-desktop.md](evidence/dns/m6b-windows-docker-desktop.md) — decision 1, Target IP, the ICS port 53 conflict and the `0.0.0.0:53:53` bug, the `127.0.0.1` bind, the revocation escape hatch, the real daemon write with `phase: prepared` proven, Docker Desktop rewriting the file, and `docker desktop restart` crashing. Post-restart verification outstanding | cymondez |
-| M6b | Native Linux (VM) | | | |
+| M6b | Native Linux (VM) | 2026-08-29 | [m6b-linux-native.md](evidence/dns/m6b-linux-native.md) — the full cycle including two real `systemctl restart docker` runs, spec 9.3's elevated write implemented and its refusal path, the safety net guarding the wrong file, the suite's first run on Linux (28 red, one of them a real product defect in `sameDaemonPath`), the retraction of the AAAA-leak finding, and what `traefik.me` actually does | cymondez |
 | M8 | WSL2 | | | |
 | M8 | macOS Intel | | | |
 | M8 | macOS Apple Silicon | | | |

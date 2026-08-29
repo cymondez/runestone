@@ -25,7 +25,7 @@
 | M6a | dind 載具內端到端 | 宿主 2／載具內 3 | T2 | — | **已完成**，CI 通過條件待 runner |
 | M6b | 真機與 VM 驗證 | 3 | T3／T4 | — | **已完成**：Windows 與 Linux 兩半都有證據 |
 | M7 | 生命週期整合與揭露 | 3 | T1／T2 | — | **已完成** |
-| M8 | 平台矩陣與發布 | 3 | T3／T4 | M6b、M7 | 未開始 |
+| M8 | 平台矩陣與發布 | 3 | T3／T4 | M6b、M7 | **進行中**：6.2 判斷表與使用者說明文件已完成；14.3 六列完成兩列，image 尚未發佈 |
 
 M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
@@ -66,7 +66,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 有兩件事是刻意留著的：
 
 - **`npm test` 現在全綠了**，而且那個早於這個里程碑的 Windows 整合測試失敗也已修好。`runestone-cli/tests/integration/execution.test.ts` 用一個放在 `PATH` 上的 `docker.cmd` shim 攔截 Docker，而 **Node 在解析裸指令名稱時不會參考 `PATHEXT`**——所以那個 shim 對它是隱形的，它直接走過去、在 `PATH` 更後面找到真正的 `docker.exe`。後果比紅燈更嚴重：這個假 Docker 在 Windows 上從來沒有被真正走過。修法在測試裡，不在產品程式碼：給 CLI 一個「只包含假目錄、沒有任何東西能蓋過它」的 `PATH`，於是 `spawnCommand` 拿到 `ENOENT`、走它本來就有的 shell 重試，而 shell 是會參考 `PATHEXT` 的。41 個套件、522 通過、1 skipped。
-- **規格 6.2 的 WSL 那一列無法離線判定。** `platformDaemonPath()` 需要 Windows 側的家目錄，而那只能靠檢查 Docker context 得知，因此它選擇丟出錯誤並指名 `RUNESTONE_DNS_DAEMON_PATH`，而不是猜一個要寫進去的路徑。M5 必須在它本來就會檢查 context 的地方把這個值補上。
+- **規格 6.2 的 WSL 那一列無法離線判定。** `platformDaemonPath()` 需要 Windows 側的家目錄，而那只能靠檢查 Docker context 得知，因此它選擇丟出錯誤並指名 `RUNESTONE_DNS_DAEMON_PATH`，而不是猜一個要寫進去的路徑。M5 必須在它本來就會檢查 context 的地方把這個值補上。（**這一段後來被推翻了兩次，最終結論在 M8。** 這條路徑先在 M6a 被整列刪掉，又在 M8 以 6.2 判斷表第 2 列回來；現在它既不丟錯也不猜路徑——`platformDaemonPath()` 對 `elsewhere` 回傳空字串，由前置檢查以正確理由拒絕。）
 
 **回退。** 單一 revert。restart 範圍修正本身就有價值，所以這個里程碑可以在任何 DNS 裁決之前先落地。
 
@@ -330,6 +330,13 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 那一列原本要防的風險是真的，而且仍然有處理，只是改成問一個有可靠答案的問題：**若 `docker info` 回報 daemon 是 Docker Desktop，而 CLI 卻跑在 Linux 上，前置檢查一律拒絕。** 那個 daemon 的設定在 Windows 那一側，因此寫入這個檔案系統的 `~/.docker/daemon.json` 會回報成功，卻只改到一個 Docker 從來不讀的檔案——正是這個功能要消滅的「安靜地給出錯誤答案」。`isWsl()` 在 M0 把它復活之前本來就是死程式碼，已刪除。
 
+**上面這個結論在 M8 被推翻了。** 保留原文是因為錯的地方在推理，不在筆誤，而兩個理由各錯一半：
+
+- 第一個理由把「daemon 是什麼」和「CLI 在哪」當成同一個問題。它們是兩個問題，而且**三個平台都可能是純 Docker Engine，三個平台也都可能是 Docker Desktop**：Windows 有「只在 WSL2 裡裝 docker-ce」的手法，macOS 有 Colima 與 Lima，Linux 有 Docker Desktop for Linux。
+- 第二個理由是在錯的位置量的。`isWsl()` 回傳 true 的那個觀察來自**沙箱容器裡**——Docker Desktop 的 VM 本來就跑在 WSL2 上，所以那裡當然分辨不出東西。但 CLI 實際執行的位置是使用者的 userland，那裡有 `WSL_DISTRO_NAME`、`/run/WSL` 與 `/proc/version` 三個訊號，量得到而且分得開（見規格 6.2）。
+
+它留下的那條拒絕規則因此是錯的：「daemon 是 Docker Desktop 且 CLI 在 Linux 就拒絕」會**連 Docker Desktop for Linux 一起拒絕**，還告訴那些使用者他們的設定檔在一個他們根本沒有的 Windows 那一側。改法是 6.2 的判斷表，`isWsl()` 也隨之回來，只負責分開第 2 列與第 3 列——見 M8 與 commit `66c5082`。
+
 **回退。** 單一 revert。這是最後一個具備這個性質的里程碑。
 
 ## M6b — 真機與 VM 驗證
@@ -405,7 +412,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 安全網做到了它存在的目的：檔案逐位元組放回、先印出即將丟棄的 diff、不對一個死掉的 daemon 嘗試重啟、把五個沒回來的容器叫起來。使用者自己的 Runestone 安裝從頭到尾不在範圍內——這次用的是沙箱專案，真實的 `.env` 與狀態檔都沒被動到。
 
-**剩下什麼，以及為什麼。** 剩下的通過條件全都需要「一次能夠完成的重啟」：新容器的 `resolv.conf` 把 Target IP 排在第一位、子網域透過 daemon 設定而非明確 `@server` 解析、`disable` 把陣列還原，以及 `restart: unless-stopped` 能不能撐過優雅的 `docker desktop restart`。在這台機器上的 `docker desktop restart` 能正常運作之前，這些都到不了；那是要先解決的 Docker Desktop 問題。破壞性循環需要一個約好的時間窗：這台機器上跑著 12 個 container，其中好幾個是有狀態的，而重啟 Docker 會把它們全部終止。原生 Linux engine 則需要一台真的有的機器；這裡的 WSL 發行版只帶 Docker Desktop 整合，所以 `/etc/docker/daemon.json`、`sudo`、`systemctl restart docker` 與 systemd-resolved 的 `127.0.0.53` 全都還沒驗證。
+**剩下什麼，以及為什麼。** 剩下的通過條件全都需要「一次能夠完成的重啟」：新容器的 `resolv.conf` 把 Target IP 排在第一位、子網域透過 daemon 設定而非明確 `@server` 解析、`disable` 把陣列還原，以及 `restart: unless-stopped` 能不能撐過優雅的 `docker desktop restart`。在這台機器上的 `docker desktop restart` 能正常運作之前，這些都到不了；那是要先解決的 Docker Desktop 問題。破壞性循環需要一個約好的時間窗：這台機器上跑著 12 個 container，其中好幾個是有狀態的，而重啟 Docker 會把它們全部終止。**原生 Linux 那一半後來在 VM 上補完了**（見上方，以及 [`m6b-linux-native.zh-TW.md`](evidence/dns/m6b-linux-native.zh-TW.md)）：`/etc/docker/daemon.json`、`sudo` 提權、`systemctl restart docker` 與 systemd-resolved 的 `127.0.0.53` 都已驗證，所以這裡剩下的全部集中在 Docker Desktop 這一側。
 
 ## M7 — 生命週期整合與揭露
 
@@ -466,7 +473,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **交付項目**
 
-- [ ] 依規格 6.2 判斷表實作 daemon 環境偵測：**改問 daemon 與 CLI 所在位置，不再從平台推論型別**；重新引入 `isWsl()`（訊號見 6.2）；未驗證的組合以正確理由拒絕並指向 7.4。落差在 `daemon-target.ts` 的 `detectDaemonEnvironment()`、`enable.ts` 的前置檢查、`m6b-safety-net.sh` 的 `platform_daemon_path()` 三處
+- [x] 依規格 6.2 判斷表實作 daemon 環境偵測：**改問 daemon 與 CLI 所在位置，不再從平台推論型別**；重新引入 `isWsl()`（訊號見 6.2）；未驗證的組合以正確理由拒絕並指向 7.4。落差在 `daemon-target.ts` 的 `detectDaemonEnvironment()`、`enable.ts` 的前置檢查、`m6b-safety-net.sh` 的 `platform_daemon_path()` 三處——**已落地**（commit `66c5082`）：`classifyDaemonEnvironment()` 是判斷表五列的純函式並逐列有測試；`DaemonHost` 多了 `elsewhere`，對它 `platformDaemonPath()` **回傳空字串而不是猜一個**，讀寫刪一律對空路徑大聲失敗，`dns status` 改印「路徑：未知」；第 2 列與第 5 列各有自己的拒絕訊息。Windows 575 通過、Linux VM 580 通過
 - [ ] 完成規格 14.3 平台矩陣，T4 各列的輸出存進 repo
 - [ ] 在 CLI 對外呈現 DNS 之前**先**發布兩種架構的 image（規格 13）
 - [x] `docs/DNS.md`、`docs/DNS.zh-TW.md`、`docs/DNS.ja-JP.md`——完整的使用者說明，一個語言一個檔案且結構相同，涵蓋揭露項目 1–8、10、11 與手動移除步驟（規格 11.4）。三份各 317 行、結構相同，每個內部錨點都檢查過
@@ -515,7 +522,7 @@ M6b 與 M8 產出的結論無法從程式碼重新推導。記錄在這裡，並
 | 里程碑 | 平台 | 日期 | 證據 | 執行者 |
 | --- | --- | --- | --- | --- |
 | M6b | Windows Docker Desktop | 2026-08-28 | [m6b-windows-docker-desktop.zh-TW.md](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)——裁決 1、Target IP、ICS 的 53 埠衝突與 `0.0.0.0:53:53` 的 bug、`127.0.0.1` 綁定、撤銷逃生口、真實 daemon 寫入並證明 `phase: prepared`、Docker Desktop 自行改寫檔案，以及 `docker desktop restart` 當掉。重啟後的驗證尚未完成 | cymondez |
-| M6b | 原生 Linux（VM） | | | |
+| M6b | 原生 Linux（VM） | 2026-08-29 | [m6b-linux-native.zh-TW.md](evidence/dns/m6b-linux-native.zh-TW.md)——完整循環含兩次真實的 `systemctl restart docker`、規格 9.3 提權寫入的實作與被拒時的中止、安全網守錯了檔案、測試套件第一次在 Linux 上跑（28 紅，其中帶出 `sameDaemonPath` 的真實毛病）、AAAA 外洩那個發現的撤回，以及 `traefik.me` 真正的影響 | cymondez |
 | M8 | WSL2 | | | |
 | M8 | macOS Intel | | | |
 | M8 | macOS Apple Silicon | | | |
