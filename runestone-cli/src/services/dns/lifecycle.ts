@@ -13,7 +13,12 @@ import {
   removeOwnedEntries
 } from './daemon-config';
 import { readDaemonConfig, writeDaemonConfig } from './daemon-file';
-import { resolveDaemonConfigTarget, sameDaemonPath } from './daemon-target';
+import {
+  DaemonEnvironment,
+  detectDaemonEnvironment,
+  resolveDaemonConfigTarget,
+  sameDaemonPath
+} from './daemon-target';
 import {
   DESKTOP_SAFE_RESTART_VERSION,
   TargetIpResult,
@@ -42,6 +47,12 @@ import { UpstreamResolution, defaultHostResolvers, determineUpstreams } from './
  */
 
 export interface LifecycleDependencies {
+  /**
+   * Which machine this is (spec 6.2). Injectable because resolving it probes
+   * `docker info`: a test that cannot state its own machine ends up asserting
+   * whatever machine the suite happens to run on.
+   */
+  environment: () => DaemonEnvironment;
   readDaemon: (daemonPath: string) => { text: string; existed: boolean };
   writeDaemon: (daemonPath: string, text: string) => void;
   readRecord: () => DnsOwnershipState | undefined;
@@ -61,6 +72,7 @@ export interface LifecycleDependencies {
 }
 
 export const defaultLifecycleDependencies: LifecycleDependencies = {
+  environment: () => detectDaemonEnvironment(),
   readDaemon: readDaemonConfig,
   writeDaemon: writeDaemonConfig,
   readRecord: () => toolState.readDnsState(),
@@ -261,7 +273,7 @@ export function planUpDns(
   dependencies: Partial<LifecycleDependencies> = {}
 ): UpDnsPlan {
   const deps = { ...defaultLifecycleDependencies, ...dependencies };
-  const target = resolveDaemonConfigTarget();
+  const target = resolveDaemonConfigTarget(deps.environment());
 
   const base: UpDnsPlan = {
     status: 'ok',
@@ -502,7 +514,7 @@ export function checkDnsHealth(
   }
 
   const deps = { ...defaultLifecycleDependencies, ...dependencies };
-  const target = resolveDaemonConfigTarget();
+  const target = resolveDaemonConfigTarget(deps.environment());
   const checks: DnsHealthCheck[] = [];
   const record = deps.readRecord();
 
@@ -617,7 +629,7 @@ export function dnsSetupFacts(
   dependencies: Partial<LifecycleDependencies & { hostResolvers: () => string[] }> = {}
 ): DnsSetupFacts {
   const deps = { ...defaultLifecycleDependencies, ...dependencies };
-  const target = resolveDaemonConfigTarget();
+  const target = resolveDaemonConfigTarget(deps.environment());
 
   let daemonEntries: string[] | undefined;
   try {

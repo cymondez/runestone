@@ -74,15 +74,27 @@ function makePlan(options: {
   });
 }
 
+/**
+ * The machine a test is describing, said out loud.
+ *
+ * These fixtures used to inherit the host's platform, which made them pass on
+ * Windows and fail on Linux — and, worse, hid the fact that the product decided
+ * what kind of daemon it was talking to from the platform alone. Every test
+ * that cares now names one of these.
+ */
+function machine(kind: 'desktop-on-windows' | 'desktop-on-macos' | 'wsl-with-desktop' | 'desktop-for-linux' | 'native-linux'): void {
+  const platform = kind === 'desktop-on-windows' ? 'win32' : kind === 'desktop-on-macos' ? 'darwin' : 'linux';
+  jest.spyOn(osDetector, 'platform').mockReturnValue(platform);
+  jest.spyOn(osDetector, 'isWsl').mockReturnValue(kind === 'wsl-with-desktop');
+}
+
 describe('dns enable', () => {
   const previousOverride = process.env[DAEMON_PATH_OVERRIDE_ENV];
 
   beforeEach(() => {
-  // **This fixture is a Docker Desktop machine, so it says so.** Inheriting the
-  // host's platform made these pass on Windows and fail on Linux, where a Linux
-  // userland pointed at a Docker Desktop daemon is exactly the
-  // `docker-desktop-elsewhere` refusal — the product being right.
-    jest.spyOn(osDetector, 'platform').mockReturnValue('win32');
+    // Docker Desktop on Windows: the machine every fixture below describes,
+    // unless a test says otherwise.
+    machine('desktop-on-windows');
     process.env[DAEMON_PATH_OVERRIDE_ENV] = DAEMON_PATH;
   });
 
@@ -123,30 +135,61 @@ describe('dns enable', () => {
       expect(result.failures).toContainEqual({ kind: 'windows-containers', osType: 'windows' });
     });
 
-    it('refuses a Docker Desktop daemon while running on Linux', () => {
-      // The shape of "the CLI inside WSL, talking to Docker Desktop": its
-      // configuration is on the Windows side, so writing this filesystem's
-      // ~/.docker/daemon.json would change a file Docker never reads.
-      jest.spyOn(osDetector, 'platform').mockReturnValue('linux');
+    it('refuses a Docker Desktop daemon reached from inside a WSL distro', () => {
+      // Spec 6.2 row 2: the integration's configuration is on the Windows side,
+      // so writing this filesystem's ~/.docker/daemon.json would change a file
+      // Docker never reads. Measured: `docker info` in that distro reports
+      // `Docker Desktop` and the endpoint is an ordinary local unix socket, so
+      // only the WSL markers separate this from row 3.
+      machine('wsl-with-desktop');
+      delete process.env[DAEMON_PATH_OVERRIDE_ENV];
 
       const result = check({ probes: { osType: () => ok('linux|Docker Desktop') } });
 
       expect(result.failures).toContainEqual({
         kind: 'docker-desktop-elsewhere',
-        operatingSystem: 'Docker Desktop'
+        operatingSystem: 'Docker Desktop',
+        wsl: true
       });
     });
 
-    it('accepts a Docker Desktop daemon when the CLI is on the platform that owns it', () => {
-      jest.spyOn(osDetector, 'platform').mockReturnValue('win32');
+    it('accepts Docker Desktop for Linux, which is not that', () => {
+      // Spec 6.2 row 3. The rule this replaced refused here too, telling the
+      // user their configuration was on the Windows side — on a machine that
+      // has no Windows side.
+      machine('desktop-for-linux');
 
       expect(check({ probes: { osType: () => ok('linux|Docker Desktop') } }).ok).toBe(true);
     });
 
+    it('accepts a Docker Desktop daemon from Windows and from macOS', () => {
+      machine('desktop-on-windows');
+      expect(check({ probes: { osType: () => ok('linux|Docker Desktop') } }).ok).toBe(true);
+
+      machine('desktop-on-macos');
+      expect(check({ probes: { osType: () => ok('linux|Docker Desktop') } }).ok).toBe(true);
+    });
+
     it('accepts a native engine on Linux', () => {
-      jest.spyOn(osDetector, 'platform').mockReturnValue('linux');
+      machine('native-linux');
 
       expect(check({ probes: { osType: () => ok('linux|Ubuntu 24.04.1 LTS') } }).ok).toBe(true);
+    });
+
+    it('refuses a plain engine reached from Windows, because Windows has none', () => {
+      // Spec 6.2 row 5: docker-ce inside a WSL distro, or an engine in a VM.
+      // `/etc/docker/daemon.json` on the Windows filesystem is not its
+      // configuration, and there is nothing to guess.
+      machine('desktop-on-windows');
+      delete process.env[DAEMON_PATH_OVERRIDE_ENV];
+
+      const result = check({ probes: { osType: () => ok('linux|Ubuntu 24.04.1 LTS') } });
+
+      expect(result.failures).toContainEqual({
+        kind: 'docker-desktop-elsewhere',
+        operatingSystem: 'Ubuntu 24.04.1 LTS',
+        wsl: false
+      });
     });
 
     it('refuses a remote context, because that is somebody else machine', () => {

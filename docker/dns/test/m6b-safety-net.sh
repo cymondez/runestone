@@ -84,18 +84,31 @@ docker_answers() {
 
 # The daemon file this machine's Docker actually reads, ignoring any override.
 # Mirrors platformDaemonPath() in services/dns/daemon-target.ts (spec 6.2).
+# Spec 6.2's decision table, in shell. **The platform does not decide this**:
+# Docker Desktop exists for Linux too, and a plain engine can be reached from
+# Windows or macOS. Only the daemon plus where this script runs can answer it,
+# and on Linux the two Desktop cases are separated by WSL.
 platform_daemon_path() {
+    desktop=0
+    docker info --format '{{.OperatingSystem}}' 2>/dev/null | grep -qi 'docker desktop' && desktop=1
+
     case "$(uname -s)" in
         Linux)
-            # A Linux userland whose docker is Docker Desktop's reads the Windows
-            # or macOS side's file, which is not ours to restore either.
-            if docker info --format '{{.OperatingSystem}}' 2>/dev/null | grep -qi 'docker desktop'; then
-                echo "<docker-desktop-elsewhere>"
+            if [ "$desktop" -eq 0 ]; then
+                echo "/etc/docker/daemon.json"            # row 4: native engine
+            elif [ -n "${WSL_DISTRO_NAME:-}" ] || [ -d /run/WSL ] || grep -qi microsoft /proc/version 2>/dev/null; then
+                echo "<elsewhere>"                        # row 2: Desktop through the WSL integration
             else
-                echo "/etc/docker/daemon.json"
+                echo "${HOME}/.docker/daemon.json"        # row 3: Docker Desktop for Linux
             fi
             ;;
-        *) echo "${HOME}/.docker/daemon.json" ;;
+        *)
+            if [ "$desktop" -eq 1 ]; then
+                echo "${HOME}/.docker/daemon.json"        # row 1: Desktop on Windows or macOS
+            else
+                echo "<elsewhere>"                        # row 5: an engine in a VM or a distro
+            fi
+            ;;
     esac
 }
 
@@ -112,9 +125,9 @@ fi
 
 case "${DAEMON}" in
     '<'*)
-        echo "This Linux userland's docker is Docker Desktop's, so the daemon file lives on the" >&2
-        echo "Windows or macOS side and cannot be captured from here." >&2
-        echo "Run the script there, or set RUNESTONE_DNS_DAEMON_PATH to the file you mean." >&2
+        echo "This daemon keeps its configuration on a filesystem this script cannot name:" >&2
+        echo "Docker Desktop reached from a WSL distro, or an engine inside a VM." >&2
+        echo "Run the script where that file lives, or set RUNESTONE_DNS_DAEMON_PATH to it." >&2
         exit 2
         ;;
 esac

@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { restartDocker } from '../../../src/services/dns/docker-restart';
-import { osDetector } from '../../../src/utils/os-detector';
 import { DAEMON_PATH_OVERRIDE_ENV } from '../../../src/services/dns/daemon-target';
 import {
   LifecycleDependencies,
@@ -74,6 +73,8 @@ describe('dns lifecycle', () => {
 
   function harness(options: {
     state?: DnsOwnershipState;
+    /** Which machine this is (spec 6.2). Defaults to a native Linux engine. */
+    host?: 'docker-desktop' | 'linux-engine' | 'elsewhere';
     running?: boolean;
     managed?: string;
     detected?: string;
@@ -83,6 +84,7 @@ describe('dns lifecycle', () => {
     const result: Harness = { deps: {}, written: [], records: [], env: [], restarts: 0, recreates: 0 };
 
     result.deps = {
+      environment: () => ({ host: options.host ?? 'linux-engine', homeDir: directory }),
       readRecord: () => options.state,
       writeRecord: (state) => {
         result.records.push(state);
@@ -349,19 +351,16 @@ describe('dns lifecycle', () => {
     });
   });
   describe('doctor and the Docker Desktop restart check', () => {
-  // **This fixture is a Docker Desktop machine, so it says so.** Inheriting the
-  // host's platform made these pass on Windows and fail on Linux, where a Linux
-  // userland pointed at a Docker Desktop daemon is exactly the
-  // `docker-desktop-elsewhere` refusal — the product being right.
-    beforeEach(() => {
-      jest.spyOn(osDetector, 'platform').mockReturnValue('win32');
-    });
+    // A Docker Desktop machine, said out loud through the dependency the
+    // product takes. Stubbing the host platform instead made this pass on
+    // Windows and fail on Linux — the check exists only for Desktop, and which
+    // machine a test is about is the test's to state.
 
     const enabled = () => testEnv(projectDir, { DNS_ENABLE: 'true', DNS_HOST_IP: TARGET });
 
     function checkFor(desktopVersion: string | null | undefined) {
       daemon([TARGET]);
-      const inspection = harness({ state: record(), managed: '', desktopVersion });
+      const inspection = harness({ state: record(), managed: '', desktopVersion, host: 'docker-desktop' });
       const report = checkDnsHealth(enabled(), inspection.deps);
       return report.checks.find((check) => check.id === 'desktopRestart');
     }

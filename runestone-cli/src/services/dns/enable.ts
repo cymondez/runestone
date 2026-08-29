@@ -13,7 +13,13 @@ import {
   removeOwnedEntries
 } from './daemon-config';
 import { deleteDaemonConfig, readDaemonConfig, writeDaemonConfig } from './daemon-file';
-import { DaemonHost, DockerRestartPlan, resolveDaemonConfigTarget, resolveDockerRestartPlan } from './daemon-target';
+import {
+  DaemonHost,
+  DockerRestartPlan,
+  detectDaemonEnvironment,
+  resolveDaemonConfigTarget,
+  resolveDockerRestartPlan
+} from './daemon-target';
 import { RestartOutcome, restartDocker } from './docker-restart';
 import {
   DockerContextInfo,
@@ -54,13 +60,17 @@ export type PreflightFailure =
   | { kind: 'docker-unavailable'; message: string }
   | { kind: 'windows-containers'; osType: string }
   /**
-   * The CLI is running on Linux but the daemon is Docker Desktop — the shape of
-   * "the CLI inside WSL, talking to Docker Desktop through its integration".
-   * Its configuration lives on the Windows side, so writing this machine's
-   * `~/.docker/daemon.json` would report success while changing nothing that
-   * Docker ever reads.
+   * The daemon is real and reachable, but its configuration is on a filesystem
+   * this process cannot name (spec 6.2, `elsewhere`). Two shapes reach here:
+   * the CLI inside a WSL distro talking to Docker Desktop through the
+   * integration, whose configuration is on the Windows side; and a Windows or
+   * macOS CLI talking to a plain engine inside a VM or a distro, since neither
+   * of those platforms has a native Docker Engine of its own.
+   *
+   * Writing this machine's `~/.docker/daemon.json` — or `/etc/docker/daemon.json`
+   * — would report success while changing nothing that Docker ever reads.
    */
-  | { kind: 'docker-desktop-elsewhere'; operatingSystem: string }
+  | { kind: 'docker-desktop-elsewhere'; operatingSystem: string; wsl: boolean }
   | { kind: 'remote-context'; name: string; endpoint: string }
   | { kind: 'target-ip'; message: string }
   | { kind: 'daemon-unreadable'; message: string };
@@ -116,20 +126,30 @@ export function preflight(
   dependencies: Partial<PreflightDependencies> = {}
 ): Preflight {
   const deps = { ...defaultPreflightDependencies, ...dependencies };
-  const target = resolveDaemonConfigTarget();
   const failures: PreflightFailure[] = [];
 
   if (!deps.hasRequiredVars(config)) {
     failures.push({ kind: 'setup-incomplete' });
   }
 
+  // Read first, resolved second: which file this daemon reads depends on what
+  // the daemon is, so the probe has to happen before the path exists.
   const daemon = readDaemonInfo(deps.probes);
+  const target = resolveDaemonConfigTarget(detectDaemonEnvironment(daemon));
   if (!daemon) {
     failures.push({ kind: 'docker-unavailable', message: 'docker info did not answer' });
   } else if (daemon.osType.toLowerCase() !== 'linux') {
     failures.push({ kind: 'windows-containers', osType: daemon.osType });
-  } else if (daemon.isDockerDesktop && osDetector.platform() === 'linux') {
-    failures.push({ kind: 'docker-desktop-elsewhere', operatingSystem: daemon.operatingSystem });
+  } else if (target.host === 'elsewhere' && target.source !== 'override') {
+    // **Not "the CLI is on Linux".** That rule refused Docker Desktop for Linux
+    // as well, telling its users their configuration was on the Windows side,
+    // which is false. The classification (spec 6.2) separates them: only a WSL
+    // distro's Desktop integration keeps its configuration somewhere else.
+    failures.push({
+      kind: 'docker-desktop-elsewhere',
+      operatingSystem: daemon.operatingSystem,
+      wsl: osDetector.isWsl()
+    });
   }
 
   // Read before deciding how to restart: on Docker Desktop the version is what
@@ -193,7 +213,7 @@ export function preflight(
     requiresPrivilege: target.requiresPrivilege,
     host: target.host,
     upstreamIsFallback: upstreams.origins.every((origin) => origin.origin === 'default'),
-    restartPlan: resolveDockerRestartPlan(undefined, { desktopRestartIsSafe: restartIsSafe }),
+    restartPlan: resolveDockerRestartPlan(detectDaemonEnvironment(daemon), { desktopRestartIsSafe: restartIsSafe }),
     desktopVersion,
     desktopRestartIsSafe: restartIsSafe
   };

@@ -52,7 +52,11 @@ export function printPreflight(checks: Preflight): void {
           logger.error(t('dns.enable.failed.windows', { osType: failure.osType }));
           break;
         case 'docker-desktop-elsewhere':
-          logger.error(t('dns.enable.failed.desktopElsewhere', { operatingSystem: failure.operatingSystem }));
+          logger.error(
+            t(failure.wsl ? 'dns.enable.failed.desktopElsewhere' : 'dns.enable.failed.daemonElsewhere', {
+              operatingSystem: failure.operatingSystem
+            })
+          );
           break;
         case 'remote-context':
           logger.error(t('dns.enable.failed.remote', { name: failure.name, endpoint: failure.endpoint }));

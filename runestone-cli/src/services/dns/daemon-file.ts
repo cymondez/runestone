@@ -91,7 +91,23 @@ export interface DaemonConfigRead {
   existed: boolean;
 }
 
+/**
+ * `platformDaemonPath` returns an empty string when the daemon's configuration
+ * is on a filesystem this process cannot name (spec 6.2, `elsewhere`). Reaching
+ * a file operation with it means a refusal was missed upstream, and silence
+ * here would look exactly like "there is no daemon configuration".
+ */
+function requirePath(filePath: string): void {
+  if (filePath.trim() === '') {
+    throw new Error(
+      'No daemon configuration path is known for this Docker daemon. Set RUNESTONE_DNS_DAEMON_PATH to the file it reads.'
+    );
+  }
+}
+
 export function readDaemonConfig(filePath: string): DaemonConfigRead {
+  requirePath(filePath);
+
   if (!fs.existsSync(filePath)) {
     return { text: '{}', existed: false };
   }
@@ -108,6 +124,8 @@ function tempPathFor(filePath: string): string {
 }
 
 export function writeDaemonConfig(filePath: string, text: string, run: ElevationRunner = sudo): void {
+  requirePath(filePath);
+
   // Refuse before creating anything, so an engine bug cannot leave a temporary
   // file behind next to the user's daemon configuration.
   assertDaemonConfig(text);
@@ -202,6 +220,8 @@ function writeElevated(filePath: string, text: string, run: ElevationRunner): vo
  * nothing else is left in it.
  */
 export function deleteDaemonConfig(filePath: string, run: ElevationRunner = sudo): void {
+  requirePath(filePath);
+
   if (!fs.existsSync(filePath)) {
     return;
   }

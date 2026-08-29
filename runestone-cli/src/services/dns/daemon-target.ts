@@ -1,5 +1,6 @@
 import * as path from 'path';
-import { osDetector } from '../../utils/os-detector';
+import { RunestonePlatform, osDetector } from '../../utils/os-detector';
+import { readDaemonInfo } from './environment';
 
 /**
  * Resolution of the two operations that touch global state: which daemon
@@ -22,15 +23,56 @@ export const RESTART_CMD_OVERRIDE_ENV = 'RUNESTONE_DNS_RESTART_CMD';
 /**
  * Where the daemon configuration lives and how Docker is restarted (spec 6.2).
  *
- * There is deliberately no WSL variant. Running the CLI inside WSL against a
- * Docker Desktop daemon would mean writing to the WSL home's
- * `~/.docker/daemon.json` — a file Docker Desktop never reads — so the write
- * would report success while DNS silently did nothing, which is the exact
- * failure this whole feature exists to remove. That case is **refused** in
- * preflight instead, on the strength of what `docker info` says the daemon is,
- * rather than guessed at from a kernel string that a container reports too.
+ * **The platform does not decide this, in either direction.** Every platform can
+ * be Docker Desktop and every platform can be a plain Docker Engine: Windows can
+ * run docker-ce inside WSL2, macOS has Colima and Lima, Linux has Docker Desktop
+ * for Linux. What the daemon is comes from the daemon; which filesystem holds
+ * its configuration needs that plus where the CLI runs.
+ *
+ * `elsewhere` is the honest third answer: the daemon is real and reachable, but
+ * its configuration is on a filesystem this process cannot name — a WSL distro
+ * using Docker Desktop's integration, or a Windows/macOS CLI talking to an
+ * engine inside somebody else's VM. Those are refused rather than guessed at,
+ * and `RUNESTONE_DNS_DAEMON_PATH` (spec 7.4) is how a user who knows the answer
+ * supplies it.
  */
-export type DaemonHost = 'docker-desktop' | 'linux-engine';
+export type DaemonHost = 'docker-desktop' | 'linux-engine' | 'elsewhere';
+
+export interface DaemonClassification {
+  /** What `docker info` reports: is this daemon Docker Desktop's? */
+  daemonIsDockerDesktop: boolean;
+  /** Where the CLI process itself runs. */
+  platform: RunestonePlatform;
+  /** Whether that Linux userland is a WSL distribution. */
+  isWsl: boolean;
+  homeDir: string;
+}
+
+/**
+ * Spec 6.2's decision table, as a pure function. The five rows:
+ *
+ * | # | Desktop daemon | CLI on | result |
+ * | --- | --- | --- | --- |
+ * | 1 | yes | Windows / macOS | `docker-desktop` |
+ * | 2 | yes | Linux, WSL | `elsewhere` — configuration is on the Windows side |
+ * | 3 | yes | Linux, not WSL | `docker-desktop` — Docker Desktop for Linux |
+ * | 4 | no | Linux | `linux-engine` |
+ * | 5 | no | Windows / macOS | `elsewhere` — neither has a native engine |
+ *
+ * Row 5 is not pedantry: there is no native Docker Engine on Windows or macOS,
+ * so a non-Desktop daemon reached from there lives in a VM or a distro, and
+ * `/etc/docker/daemon.json` on *this* filesystem is not its configuration.
+ */
+export function classifyDaemonEnvironment(input: DaemonClassification): DaemonEnvironment {
+  const { daemonIsDockerDesktop, platform, isWsl, homeDir } = input;
+  const onLinux = platform === 'linux';
+
+  if (daemonIsDockerDesktop) {
+    return { host: onLinux && isWsl ? 'elsewhere' : 'docker-desktop', homeDir };
+  }
+
+  return { host: onLinux ? 'linux-engine' : 'elsewhere', homeDir };
+}
 
 export type ResolutionSource = 'override' | 'platform';
 
@@ -135,20 +177,45 @@ export function parseRestartCommand(input: string): DockerRestartStep {
   return { command: tokens[0], args: tokens.slice(1) };
 }
 
-export function detectDaemonEnvironment(): DaemonEnvironment {
-  const homeDir = osDetector.homeDir();
-  const platform = osDetector.platform();
+/**
+ * The classification for this machine, asking the daemon rather than assuming
+ * from the platform.
+ *
+ * `daemon` is passed in by callers that have already run `docker info` — every
+ * command's preflight does — so the common path costs no extra probe. When it
+ * is absent the probe runs here, because the alternative is guessing, and a
+ * guess here means writing to the wrong file.
+ *
+ * An unreachable daemon is treated as not-Desktop: nothing is written on that
+ * path anyway, since preflight refuses on `docker-unavailable` first.
+ */
+export function detectDaemonEnvironment(daemon?: { isDockerDesktop: boolean }): DaemonEnvironment {
+  const info = daemon ?? readDaemonInfo();
 
-  return platform === 'win32' || platform === 'darwin'
-    ? { host: 'docker-desktop', homeDir }
-    : { host: 'linux-engine', homeDir };
+  return classifyDaemonEnvironment({
+    daemonIsDockerDesktop: info?.isDockerDesktop ?? false,
+    platform: osDetector.platform(),
+    isWsl: osDetector.isWsl(),
+    homeDir: osDetector.homeDir()
+  });
 }
 
 /** The platform default from spec 6.2, ignoring any override. */
 export function platformDaemonPath(environment: DaemonEnvironment): string {
-  return environment.host === 'docker-desktop'
-    ? path.join(environment.homeDir, '.docker', 'daemon.json')
-    : '/etc/docker/daemon.json';
+  if (environment.host === 'docker-desktop') {
+    return path.join(environment.homeDir, '.docker', 'daemon.json');
+  }
+
+  if (environment.host === 'linux-engine') {
+    return '/etc/docker/daemon.json';
+  }
+
+  // **Empty on purpose.** There is no honest default for `elsewhere`, and the
+  // one this used to return — this filesystem's `~/.docker/daemon.json`, or
+  // `/etc/docker/daemon.json` — is a file that daemon never reads. Everything
+  // that writes refuses on an empty path (see `daemon-file.ts`), and everything
+  // that displays says so rather than printing a path nobody can use.
+  return '';
 }
 
 export interface RestartPlanOptions {
@@ -174,6 +241,14 @@ export function platformRestartPlan(
       ],
       allowManualFallback: false
     };
+  }
+
+  if (environment.host === 'elsewhere') {
+    // Whatever restarts that daemon lives where that daemon lives. Handing the
+    // step back is the same answer spec 6.2 already gives for Colima, OrbStack
+    // and the rest: `RUNESTONE_DNS_RESTART_CMD` is where a user who knows the
+    // command says so.
+    return { host: environment.host, steps: [], allowManualFallback: true };
   }
 
   // **Whether Docker Desktop may be restarted automatically depends on its

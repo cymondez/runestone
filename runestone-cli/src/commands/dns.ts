@@ -132,7 +132,13 @@ export function printDnsStatus(report: DnsStatusReport): void {
   }
 
   logger.info(t('dns.status.section.daemon'));
-  line(t('dns.status.daemon.path', { path: report.daemon.path }));
+  if (report.daemon.path === '') {
+    // Host `elsewhere`: there is no path, and printing an empty one — or the
+    // platform default this used to guess — is the silent wrong answer.
+    warn(t('dns.status.daemon.unknownPath'));
+  } else {
+    line(t('dns.status.daemon.path', { path: report.daemon.path }));
+  }
   if (!report.daemon.exists) {
     line(t('dns.status.daemon.missing'));
   } else if (report.daemon.error) {

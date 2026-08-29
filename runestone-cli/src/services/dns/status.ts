@@ -15,6 +15,8 @@ import {
   DockerRestartPlan,
   ResolutionSource,
   activeOverrides,
+  DaemonEnvironment,
+  detectDaemonEnvironment,
   resolveDaemonConfigTarget,
   resolveDockerRestartPlan,
   sameDaemonPath
@@ -84,12 +86,19 @@ export interface DnsStatusReport {
 }
 
 export interface DnsStatusDependencies {
+  /**
+   * Which machine this is (spec 6.2). Injectable because resolving it probes
+   * `docker info`: a test that cannot state its own machine ends up asserting
+   * whatever machine the suite happens to run on.
+   */
+  environment: () => DaemonEnvironment;
   readDaemon: (path: string) => { text: string; exists: boolean };
   readRecord: () => DnsOwnershipState | undefined;
   listContainers: (composePath: string) => DockerContainer[];
 }
 
 export const defaultDnsStatusDependencies: DnsStatusDependencies = {
+  environment: () => detectDaemonEnvironment(),
   readDaemon: (path) => {
     const result = readDaemonConfig(path);
     return { text: result.text, exists: result.existed };
@@ -112,8 +121,9 @@ export function buildDnsStatusReport(
 ): DnsStatusReport {
   const deps = { ...defaultDnsStatusDependencies, ...dependencies };
 
-  const target = resolveDaemonConfigTarget();
-  const restart = resolveDockerRestartPlan();
+  const environment = deps.environment();
+  const target = resolveDaemonConfigTarget(environment);
+  const restart = resolveDockerRestartPlan(environment);
   const record = deps.readRecord();
 
   let exists = false;

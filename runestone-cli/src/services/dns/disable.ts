@@ -5,6 +5,8 @@ import { Identification, OwnedEntry, readDnsArray, removeOwnedEntries } from './
 import { deleteDaemonConfig, readDaemonConfig, writeDaemonConfig } from './daemon-file';
 import {
   DockerRestartPlan,
+  DaemonEnvironment,
+  detectDaemonEnvironment,
   resolveDaemonConfigTarget,
   resolveDockerRestartPlan,
   sameDaemonPath
@@ -60,11 +62,18 @@ export interface DisablePlan {
 }
 
 export interface PlanDependencies {
+  /**
+   * Which machine this is (spec 6.2). Injectable because resolving it probes
+   * `docker info`: a test that cannot state its own machine ends up asserting
+   * whatever machine the suite happens to run on.
+   */
+  environment: () => DaemonEnvironment;
   readDaemon: (path: string) => { text: string; existed: boolean };
   readRecord: () => DnsOwnershipState | undefined;
 }
 
 export const defaultPlanDependencies: PlanDependencies = {
+  environment: () => detectDaemonEnvironment(),
   readDaemon: readDaemonConfig,
   readRecord: () => toolState.readDnsState()
 };
@@ -116,8 +125,9 @@ export function planDisable(
   dependencies: Partial<PlanDependencies> = {}
 ): DisablePlan {
   const deps = { ...defaultPlanDependencies, ...dependencies };
-  const target = resolveDaemonConfigTarget();
-  const restartPlan = resolveDockerRestartPlan();
+  const environment = deps.environment();
+  const target = resolveDaemonConfigTarget(environment);
+  const restartPlan = resolveDockerRestartPlan(environment);
   const record = deps.readRecord();
   const { targets, source } = resolveDisableTargets(record, options);
   const blockers: DisableBlocker[] = [];
