@@ -57,9 +57,15 @@ The reason kind 1 and kind 2 need the mapping at all is the same: their public a
 
 The cost is confined to kind 2, and it is real: a container can no longer use `10-0-0-5.traefik.me` to reach `10.0.0.5`, because the whole zone now answers with the Runestone host. To keep the address-decoding, remove `traefik.me.crt` and `traefik.me.key` from the certs directory, or write your own rule in `dns/custom.conf`, which Runestone never overwrites.
 
-## IPv4 only, deliberately
+## IPv4 only, and why
 
-**Runestone's DNS feature is IPv4 end to end.** This is not an oversight to be tidied up later; it is a boundary, and here is the whole chain that makes it one:
+**This is a scope decision, taken up front. It is not something the implementation happened to end up doing.**
+
+IPv4 is the common denominator: every environment Runestone targets has it, and it behaves the same way in all of them. IPv6 is not like that — whether it is there at all depends on the host, on the network, and on whether Docker itself was started with it enabled, and each of those can differ from one developer's machine to the next. Supporting it would mean supporting that whole matrix. **So the package targets IPv4 scenarios only**, deliberately, to keep a local development tool out of a class of complexity it has no reason to inherit. The DNS feature is simply where the decision is most visible.
+
+It is a boundary, not a gap waiting to be filled. Anyone who wants to move it should start with "which environments am I now promising to support", not with "let me add an AAAA answer".
+
+### How the decision shows up in the implementation
 
 1. **The Target IP is resolved as IPv4 by construction** — `getent ahostsv4 host.docker.internal`, run inside a container (spec 10.1).
 2. **The daemon entry, the bind address and the published port are all IPv4** — an address in the daemon's `dns` array, `172.17.0.1` or `0.0.0.0` for the bind, `53/tcp` and `53/udp`.
