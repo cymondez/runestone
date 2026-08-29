@@ -66,6 +66,21 @@ docker ps
 
 如果那個容器停了、正在被重建、或還在等 image 拉取，整台機器的容器都可能什麼都解析不到。唯一能緩解這件事的選項見 [備援設定](#11-備援項目)。
 
+### 3a. 每一張憑證的網域都會在本機被回答，連同它的子網域
+
+`dns` 容器會為你 Runestone `certs` 目錄裡的**每一張憑證**產生一條 mapping：該網域，以及它底下任意深度的每一個子網域。所以一張 `example.test` 的憑證，會讓 `example.test`、`app.example.test`、`a.b.c.example.test` 全部答成你主機的位址——對這台機器上的每一個 container 都是，不管那個名稱在公開網際網路上解析成什麼。
+
+這正是這個功能本身。但當憑證涵蓋的是一個在公開網際網路上真實存在的網域時，這件事值得知道：在 container 內，公開的答案已經不再適用。
+
+**`traefik.me` 就是會踩到的那個例子。** Runestone 附帶一張 `*.traefik.me` 憑證，而 [traefik.me](https://traefik.me/) 是一個「從名稱解出位址」的公開 DNS 服務——`10.0.0.1.traefik.me` 與 `10-0-0-1.traefik.me` 都解析到 `10.0.0.1`，其餘名稱則解析到 `127.0.0.1`。
+
+| 從哪裡查 | `mysite.traefik.me` | `10-0-0-5.traefik.me` |
+| --- | --- | --- |
+| 你的主機（Runestone 完全沒動） | `127.0.0.1` | `10.0.0.5` |
+| container 內、DNS 已啟用 | 你主機的位址 | **你主機的位址**，不是 `10.0.0.5` |
+
+第一欄正是我們要這條 mapping 的理由：`127.0.0.1` 在 container 內指的是 container 自己，所以沒有它的話，`traefik.me` 名稱從 container 裡根本沒用。第二欄則是代價：container 再也不能用 `<ip>.traefik.me` 去連那個位址。如果你需要那個用法，就把 `traefik.me.crt` 從 certs 目錄移掉，或在 `dns/custom.conf` 裡加上你自己的規則——那個檔案 Runestone 永遠不會覆寫。
+
 ### 4. 主機的 53 埠會被佔用
 
 `dns` 容器會發佈 53 埠，**TCP 與 UDP 都要**。如果你機器上已經有別的東西佔著它，服務就起不來——而 Runestone 會在碰到 daemon 設定之前就告訴你。

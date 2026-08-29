@@ -66,6 +66,21 @@ This is the cost that is easy to underestimate. After enabling, **every DNS quer
 
 If that container stops, is being recreated, or is waiting on an image pull, containers across the whole machine may be unable to resolve anything. See [the fallback setting](#11-a-fallback-entry) for the one option that softens this.
 
+### 3a. Every certificate's domain is answered locally, including its subdomains
+
+The `dns` container maps **one entry per certificate** in your Runestone `certs` directory: the domain, and every subdomain of it however deep. So a certificate for `example.test` makes `example.test`, `app.example.test` and `a.b.c.example.test` all answer with your host's address — for every container on the machine, whatever that name resolves to publicly.
+
+That is the feature. It is also worth knowing when a certificate covers a domain that is real on the public internet, because inside containers the public answer no longer applies.
+
+**`traefik.me` is the case where this bites.** Runestone ships a certificate for `*.traefik.me`, and [traefik.me](https://traefik.me/) is a public DNS service that decodes an address out of the name — `10.0.0.1.traefik.me` and `10-0-0-1.traefik.me` both resolve to `10.0.0.1`, and anything else resolves to `127.0.0.1`.
+
+| From | `mysite.traefik.me` | `10-0-0-5.traefik.me` |
+| --- | --- | --- |
+| Your host (unchanged by Runestone) | `127.0.0.1` | `10.0.0.5` |
+| Inside a container, DNS enabled | your host's address | **your host's address**, not `10.0.0.5` |
+
+The first column is why the mapping is wanted: `127.0.0.1` inside a container means the container itself, so without it a `traefik.me` name is useless from a container. The second is the cost: a container can no longer use `<ip>.traefik.me` to reach that address. If you need that, remove `traefik.me.crt` from your certs directory, or add your own rule to `dns/custom.conf`, which Runestone never overwrites.
+
 ### 4. Port 53 on the host is occupied
 
 The `dns` container publishes port 53, **both TCP and UDP**. If something else on your machine already holds it, the service will not start — and Runestone will tell you so before it touches the daemon configuration.

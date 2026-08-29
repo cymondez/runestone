@@ -130,10 +130,6 @@ rules=$(printf '%s' "$managed" | grep '^address=/')
 
 for domain in $FIXTURE_MAPPED; do
     expect_contains "maps ${domain}" "$rules" "address=/${domain}/${TARGET_IP}"
-    # Without this, AAAA for a mapped domain is forwarded upstream: a domain
-    # that also exists publicly hands containers its public IPv6, which glibc
-    # then prefers over the address we answered. Measured against traefik.me.
-    expect_contains "is authoritative for ${domain}, so AAAA cannot leak upstream"         "$(printf '%s' "$managed" | grep '^local=/')" "local=/${domain}/"
 done
 expect_absent "excludes rootCA.crt" "$rules" "rootCA"
 expect_absent "excludes a single-label filename" "$rules" "nodot"

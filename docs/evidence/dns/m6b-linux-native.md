@@ -148,32 +148,53 @@ example.com                                2606:4700:10::ac42:93f3   (forwarded 
 
 Every certificate's domain, every subdomain of it however deep, and nothing else.
 
-## The AAAA leak
+## A finding I got wrong, and what is actually true
 
-This is the finding that a real machine gave up and no unit test would have.
+I reported an AAAA leak here: that `address=/domain/<ipv4>` answers A only, that the AAAA for the same name was forwarded upstream, and that containers asking for `traefik.me` were therefore being sent to a public address. I added a `local=/domain/` line to the image to fix it.
 
-Runestone ships a certificate for `traefik.me`, so it is mapped like any other. `traefik.me` is also a **real public wildcard DNS service** — it exists on the internet, with AAAA records.
-
-```
-$ nslookup -type=A    traefik.me 172.17.0.1  →  172.17.0.1
-$ nslookup -type=AAAA traefik.me 172.17.0.1  →  2606:50c0:8001::153
-$ getent hosts traefik.me                    →  2606:50c0:8001::153
-```
-
-`address=/domain/<ipv4>` answers **A only**. The AAAA for the same name was forwarded upstream and answered with the public address — and glibc's address selection prefers that AAAA over the A we answered. So a container asking for a domain Runestone holds a certificate for was being sent to the public internet, on a machine where DNS was working exactly as designed.
-
-The fix is one line per domain: `local=/domain/` makes this resolver authoritative for the zone, so a type it does not answer is NODATA rather than a question passed upstream.
+**It does not reproduce, and the fix has been reverted.** Re-measured against the real service, with the `local=` lines stripped from the running resolver — exactly the configuration that was supposedly leaking — and with a control proving that forwarding worked at all:
 
 ```
-local=/traefik.me/
-address=/traefik.me/172.17.0.1
+control:  dig AAAA google.com   →  2404:6800:4008:c1b::66 ...   (forwarding works)
 
-$ nslookup -type=AAAA traefik.me 172.17.0.1  →  (no answer)
-$ getent hosts traefik.me                    →  172.17.0.1
-$ getent hosts example.com                   →  2606:4700:10::6814:179a   (still forwarded)
+address= only, no local=:
+  A      traefik.me            →  172.17.0.1
+  AAAA   traefik.me            →  (nothing)
+  TXT    traefik.me            →  (nothing)
+  MX     traefik.me            →  (nothing)
+  HTTPS  traefik.me            →  (nothing)
+
+$ docker run --rm alpine:3.20 getent hosts traefik.me
+172.17.0.1        traefik.me
 ```
 
-`docker/dns/test/verify-image.sh` now asserts the `local=` line for every mapped domain. 34 checks, all passing on this machine.
+`address=/domain/<ipv4>` already makes dnsmasq authoritative for the whole name: A is answered, every other type is NODATA, and nothing goes upstream. Adding `local=/domain/` changed **no** record type — measured one at a time, with and without it.
+
+**How I got it wrong** is worth recording, because it was a method failure rather than a typo. The original reading came from a before/after in which I changed two things at once: I rebuilt the image *and* recreated the container between the two measurements, so the "before" and the "after" were not the same resolver. I had no control proving that forwarding worked, and the "after" was consistent with a fix that did nothing. A single-variable A/B, which is what the retest above is, gives the opposite answer.
+
+## What is actually true about `traefik.me`, and it matters more
+
+[traefik.me](https://traefik.me/) is a public DNS service that **decodes an address out of the name**:
+
+| name | public answer |
+| --- | --- |
+| `10.0.0.1.traefik.me`, `10-0-0-1.traefik.me` | `10.0.0.1` |
+| `www.10.0.0.1.traefik.me` | `10.0.0.1` |
+| `mysite.traefik.me` | `127.0.0.1` |
+| `traefik.me` itself | GitHub Pages — the project's documentation site |
+
+Runestone ships a certificate for `*.traefik.me` (locally issued by this machine's mkcert CA, not the project's), so under the rule that every certificate domain becomes a mapping, **the whole `traefik.me` zone is answered with the Runestone host for every container on the machine**:
+
+```
+$ docker run --rm alpine:3.20 getent hosts 10-0-0-5.traefik.me
+172.17.0.1        10-0-0-5.traefik.me
+```
+
+That address should be `10.0.0.5`. The address-decoding is the entire point of the service, and Runestone overrides it — not for the developer's own machine, whose resolver is untouched, but for every container on it.
+
+**Half of that is the feature working.** `mysite.traefik.me` publicly answers `127.0.0.1`, which inside a container means the container itself, so without the mapping a `traefik.me` name is useless from a container and with it the name reaches Traefik. That is presumably why the certificate exists.
+
+The other half is a real cost that nobody chose: a container can no longer use `<ip>.traefik.me` to reach that IP. It is not a bug in the mapping code — it is what "every certificate domain becomes a mapping" means when the certificate covers a wildcard DNS service. It belongs in the user documentation, and it is [there now](../../DNS.md).
 
 ## `disable`, after a real restart — the half Windows left unverified
 

@@ -360,7 +360,8 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 - **規格 9.3 的提權寫入根本還不存在。** daemon 檔的寫入是普通 `fs` 寫入，沒有任何 sudo；在這台機器上，一般使用者的 `dns enable` 根本寫不進去。現在實作了，而且保住直接寫入原有的兩個性質：內容在要求提權之前就已驗證，目標只透過「同目錄內 rename」被取代。提權被拒時中止、不寫入、不留殘骸——通過條件已量測。
 - **安全網守錯了檔案。** 預設值在所有平台都是 `${HOME}/.docker/daemon.json`（Docker Desktop 的檔案），於是它會一路回報「機器與快照相符」，而真正該守的 `/etc/docker/daemon.json` 不在監看範圍內。連帶修掉還原時的提權缺口。
 - **測試套件從來沒有在 Linux 上跑過**：4 個套件、28 個測試失敗。全部是「繼承主機平台」的 fixture，其中一個帶出真正的產品毛病——`sameDaemonPath` 用主機的分隔符規則去比較「daemon 所在平台」的路徑。現在 568 全過，沒有任何 skip。
-- **AAAA 外洩。** `address=/domain/<ipv4>` 只回答 A；同名的 AAAA 被轉發上游，而 glibc 偏好那筆 AAAA。對 `traefik.me`（Runestone 附憑證、同時是真實公開服務）而言，container 因此被送去公開網際網路。修法是每個網域加一行 `local=/domain/`，讓 resolver 對該 zone 具權威性。這條在 Docker Desktop 上同樣成立，不是 Linux 專屬。
+- **一個我回報錯、之後撤回的發現。** 我說 `address=` 只回答 A、同名 AAAA 會外洩到公開位址，並為此加了 `local=/domain/`。**重現不出來，已還原**：`address=/domain/<ipv4>` 本身就讓 dnsmasq 對整個名稱具權威性，A 之外一律 NODATA，加不加 `local=` 對每一種 record 型別都毫無差別。錯在方法——當初的前後對照同時改了 image 與 container，而且沒有對照組證明轉發是通的。
+- **`traefik.me` 的真正影響，這才是該記的那一條。** 它是一個「從名稱解出位址」的公開 DNS 服務（`10-0-0-5.traefik.me` → `10.0.0.5`）。Runestone 附有 `*.traefik.me` 憑證，於是整個 zone 對全機 container 都被答成 Runestone 主機——`mysite.traefik.me` 因此可用（公開答案是 container 自己的 `127.0.0.1`），但 `<ip>.traefik.me` 也就再也連不到那個 IP。這不是 bug，是「每張憑證的網域都變成 mapping」碰上萬用 DNS 服務的必然結果，已寫進使用者文件。
 - **`.env` 的回滾並不是它宣稱的那樣**：它從「已合併旗標的 config」挑鍵寫回，因此還原的是旗標的值而不是使用者的；`DNS_DAEMON_FALLBACK` 甚至不在清單裡。改成文字進、文字出。
 
 **兩個 Windows 留下的懸案都定案了。** `restart: unless-stopped` **撐得過 daemon 重啟**（實測兩次，兩個容器都自己回來），Windows 觀察到的是應用程式重啟，不是同一回事；`disable` 在真實重啟之後也確實把機器還原——檔案是 Runestone 建的，移除項目後剩 `{}`，因此連檔案一起移除。

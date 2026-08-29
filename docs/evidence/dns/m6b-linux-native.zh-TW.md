@@ -148,32 +148,53 @@ example.com                                2606:4700:10::ac42:93f3   （轉發�
 
 每一張憑證的網域、它底下任意深度的子網域，其他一律不動。
 
-## AAAA 外洩
+## 我搞錯的一個發現，以及真正的事實
 
-這是真機給出、而任何單元測試都不會給的發現。
+我在這裡回報過一個 AAAA 外洩：`address=/domain/<ipv4>` 只回答 A、同名的 AAAA 被轉發上游、因此 container 查 `traefik.me` 會被送去公開位址。我還為此在 image 裡加了一行 `local=/domain/`。
 
-Runestone 附帶一張 `traefik.me` 的憑證，所以它和其他網域一樣被納入 mapping。而 `traefik.me` 同時是一個**真實的公開萬用 DNS 服務**——它存在於網際網路上，而且有 AAAA 記錄。
-
-```
-$ nslookup -type=A    traefik.me 172.17.0.1  →  172.17.0.1
-$ nslookup -type=AAAA traefik.me 172.17.0.1  →  2606:50c0:8001::153
-$ getent hosts traefik.me                    →  2606:50c0:8001::153
-```
-
-`address=/domain/<ipv4>` 只回答 **A**。同一個名字的 AAAA 被轉發給上游，並以公開位址作答——而 glibc 的位址選擇會**偏好**那筆 AAAA，勝過我們回答的 A。於是在一台 DNS 完全照設計運作的機器上，container 查一個 Runestone 持有憑證的網域，卻被送去了公開網際網路。
-
-修法是每個網域多一行：`local=/domain/` 讓這個 resolver 對該 zone 具權威性，因此它不回答的類型是 NODATA，而不是一個被丟給上游的問題。
+**它重現不出來，那個修改已經還原。** 我對著真實服務重新量測：把執行中 resolver 的 `local=` 行拿掉——正是「據說會外洩」的那個設定——並加上一個「轉發確實有效」的對照組：
 
 ```
-local=/traefik.me/
-address=/traefik.me/172.17.0.1
+對照組：dig AAAA google.com   →  2404:6800:4008:c1b::66 ...   （轉發正常）
 
-$ nslookup -type=AAAA traefik.me 172.17.0.1  →  （無回答）
-$ getent hosts traefik.me                    →  172.17.0.1
-$ getent hosts example.com                   →  2606:4700:10::6814:179a   （仍然轉發）
+只有 address=、沒有 local=：
+  A      traefik.me            →  172.17.0.1
+  AAAA   traefik.me            →  （沒有回答）
+  TXT    traefik.me            →  （沒有回答）
+  MX     traefik.me            →  （沒有回答）
+  HTTPS  traefik.me            →  （沒有回答）
+
+$ docker run --rm alpine:3.20 getent hosts traefik.me
+172.17.0.1        traefik.me
 ```
 
-`docker/dns/test/verify-image.sh` 現在會對每個被 mapping 的網域檢查那行 `local=`。34 項檢查，在這台機器上全數通過。
+`address=/domain/<ipv4>` 本身就已經讓 dnsmasq 對整個名稱具權威性：A 由它回答，其他型別一律 NODATA，什麼都不會送上游。加上 `local=/domain/` **沒有改變任何一種** record 型別——逐一量測、有無皆同。
+
+**我是怎麼弄錯的**值得記下來，因為那是方法上的失誤，不是筆誤。最初那次讀數來自一個「前後對照」，而我在兩次量測之間同時改了兩件事：重建了 image**並且**重建了 container，所以「之前」與「之後」根本不是同一個 resolver。我沒有任何對照組證明轉發是通的，而「之後」的結果和「這個修改什麼都沒做」完全相容。上面那種單一變因的 A/B，給出的是相反的答案。
+
+## `traefik.me` 真正的運作方式，而且它更重要
+
+[traefik.me](https://traefik.me/) 是一個公開 DNS 服務，它**從名稱裡解出位址**：
+
+| 名稱 | 公開回答 |
+| --- | --- |
+| `10.0.0.1.traefik.me`、`10-0-0-1.traefik.me` | `10.0.0.1` |
+| `www.10.0.0.1.traefik.me` | `10.0.0.1` |
+| `mysite.traefik.me` | `127.0.0.1` |
+| `traefik.me` 本身 | GitHub Pages——該專案的說明網站 |
+
+Runestone 附帶一張 `*.traefik.me` 憑證（由這台機器的 mkcert CA 本地簽發，不是該專案發的），因此在「每一張憑證的網域都變成一條 mapping」這條規則下，**整個 `traefik.me` zone 對這台機器上的每一個 container 都會被答成 Runestone 主機**：
+
+```
+$ docker run --rm alpine:3.20 getent hosts 10-0-0-5.traefik.me
+172.17.0.1        10-0-0-5.traefik.me
+```
+
+那個位址應該要是 `10.0.0.5`。位址解碼正是這個服務存在的全部意義，而 Runestone 蓋掉了它——不是在開發者自己的機器上（主機的 resolver 完全沒被動到），而是在這台機器上的每一個 container 裡。
+
+**其中一半其實是功能正常。** `mysite.traefik.me` 公開回答的是 `127.0.0.1`，那在 container 內部指的是 container 自己，所以沒有 mapping 的話，`traefik.me` 名稱從 container 裡根本沒用；有了 mapping，它才會打到 Traefik。這大概正是那張憑證存在的理由。
+
+另一半則是沒有人選擇過的實際代價：container 再也不能用 `<ip>.traefik.me` 去連那個 IP。這不是 mapping 程式碼的 bug——這就是「每一張憑證的網域都變成一條 mapping」在憑證涵蓋一個萬用 DNS 服務時的必然結果。它該寫進使用者文件，而它[現在在那裡了](../../DNS.zh-TW.md)。
 
 ## `disable`，在真實重啟之後——Windows 留下沒驗的那一半
 
