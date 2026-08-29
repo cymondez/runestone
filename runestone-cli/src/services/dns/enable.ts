@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import { RunestoneEnv, envLoader } from '../../utils/env-loader';
 import { osDetector } from '../../utils/os-detector';
 import { ensureProjectFiles } from '../../utils/project-files';
@@ -330,6 +331,10 @@ export function planEnable(
 
 export interface EnableApplyDependencies {
   writeEnv: (path: string, values: Record<string, string>) => void;
+  /** The `.env` exactly as it is on disk, or undefined when there is no file. */
+  readEnvText: (path: string) => string | undefined;
+  /** Puts that text back, byte for byte; removes the file when there was none. */
+  restoreEnvText: (path: string, text: string | undefined) => void;
   ensureFiles: (config: RunestoneEnv) => void;
   syncUiRoute: (config: RunestoneEnv) => boolean;
   startService: (composePath: string) => void;
@@ -343,6 +348,15 @@ export interface EnableApplyDependencies {
 
 export const defaultEnableApplyDependencies: EnableApplyDependencies = {
   writeEnv: (path, values) => envLoader.write(path, values),
+  readEnvText: (path) => (fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : undefined),
+  restoreEnvText: (path, text) => {
+    if (text === undefined) {
+      fs.rmSync(path, { force: true });
+      return;
+    }
+
+    fs.writeFileSync(path, text, 'utf8');
+  },
   ensureFiles: (config) => {
     ensureProjectFiles(config);
   },
@@ -390,14 +404,15 @@ export function applyEnable(
   }
 
   const deps = { ...defaultEnableApplyDependencies, ...dependencies };
-  const previousEnv: Record<string, string> = {
-    DNS_ENABLE: config.DNS_ENABLE,
-    DNS_HOST_IP: config.DNS_HOST_IP,
-    DNS_BIND_IP: config.DNS_BIND_IP,
-    DNS_BIND_PREFIX: config.DNS_BIND_PREFIX,
-    DNS_UPSTREAM: config.DNS_UPSTREAM,
-    DNS_CONTAINER_RESOLVER: config.DNS_CONTAINER_RESOLVER
-  };
+  // **The file, not a list of keys read back out of the merged config.** The
+  // rollback used to rewrite six named keys from `config` — which already has
+  // `--upstream` and `--no-fallback` merged into it, so undoing a failed run
+  // wrote the flag's value back rather than the user's. It also could not
+  // remove a key that was not in the file to begin with, so a failed enable on
+  // a machine that had never used DNS left seven new lines behind while
+  // reporting that everything had been undone. Text in, text out: the same
+  // property the daemon file has.
+  const previousEnvText = deps.readEnvText(config.ENV_PATH);
 
   const result: EnableResult = {
     stage: 'files',
@@ -411,7 +426,7 @@ export function applyEnable(
 
   const undoFiles = (): void => {
     try {
-      deps.writeEnv(config.ENV_PATH, previousEnv);
+      deps.restoreEnvText(config.ENV_PATH, previousEnvText);
       deps.syncUiRoute(config);
     } catch (thrown) {
       result.rollbackError = thrown instanceof Error ? thrown.message : String(thrown);

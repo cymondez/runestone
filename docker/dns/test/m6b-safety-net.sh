@@ -33,11 +33,28 @@
 set -u
 
 STORE=${RUNESTONE_M6B_STORE:-"${HOME}/.runestone-m6b-safety"}
-DAEMON=${RUNESTONE_DNS_DAEMON_PATH:-"${HOME}/.docker/daemon.json"}
+# Resolved below, once platform_daemon_path() is defined: the default is not
+# the same file on every platform, and guessing it is the whole failure mode
+# this script exists to prevent.
+DAEMON=${RUNESTONE_DNS_DAEMON_PATH:-}
 TOOL_STATE=${RUNESTONE_TOOL_STATE_PATH:-"${HOME}/.runestone/runestone.config.json"}
 RESTART_TIMEOUT=${RUNESTONE_M6B_RESTART_TIMEOUT:-180}
 
 say() { echo "$*"; }
+
+# `/etc/docker/daemon.json` belongs to root, so on a native Linux engine every
+# write and every removal here needs elevation — while on Docker Desktop the
+# file is the user's own and sudo may not even exist. Deciding per operation,
+# by testing the directory, keeps one code path for both.
+as_owner() {
+    target=$1
+    shift
+    if [ -w "$(dirname "$target")" ] && { [ ! -e "$target" ] || [ -w "$target" ]; }; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
 warn() { echo "  !! $*" >&2; }
 fail() {
     echo "$*" >&2
@@ -81,6 +98,26 @@ platform_daemon_path() {
         *) echo "${HOME}/.docker/daemon.json" ;;
     esac
 }
+
+# **Measured on a native Linux engine, not assumed.** The default used to be
+# `${HOME}/.docker/daemon.json` on every platform, which is Docker Desktop's
+# file. On Ubuntu with Docker Engine that path does not exist and Docker never
+# reads it, so `capture` snapshotted a file nothing would ever change and left
+# the real `/etc/docker/daemon.json` unprotected — the safety net reporting
+# "the machine matches the snapshot" while the file it was there to guard was
+# not being watched at all.
+if [ -z "${DAEMON}" ]; then
+    DAEMON=$(platform_daemon_path)
+fi
+
+case "${DAEMON}" in
+    '<'*)
+        echo "This Linux userland's docker is Docker Desktop's, so the daemon file lives on the" >&2
+        echo "Windows or macOS side and cannot be captured from here." >&2
+        echo "Run the script there, or set RUNESTONE_DNS_DAEMON_PATH to the file you mean." >&2
+        exit 2
+        ;;
+esac
 
 wait_for_docker() {
     waited=0
@@ -230,11 +267,11 @@ cmd_restore() {
         fi
 
         if [ "$(cat "${STORE}/daemon.existed")" = "absent" ]; then
-            rm -f "$DAEMON" || fail "Could not remove ${DAEMON}"
+            as_owner "$DAEMON" rm -f "$DAEMON" || fail "Could not remove ${DAEMON}"
             say "  removed it, because it did not exist when the snapshot was taken"
         else
-            mkdir -p "$(dirname "$DAEMON")"
-            cp "${STORE}/daemon.json" "$DAEMON" || fail "Could not write ${DAEMON}"
+            as_owner "$(dirname "$DAEMON")" mkdir -p "$(dirname "$DAEMON")"
+            as_owner "$DAEMON" cp "${STORE}/daemon.json" "$DAEMON" || fail "Could not write ${DAEMON}"
         fi
 
         after=$(hash_of "$DAEMON")

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { restartDocker } from '../../../src/services/dns/docker-restart';
+import { osDetector } from '../../../src/utils/os-detector';
 import { DAEMON_PATH_OVERRIDE_ENV } from '../../../src/services/dns/daemon-target';
 import {
   LifecycleDependencies,
@@ -348,6 +349,14 @@ describe('dns lifecycle', () => {
     });
   });
   describe('doctor and the Docker Desktop restart check', () => {
+  // **This fixture is a Docker Desktop machine, so it says so.** Inheriting the
+  // host's platform made these pass on Windows and fail on Linux, where a Linux
+  // userland pointed at a Docker Desktop daemon is exactly the
+  // `docker-desktop-elsewhere` refusal — the product being right.
+    beforeEach(() => {
+      jest.spyOn(osDetector, 'platform').mockReturnValue('win32');
+    });
+
     const enabled = () => testEnv(projectDir, { DNS_ENABLE: 'true', DNS_HOST_IP: TARGET });
 
     function checkFor(desktopVersion: string | null | undefined) {

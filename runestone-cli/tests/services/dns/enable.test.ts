@@ -78,6 +78,11 @@ describe('dns enable', () => {
   const previousOverride = process.env[DAEMON_PATH_OVERRIDE_ENV];
 
   beforeEach(() => {
+  // **This fixture is a Docker Desktop machine, so it says so.** Inheriting the
+  // host's platform made these pass on Windows and fail on Linux, where a Linux
+  // userland pointed at a Docker Desktop daemon is exactly the
+  // `docker-desktop-elsewhere` refusal — the product being right.
+    jest.spyOn(osDetector, 'platform').mockReturnValue('win32');
     process.env[DAEMON_PATH_OVERRIDE_ENV] = DAEMON_PATH;
   });
 
@@ -321,6 +326,10 @@ describe('dns enable', () => {
     function spies() {
       return {
         writeEnv: jest.fn(),
+        // No `.env` on this fixture machine, so a rollback has to remove the
+        // one the run created rather than write defaults into it.
+        readEnvText: jest.fn(() => undefined),
+        restoreEnvText: jest.fn(),
         ensureFiles: jest.fn(),
         syncUiRoute: jest.fn(() => true),
         startService: jest.fn(),
@@ -384,7 +393,7 @@ describe('dns enable', () => {
       expect(result.failure).toBe('verification');
       expect(deps.writeDaemon).not.toHaveBeenCalled();
       expect(deps.stopService).toHaveBeenCalledTimes(1);
-      expect(deps.writeEnv).toHaveBeenLastCalledWith(config().ENV_PATH, expect.objectContaining({ DNS_ENABLE: 'false' }));
+      expect(deps.restoreEnvText).toHaveBeenCalledWith(config().ENV_PATH, undefined);
     });
 
     it('undoes everything when the daemon write fails', () => {

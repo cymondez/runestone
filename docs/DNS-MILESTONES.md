@@ -23,7 +23,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | M4 | `dns disable` | 2 (redirected) | T0 | — | **done** |
 | M5 | `dns enable` to `prepared` | 2 | T1 | — | **done**, real-machine gate items pending the 16.5 safety net |
 | M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | — | **done**, CI gate pending a runner |
-| M6b | Real machine and VM verification | 3 | T3 / T4 | — | **Windows done**, including the interruption; Linux outstanding |
+| M6b | Real machine and VM verification | 3 | T3 / T4 | — | **Done**: both halves, Windows and Linux, with evidence |
 | M7 | Lifecycle integration and disclosure | 3 | T1 / T2 | — | **done** |
 | M8 | Platform matrix and release | 3 | T3 / T4 | M6b, M7 | not started |
 
@@ -269,7 +269,7 @@ Running it also caught a real defect that no unit test would have: with a blocke
 
 **Gate**
 
-- [ ] On a real machine: `enable --no-restart` → inspect the diff → `disable` → the daemon file is **byte-identical** to the pre-M5 snapshot — the enable and the diff are done (M6b, against the real file, existing keys preserved). **The byte-identical claim needs restating for Docker Desktop**: it rewrites `daemon.json` itself, reordering keys and reformatting arrays, so the invariant holds across Runestone's own operations and not across a Docker Desktop restart in between
+- [x] On a real machine: `enable --no-restart` → inspect the diff → `disable` → the daemon file is **byte-identical** to the pre-M5 snapshot — **done on Linux**, where the whole cycle including a real `systemctl restart docker` left the machine with no `/etc/docker/daemon.json`, exactly as it was found (spec 9.2 step 4: Runestone created the file, so removing its entry removed the file). On Windows the enable and the diff are done against the real file with existing keys preserved. **The byte-identical claim needs restating for Docker Desktop**: it rewrites `daemon.json` itself, reordering keys and reformatting arrays, so the invariant holds across Runestone's own operations and not across a Docker Desktop restart in between
 - [x] The same cycle with a hand-added user entry present: that entry survives untouched — at the command level
 - [x] Preflight failure leaves no `.env`, service, state or daemon change behind
 - [x] Verification failure at step 3 stops the service and restores `.env`, with the daemon file never opened for writing
@@ -343,17 +343,29 @@ The risk that row guarded is real and is still handled, by asking a question tha
 **Deliverables**
 
 - [x] Docker Desktop: Target IP `192.168.65.254` confirmed, the all-interfaces bind published and answering, and `docker desktop restart` confirmed present — the restart itself is not yet exercised
-- [ ] Native Linux: `/etc/docker/daemon.json` with sudo, systemd-resolved holding `127.0.0.53`, `systemctl restart docker`
+- [x] Native Linux: `/etc/docker/daemon.json` with sudo, systemd-resolved holding `127.0.0.53`, `systemctl restart docker`
 - [x] A real port 53 conflict exercised, confirming the spec 6.1 rule that port availability is decided by starting the service and not by reading netstat — netstat said taken, TCP said free, and only starting it gave the answer
-- [x] Evidence committed under `docs/evidence/dns/` — Windows; the Linux row is still empty
+- [x] Evidence committed under `docs/evidence/dns/` — Windows and Linux
 
 **Gate**
 
 - [x] Enable → a new container's `resolv.conf` lists the Target IP first → a certificate-covered subdomain resolves to the Target IP — **done on the real machine**: `nameserver 192.168.65.254` first and the 9.7 fallback second, with all four certificate domains and their wildcards resolving through the daemon setting rather than an explicit `@server`. **The `disable` half is not verified after a real restart**: the file operation is proven, but tearing a working configuration down again was not worth another machine-wide interruption
-- [ ] Sudo failure on Linux aborts with no partial write
-- [x] The evidence log below is filled in — for Windows
+- [x] Sudo failure on Linux aborts with no partial write — measured with a `sudo` that always refuses: it aborts, no file is created, and no debris is left in `/etc/docker`
+- [x] The evidence log below is filled in — Windows and Linux
 
-**Partly landed, on Windows with Docker Desktop.** Evidence: [`docs/evidence/dns/m6b-windows-docker-desktop.md`](evidence/dns/m6b-windows-docker-desktop.md). **Nothing written to the real daemon file and Docker never restarted** — the same SHA-256 before and after, and the same 17 containers.
+**The Linux half is done, on Ubuntu 26.04 with Docker Engine 29.5.3.** Evidence: [`docs/evidence/dns/m6b-linux-native.md`](evidence/dns/m6b-linux-native.md). The whole cycle ran against the real `/etc/docker/daemon.json`, with two real dockerd restarts, and the machine was left as it was found.
+
+**What the run found is worth more than the pass conditions it was there to tick.**
+
+- **Spec 9.3's elevated write did not exist.** The daemon write was a plain `fs` write with no sudo anywhere in it, so on this machine an ordinary user's `dns enable` could not write the file at all. It is implemented now, keeping both properties of the direct write: the content is validated before elevation is asked for, and the target is only replaced by a rename inside its own directory. Refused elevation aborts, writes nothing and leaves no debris — the pass condition, measured.
+- **The safety net was watching the wrong file.** Its default was `${HOME}/.docker/daemon.json` on every platform — Docker Desktop's file — so it would have reported "the machine matches the snapshot" while `/etc/docker/daemon.json` went unwatched. Fixed, along with the elevation it needs to restore a root-owned file.
+- **The test suite had never run on Linux**: 4 suites, 28 tests failing. All fixtures inheriting the host's platform, one of which exposed a real wrinkle — `sameDaemonPath` compared a path belonging to another platform using the host's separator rules. 568 pass now, none skipped.
+- **The AAAA leak.** `address=/domain/<ipv4>` answers A only; AAAA for the same name went upstream, and glibc prefers it. For `traefik.me` — a domain Runestone ships a certificate for and a real public service — containers were being sent to the public internet. One `local=/domain/` line per domain makes the resolver authoritative for the zone. This is not Linux-specific.
+- **The `.env` rollback was not what it claimed**: it rewrote keys out of the flag-merged config, so it restored the flag's value rather than the user's, and `DNS_DAEMON_FALLBACK` was not in the list at all. Text in, text out now.
+
+**Both open Windows questions are settled.** `restart: unless-stopped` **does survive a daemon restart** — measured twice, both containers back on their own; what Windows saw was an application restart, which is not the same thing. And `disable` does restore the machine after a real restart: Runestone created the file, removing its entry left `{}`, so the file went with it.
+
+**The Windows half, with Docker Desktop.** Evidence: [`docs/evidence/dns/m6b-windows-docker-desktop.md`](evidence/dns/m6b-windows-docker-desktop.md). **Nothing written to the real daemon file and Docker never restarted** — the same SHA-256 before and after, and the same 17 containers.
 
 **Decision 1 is answered**: `docker desktop restart` exists (CLI plugin `v0.4.3`) and is synchronous unless detached. The detection and the manual fallback both stay, because the plugin is versioned separately from Docker Desktop and an older installation will not have it.
 

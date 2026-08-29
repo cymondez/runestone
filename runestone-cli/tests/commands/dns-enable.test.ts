@@ -8,6 +8,7 @@ import { DAEMON_PATH_OVERRIDE_ENV } from '../../src/services/dns/daemon-target';
 import * as p from '@clack/prompts';
 import { displayWidth } from '../../src/utils/text';
 import { t } from '../../src/i18n';
+import { osDetector } from '../../src/utils/os-detector';
 import { toolState } from '../../src/utils/tool-state';
 
 const TARGET = '192.168.65.254';
@@ -121,6 +122,11 @@ describe('dns enable command', () => {
     for (const name of tracked) {
       saved[name] = process.env[name];
     }
+  // **This fixture is a Docker Desktop machine, so it says so.** Inheriting the
+  // host's platform made these pass on Windows and fail on Linux, where a Linux
+  // userland pointed at a Docker Desktop daemon is exactly the
+  // `docker-desktop-elsewhere` refusal — the product being right.
+    jest.spyOn(osDetector, 'platform').mockReturnValue('win32');
     process.env[DAEMON_PATH_OVERRIDE_ENV] = daemonPath;
     process.env.RUNESTONE_TOOL_STATE_PATH = path.join(directory, 'runestone.config.json');
     process.env.RUNESTONE_LANG = 'en';
@@ -238,6 +244,7 @@ describe('dns enable command', () => {
 
   it('never opens the daemon file when the service does not answer', async () => {
     const before = writeDaemon(['8.8.8.8']);
+    const envBefore = fs.readFileSync(path.join(projectDir, '.env'), 'utf8');
     // First call resolves the Target IP, the second is the verification query.
     replies.containerOutputs = [TARGET, ''];
 
@@ -245,7 +252,10 @@ describe('dns enable command', () => {
 
     expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
     expect(removeServicesMock).toHaveBeenCalledTimes(1);
-    expect(fs.readFileSync(path.join(projectDir, '.env'), 'utf8')).toContain('DNS_ENABLE=false');
+    // Byte for byte, not "the DNS keys were set back to their defaults": a
+    // failed run on a machine that had never used DNS should leave no trace of
+    // it, and that is what "everything was undone" claims.
+    expect(fs.readFileSync(path.join(projectDir, '.env'), 'utf8')).toBe(envBefore);
     expect(toolState.readDnsState()).toBeUndefined();
     expect(output()).toContain('never opened');
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -289,6 +299,21 @@ describe('dns enable command', () => {
 
       expect(output()).toContain('dns[1]=10.0.0.53');
       expect(output()).toContain('+ 10.0.0.53');
+    });
+
+    it('puts the configured fallback back when the run fails', async () => {
+      // Every key the plan writes has to be in the undo snapshot. This one was
+      // not, so a failed `--no-fallback` run left the user's configured value
+      // emptied on a machine where nothing else had changed.
+      fs.appendFileSync(path.join(projectDir, '.env'), `DNS_DAEMON_FALLBACK=9.9.9.9${os.EOL}`, 'utf8');
+      writeDaemon(['8.8.8.8']);
+      upMock.mockImplementationOnce(() => {
+        throw new Error('compose refused');
+      });
+
+      await enable('--yes', '--no-restart', '--no-fallback');
+
+      expect(fs.readFileSync(path.join(projectDir, '.env'), 'utf8')).toContain('DNS_DAEMON_FALLBACK=9.9.9.9');
     });
 
     it('shows the removal when --no-fallback takes one away', async () => {

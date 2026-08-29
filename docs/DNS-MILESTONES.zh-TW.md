@@ -23,7 +23,7 @@
 | M4 | `dns disable` | 2（導向） | T0 | — | **已完成** |
 | M5 | `dns enable` 到 `prepared` | 2 | T1 | — | **已完成**，真機通過條件待 16.5 安全網 |
 | M6a | dind 載具內端到端 | 宿主 2／載具內 3 | T2 | — | **已完成**，CI 通過條件待 runner |
-| M6b | 真機與 VM 驗證 | 3 | T3／T4 | — | **Windows 已完成**，含那次中斷；Linux 尚未 |
+| M6b | 真機與 VM 驗證 | 3 | T3／T4 | — | **已完成**：Windows 與 Linux 兩半都有證據 |
 | M7 | 生命週期整合與揭露 | 3 | T1／T2 | — | **已完成** |
 | M8 | 平台矩陣與發布 | 3 | T3／T4 | M6b、M7 | 未開始 |
 
@@ -269,7 +269,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **通過條件**
 
-- [ ] 在真機上：`enable --no-restart` → 檢視 diff → `disable` → daemon 檔案與 M5 前的快照**逐位元組相同**——enable 與 diff 已完成（M6b，對真實檔案，原有鍵原封不動）。**「逐位元組相同」這個說法對 Docker Desktop 需要重述**：它會自己改寫 `daemon.json`、重排鍵、重新排版陣列，所以這個不變式在 Runestone 自身操作之間成立，但不跨越中間的一次 Docker Desktop 重啟
+- [x] 在真機上：`enable --no-restart` → 檢視 diff → `disable` → daemon 檔案與 M5 前的快照**逐位元組相同**——**已在 Linux 上完成**：整個循環（含一次真實的 `systemctl restart docker`）結束後，機器上沒有 `/etc/docker/daemon.json`，與開始前一模一樣（規格 9.2 第 4 步：檔案是 Runestone 建的，移除項目後連檔案一併移除）。Windows 上則是 enable 與 diff 已對真實檔案完成、原有鍵原封不動。**「逐位元組相同」這個說法對 Docker Desktop 需要重述**：它會自己改寫 `daemon.json`、重排鍵、重新排版陣列，所以這個不變式在 Runestone 自身操作之間成立，但不跨越中間的一次 Docker Desktop 重啟
 - [x] 同樣的循環，但事先手動加入一筆使用者項目：該項目完好未被動到——在指令層
 - [x] 前置檢查失敗時不留下任何 `.env`、服務、狀態或 daemon 變更
 - [x] 第 3 步驗證失敗時停掉服務並還原 `.env`，且 daemon 檔案從未被開啟寫入
@@ -343,17 +343,29 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 **交付項目**
 
 - [x] Docker Desktop：Target IP `192.168.65.254` 已確認、全介面綁定已發佈且會回應、`docker desktop restart` 已確認存在——重啟本身尚未實際執行
-- [ ] 原生 Linux：需 sudo 的 `/etc/docker/daemon.json`、佔著 `127.0.0.53` 的 systemd-resolved、`systemctl restart docker`
+- [x] 原生 Linux：需 sudo 的 `/etc/docker/daemon.json`、佔著 `127.0.0.53` 的 systemd-resolved、`systemctl restart docker`
 - [x] 實際觸發一次 53 port 衝突，確認規格 6.1 那條規則——port 可用性由「啟動服務」決定，不由讀 netstat 決定；netstat 說被佔、只看 TCP 說是空的，只有真的啟動才給出答案
-- [x] 證據存入 `docs/evidence/dns/`——Windows 部分；Linux 那一列仍是空的
+- [x] 證據存入 `docs/evidence/dns/`——Windows 與 Linux 兩份
 
 **通過條件**
 
 - [x] 啟用 → 新容器 `resolv.conf` 首筆為 Target IP → 憑證涵蓋的子網域解析為 Target IP——**已在真機完成**：第一筆是 `nameserver 192.168.65.254`、第二筆是 9.7 備援，四個憑證網域與其萬用子網域全部透過 daemon 設定解析，而不是明確指定 `@server`。**`disable` 那一半在真實重啟之後尚未驗證**：檔案操作已經證明，但為此把一份正在運作的設定再拆掉，不值得再中斷整台機器一次
-- [ ] Linux 上 sudo 失敗時中止且未部分寫入
-- [x] 下方證據記錄已填寫——Windows 部分
+- [x] Linux 上 sudo 失敗時中止且未部分寫入——以一個一律拒絕的 `sudo` 實測：中止、沒有檔案、`/etc/docker` 裡沒有殘骸
+- [x] 下方證據記錄已填寫——Windows 與 Linux
 
-**部分落地，於 Windows + Docker Desktop。** 證據：[`docs/evidence/dns/m6b-windows-docker-desktop.zh-TW.md`](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)。**沒有寫過真實 daemon 檔，Docker 也沒有重啟過**——前後 SHA-256 相同，container 也是同樣 17 個。
+**Linux 那一半已完成，於 Ubuntu 26.04 + Docker Engine 29.5.3。** 證據：[`docs/evidence/dns/m6b-linux-native.zh-TW.md`](evidence/dns/m6b-linux-native.zh-TW.md)。整個循環對著真實的 `/etc/docker/daemon.json` 跑，真的重啟了兩次 dockerd，機器最後回到原樣。
+
+**這一輪抓到的東西比通過條件本身更值錢。**
+
+- **規格 9.3 的提權寫入根本還不存在。** daemon 檔的寫入是普通 `fs` 寫入，沒有任何 sudo；在這台機器上，一般使用者的 `dns enable` 根本寫不進去。現在實作了，而且保住直接寫入原有的兩個性質：內容在要求提權之前就已驗證，目標只透過「同目錄內 rename」被取代。提權被拒時中止、不寫入、不留殘骸——通過條件已量測。
+- **安全網守錯了檔案。** 預設值在所有平台都是 `${HOME}/.docker/daemon.json`（Docker Desktop 的檔案），於是它會一路回報「機器與快照相符」，而真正該守的 `/etc/docker/daemon.json` 不在監看範圍內。連帶修掉還原時的提權缺口。
+- **測試套件從來沒有在 Linux 上跑過**：4 個套件、28 個測試失敗。全部是「繼承主機平台」的 fixture，其中一個帶出真正的產品毛病——`sameDaemonPath` 用主機的分隔符規則去比較「daemon 所在平台」的路徑。現在 568 全過，沒有任何 skip。
+- **AAAA 外洩。** `address=/domain/<ipv4>` 只回答 A；同名的 AAAA 被轉發上游，而 glibc 偏好那筆 AAAA。對 `traefik.me`（Runestone 附憑證、同時是真實公開服務）而言，container 因此被送去公開網際網路。修法是每個網域加一行 `local=/domain/`，讓 resolver 對該 zone 具權威性。這條在 Docker Desktop 上同樣成立，不是 Linux 專屬。
+- **`.env` 的回滾並不是它宣稱的那樣**：它從「已合併旗標的 config」挑鍵寫回，因此還原的是旗標的值而不是使用者的；`DNS_DAEMON_FALLBACK` 甚至不在清單裡。改成文字進、文字出。
+
+**兩個 Windows 留下的懸案都定案了。** `restart: unless-stopped` **撐得過 daemon 重啟**（實測兩次，兩個容器都自己回來），Windows 觀察到的是應用程式重啟，不是同一回事；`disable` 在真實重啟之後也確實把機器還原——檔案是 Runestone 建的，移除項目後剩 `{}`，因此連檔案一起移除。
+
+**Windows + Docker Desktop 那一半。** 證據：[`docs/evidence/dns/m6b-windows-docker-desktop.zh-TW.md`](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)。**沒有寫過真實 daemon 檔，Docker 也沒有重啟過**——前後 SHA-256 相同，container 也是同樣 17 個。
 
 **裁決 1 有答案了**：`docker desktop restart` 存在（CLI plugin `v0.4.3`），除非指定 detach 否則是同步的。偵測與手動備援兩者都保留，因為這個 plugin 的版本與 Docker Desktop 分開，較舊的安裝不會有它。
 

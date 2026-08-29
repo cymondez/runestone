@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  ElevationRunner,
   deleteDaemonConfig,
   readDaemonConfig,
   writeDaemonConfig
@@ -122,4 +123,108 @@ describe('daemon configuration file', () => {
       expect(() => deleteDaemonConfig(daemonPath)).not.toThrow();
     });
   });
+  describe('the elevated write (spec 9.3)', () => {
+    // On a native Linux engine `/etc/docker/daemon.json` belongs to root, so
+    // the write goes through sudo. Verified against a directory this process
+    // genuinely cannot write to, with the elevation itself faked: sudo would
+    // make the suite depend on the machine it runs on.
+    let readOnly: string;
+    let target: string;
+    let calls: Array<[string, string[]]>;
+
+    const shell: ElevationRunner = (command, args) => {
+      calls.push([command, args]);
+      // Runs the same commands the real path runs, but as this user, against a
+      // directory made writable again for the duration of the call.
+      fs.chmodSync(readOnly, 0o755);
+      try {
+        switch (command) {
+          case 'mkdir':
+            fs.mkdirSync(args[1], { recursive: true });
+            break;
+          case 'cp':
+            fs.copyFileSync(args[0], args[1]);
+            break;
+          case 'chmod':
+            fs.chmodSync(args[1], parseInt(args[0], 8));
+            break;
+          case 'mv':
+            fs.renameSync(args[1], args[2]);
+            break;
+          case 'rm':
+            fs.rmSync(args[1], { force: true });
+            break;
+        }
+      } finally {
+        fs.chmodSync(readOnly, 0o555);
+      }
+
+      return { status: 0 };
+    };
+
+    beforeEach(() => {
+      calls = [];
+      readOnly = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-root-'));
+      target = path.join(readOnly, 'daemon.json');
+      fs.chmodSync(readOnly, 0o555);
+    });
+
+    afterEach(() => {
+      fs.chmodSync(readOnly, 0o755);
+      fs.rmSync(readOnly, { recursive: true, force: true });
+    });
+
+    const unwritable = process.platform === 'win32' || process.getuid?.() === 0;
+    const forNonRoot = unwritable ? it.skip : it;
+
+    forNonRoot('installs the file through the runner and reads it back', () => {
+      writeDaemonConfig(target, '{"dns":["172.17.0.1"]}\n', shell);
+
+      expect(fs.readFileSync(target, 'utf8')).toBe('{"dns":["172.17.0.1"]}\n');
+      // Staged as a second file and renamed over the target: the daemon never
+      // sees a half-written configuration.
+      // No mkdir: the directory is already there, and elevation is only asked
+      // for what actually needs it.
+      expect(calls.map(([command]) => command)).toEqual(['cp', 'chmod', 'mv']);
+    });
+
+    forNonRoot('aborts without a partial write when elevation is refused', () => {
+      const refuse: ElevationRunner = (command, args) => {
+        calls.push([command, args]);
+        return command === 'rm' ? { status: 0 } : { status: 1, message: 'sudo: a password is required' };
+      };
+
+      expect(() => writeDaemonConfig(target, '{"dns":["172.17.0.1"]}\n', refuse)).toThrow('nothing was written');
+
+      expect(fs.existsSync(target)).toBe(false);
+      // And the staging file it may have left behind is cleaned up, so a second
+      // attempt does not find debris next to the daemon configuration.
+      expect(calls.some(([command]) => command === 'rm')).toBe(true);
+      fs.chmodSync(readOnly, 0o755);
+      expect(fs.readdirSync(readOnly)).toEqual([]);
+    });
+
+    forNonRoot('validates the content before asking for elevation at all', () => {
+      expect(() => writeDaemonConfig(target, 'not json', shell)).toThrow();
+      expect(calls).toEqual([]);
+    });
+
+    forNonRoot('removes a root-owned file through the runner', () => {
+      writeDaemonConfig(target, '{}\n', shell);
+      calls = [];
+
+      deleteDaemonConfig(target, shell);
+
+      expect(fs.existsSync(target)).toBe(false);
+      expect(calls).toEqual([['rm', ['-f', target]]]);
+    });
+
+    it('does not call the runner when the file is writable anyway', () => {
+      writeDaemonConfig(daemonPath, '{}\n', shell);
+      deleteDaemonConfig(daemonPath, shell);
+
+      expect(calls).toEqual([]);
+    });
+  });
+
 });

@@ -232,10 +232,16 @@ export function resolveDaemonConfigTarget(environment?: DaemonEnvironment): Daem
  * there costs nothing that has ever been observed.
  */
 export function sameDaemonPath(left: string, right: string): boolean {
-  const normalise = (value: string): string => {
-    const resolved = path.resolve(value);
-    return osDetector.platform() === 'win32' ? resolved.toLowerCase() : resolved;
-  };
+  // `path.resolve` follows the host's separator rules, but what is being
+  // compared here is a path belonging to the platform the daemon lives on. On a
+  // Linux host, `path.resolve` leaves a Windows path's backslashes untouched, so
+  // two spellings of one file compare as two files. Choosing the flavour makes
+  // the answer the same wherever the comparison runs — identical to today's
+  // behaviour in production, where the two always agreed.
+  const normalise = (value: string): string =>
+    osDetector.platform() === 'win32'
+      ? path.win32.resolve(value).toLowerCase()
+      : path.posix.resolve(value);
 
   return normalise(left) === normalise(right);
 }
