@@ -466,6 +466,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 **交付項目**
 
+- [ ] 依規格 6.2 判斷表實作 daemon 環境偵測：**改問 daemon 與 CLI 所在位置，不再從平台推論型別**；重新引入 `isWsl()`（訊號見 6.2）；未驗證的組合以正確理由拒絕並指向 7.4。落差在 `daemon-target.ts` 的 `detectDaemonEnvironment()`、`enable.ts` 的前置檢查、`m6b-safety-net.sh` 的 `platform_daemon_path()` 三處
 - [ ] 完成規格 14.3 平台矩陣，T4 各列的輸出存進 repo
 - [ ] 在 CLI 對外呈現 DNS 之前**先**發布兩種架構的 image（規格 13）
 - [x] `docs/DNS.md`、`docs/DNS.zh-TW.md`、`docs/DNS.ja-JP.md`——完整的使用者說明，一個語言一個檔案且結構相同，涵蓋揭露項目 1–8、10、11 與手動移除步驟（規格 11.4）。三份各 317 行、結構相同，每個內部錨點都檢查過

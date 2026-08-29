@@ -83,7 +83,7 @@ container 層的解法都存在也都可行，但有共同的致命傷：
 - `runestone setup` 的 DNS 開關、上游 DNS、選用的 daemon 備援項目與自動排序設定，以及對應的風險揭露。
 - Docker daemon `dns` 陣列的所有權記錄、精準撤銷、Target IP 變更調和。
 - 由憑證清單產生 dnsmasq mapping，並整合 `up` / `stop` / `down` / `certs` / `doctor`。
-- Windows（Docker Desktop）、WSL2（Docker Desktop endpoint）、macOS（Docker Desktop）、Linux（rootful Docker Engine）。
+- 6.2 判斷表列出的各種環境，每一列各自帶著「已驗證／未驗證」的狀態。**這是一張「daemon 型別 × CLI 跑在哪」的矩陣，不是一份平台清單**：每個平台都可能是 Docker Desktop，也都可能是純 Docker Engine，所以這裡的一列指的是一種組合，永遠不是單獨一個作業系統。今天已驗證的是：Windows＋Docker Desktop，以及 Linux＋原生 engine。其餘一律以正確的理由拒絕，直到有人量過為止。
 
 ### 3.2 不包含
 
@@ -175,10 +175,33 @@ Traefik、Mailpit、nginx 合併在 runestone image 是為了管理方便 — �
 
 ### 6.2 daemon 設定檔與重啟方式
 
-| 平台 | daemon 設定檔 | 重啟方式 |
+**平台不決定 daemon 的型別，兩個方向都不決定。** 平台只說明「CLI 跑在哪」；daemon 是什麼、它的設定檔在哪個檔案系統上，只有 daemon 自己與 CLI 所在位置合起來才能回答。三個平台都可能是 Docker Desktop，也都可能是純 Docker Engine——Windows 可以在 WSL2 裡純裝 docker-ce，macOS 可以用 Colima／Lima，Linux 有 Docker Desktop for Linux。
+
+判斷需要三個輸入，缺一不可：
+
+| # | daemon 是 Docker Desktop | CLI 跑在 | daemon 設定檔 | 重啟方式 | 狀態 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 是 | Windows / macOS | `~/.docker/daemon.json` | `docker desktop restart`，**僅限 4.86.0 起** | Windows 已驗證（M6b）；macOS 待 M8 |
+| 2 | 是 | Linux **且是 WSL 發行版** | 在 Windows 那一側，**不在這個檔案系統上** | — | **拒絕**，指向 7.4；已量測 |
+| 3 | 是 | Linux **非 WSL** | `~/.docker/daemon.json`（Docker Desktop for Linux） | `docker desktop restart`，**僅限 4.86.0 起** | **未驗證**：需要一台裝了 Docker Desktop for Linux 的機器 |
+| 4 | 否 | Linux | `/etc/docker/daemon.json` | `sudo systemctl restart docker`，不可用則 `sudo service docker restart` | 已驗證（M6b Linux） |
+| 5 | 否 | Windows / macOS | 在另一個檔案系統裡（WSL 內的純 docker-ce、Colima／Lima 的 VM） | — | **拒絕**，指向 7.4；未驗證 |
+
+**未驗證不等於不支援，但在被驗證之前一律不猜。** 第 3 與第 5 列在有人拿真機量過並把證據放進 `docs/evidence/dns/` 之前，行為都是「拒絕並說明理由，指向 `RUNESTONE_DNS_DAEMON_PATH`」——這與 6.2 對重啟的既有立場一致：Runestone 不對自己無法驗證的環境用猜的。
+
+#### 三個輸入各自怎麼取得
+
+| 輸入 | 來源 | 已量測的值 |
 | --- | --- | --- |
-| Windows / macOS Docker Desktop | `~/.docker/daemon.json` | `docker desktop restart`，**但僅限 Docker Desktop 4.86.0 起**。低於該版則不嘗試——見下 |
-| Linux rootful Docker Engine | `/etc/docker/daemon.json` | `sudo systemctl restart docker`，不可用則 `sudo service docker restart` |
+| daemon 是不是 Docker Desktop | `docker info --format '{{.OperatingSystem}}'` | Desktop：`Docker Desktop`；原生 engine：`Ubuntu 26.04 LTS` |
+| CLI 跑在哪 | 執行 CLI 的行程自己的平台 | `win32` / `darwin` / `linux` |
+| 是不是 WSL 發行版 | `WSL_DISTRO_NAME` 有值、`/run/WSL` 存在、`/proc/version` 含 `microsoft` | WSL：`Ubuntu-26.04` / 存在 / `…-microsoft-standard-WSL2`；原生 Linux：未設定 / 不存在 / `…-generic` |
+
+**這三個訊號各自都不夠，這點必須講清楚：**
+
+- **`docker info` 的 `ClientInfo.Plugins` 含不含 `desktop` 不能用來分辨第 1、2、3 列。** 實測：Windows 上的 Desktop 有它，**WSL 發行版在整合開啟時同樣有它**（整合會把 Windows 側的 CLI plugin 帶進發行版）。它能回答「這是不是 Desktop 環境」，不能回答「設定檔在哪個檔案系統」。而且它是 client 端的東西：舊版 Docker Desktop 沒有這個 plugin（它自己有獨立版本號，實測 v0.4.3），所以「沒有」也不能反推「不是 Desktop」。
+- **context endpoint 同樣分辨不出來。** 實測：WSL＋整合時目前 context 是 `default unix:///var/run/docker.sock`，與原生 Linux engine 一模一樣。
+- **只有 WSL 標記能把第 2 列與第 3 列分開**，而它必須在 CLI 執行的位置取得（見下方「關於 WSL 偵測」）。
 
 - **自動重啟的前提是「機器上的容器還救得回來」。** `systemctl restart docker` 符合：daemon 下去再上來，沒有任何東西**停止**過那些容器，`always` 與 `unless-stopped` 都會恢復。`docker desktop restart` **從 4.86.0 起**符合；在那之前它的關閉會把容器停掉，而 `unless-stopped` 的意思是「除非被停止，否則重啟」，於是那些容器就一直躺著（見第 15 節裁決 1）。
 - **版本要在組出重啟計畫之前先讀**，來源是 `docker version --format '{{.Server.Platform.Name}}'`——不是 `docker desktop version`，那個回報的是 CLI plugin。讀不到版本一律視為過舊：不知道，不等於知道它是安全的。
@@ -188,12 +211,23 @@ Traefik、Mailpit、nginx 合併在 runestone image 是為了管理方便 — �
 - 交還給使用者的重啟**不算失敗**：設定已寫入且正確，不會反向還原，紀錄就停在 `phase: prepared`，與 `--no-restart` 留下的狀態完全相同。
 - Remote context 與 Windows container 模式（`docker info` 的 OSType 非 linux）一律在修改 daemon 設定前中止。
 
-**這裡刻意沒有 WSL 那一列。** 先前的版本有，指向「在 WSL 裡跑 CLI、對著 Docker Desktop」時 Windows 端的 `/mnt/<drive>/Users/<user>/.docker/daemon.json`。它有兩個問題：
+#### 關於 WSL 偵測——先前的判斷位置錯了
 
-- **Windows 的支援就是在 Windows 上執行 CLI。** 使用者的 Docker 剛好裝在 WSL 裡是 Docker Desktop 的事，不是 Runestone 的事；一條沒有人跑、也沒有人測得到的「受支援路徑」，比沒有這條路徑更糟。
-- **它需要的偵測根本做不到。** Docker Desktop 的 Linux VM 跑在 WSL2 上，因此**它上面的每一個容器**讀 `/proc/version` 都會看到 Microsoft 的核心字串——那個原本要用來辨識 WSL 的字串，同樣會把一個普通的 Linux 容器辨識成 WSL。照它去猜，等於從容器裡去找一顆不存在的 Windows 磁碟。
+先前的規格版本刪掉了 WSL 偵測，理由是：「Docker Desktop 的 Linux VM 跑在 WSL2 上，因此**它上面的每一個容器**讀 `/proc/version` 都會看到 Microsoft 的核心字串」。**那句話本身正確，但它講的是容器內部；CLI 不是跑在容器裡，而是跑在使用者自己的 userland。** 判斷位置一錯，訊號就被冤枉了。在 CLI 真正執行的位置，兩者分得很乾淨（上表已列出量測值），而且 `WSL_DISTRO_NAME` 與 `/run/WSL` 比核心字串更明確。
 
-那一列原本要防的風險是真的，而且仍然有處理，只是改成問一個有可靠答案的問題。**若 `docker info` 回報 daemon 是 Docker Desktop，而 CLI 卻跑在 Linux 上，前置檢查一律拒絕**：那個 daemon 的設定在 Windows 那一側，因此寫入這個檔案系統的 `~/.docker/daemon.json` 會回報成功，卻只改到一個 Docker 從來不讀的檔案——正是這個功能要消滅的「安靜地給出錯誤答案」。訊息會告訴使用者改在 Windows 上執行 Runestone，或明確設定 `RUNESTONE_DNS_DAEMON_PATH`。
+刪掉它之後留下的替代規則是「daemon 是 Docker Desktop 且 CLI 在 Linux 上就拒絕」。**那條規則把兩種不同的機器當成同一種**：WSL＋整合（設定在 Windows 側，該拒絕）與 Docker Desktop for Linux（設定就在本機，不該用這個理由拒絕）。它給出的訊息會說「設定檔在 Windows 那一側」，而那句話對第 3 列的使用者是錯的。
+
+因此 WSL 偵測要回來，但用途只有一個：**把第 2 列與第 3 列分開**。它不參與「daemon 是什麼型別」的判斷，也不重新引入 `/mnt/<drive>/…` 那條路徑——第 2 列的結論仍然是拒絕，只是理由從「你在 Linux 上」變成「你在 WSL 發行版裡，而那個 daemon 的設定在 Windows 側」。
+
+#### 與現況的落差
+
+此表尚未實作。落差集中在三處，供接手者參考：
+
+- `runestone-cli/src/services/dns/daemon-target.ts` 的 `detectDaemonEnvironment()`：只看平台就決定 `docker-desktop` 或 `linux-engine`，daemon 那一側完全沒問。
+- `runestone-cli/src/services/dns/enable.ts` 的前置檢查：`daemon.isDockerDesktop && platform === 'linux'` 即拒絕，訊息宣稱設定檔在 Windows 側。
+- `docker/dns/test/m6b-safety-net.sh` 的 `platform_daemon_path()`：同一個假設。
+
+同時要留意 `runestone-cli/src/utils/os-detector.ts` 的 `isWsl()` 是在本功能開發途中被刪掉的，需要以上述訊號重新引入。
 
 ## 7. 設定與檔案
 
@@ -698,12 +732,16 @@ DNS 相關共四題，順序固定，第二三四題僅在啟用時出現：
 
 ### 14.3 手動平台驗證
 
-| 平台 | 層級 | 由誰執行 |
-| --- | --- | --- |
-| Linux rootful | 14.5 涵蓋的部分為 T2，其餘為 T3 | dind 涵蓋的部分任何接手者都可做；sudo 與 systemd-resolved 由維護者 |
-| Windows Docker Desktop | T4 | 僅維護者 |
-| WSL2（CLI 在 Windows、Docker Desktop 使用 WSL2 後端） | T4 | 僅維護者 |
-| macOS Intel 與 Apple Silicon | T4 | 僅維護者 |
+**每一列是「daemon 型別 × CLI 跑在哪」的一種組合**，對應 6.2 判斷表的列號，不是一個作業系統。
+
+| 6.2 | 組合 | 層級 | 由誰執行 | 狀態 |
+| --- | --- | --- | --- | --- |
+| 4 | Linux 原生 engine，CLI 在同一台 Linux | 14.5 涵蓋的部分為 T2，其餘為 T3 | dind 涵蓋的部分任何接手者都可做；sudo 與 systemd-resolved 由維護者 | **已完成**（M6b Linux） |
+| 1 | Windows＋Docker Desktop，CLI 在 Windows | T4 | 僅維護者 | **已完成**（M6b Windows；`disable` 在真實重啟後那一半仍為刻意未驗證） |
+| 1 | macOS Intel 與 Apple Silicon＋Docker Desktop | T4 | 僅維護者 | 未開始 |
+| 2 | WSL2 發行版＋Docker Desktop 整合，CLI 在發行版裡 | T4 | 僅維護者 | 訊號已量測；**尚未驗證「拒絕」這條路徑的實際行為** |
+| 3 | Docker Desktop for Linux，CLI 在同一台 Linux | T4 | 僅維護者 | 未開始，**需要一台裝有 Docker Desktop for Linux 的機器** |
+| 5 | CLI 在 Windows／macOS，daemon 是別處的純 Docker Engine（WSL 內的 docker-ce、Colima／Lima） | T4 | 僅維護者 | 未開始 |
 
 每個平台驗證：啟用 → 新 container 的 resolv.conf 首筆為 Target IP → 解析憑證涵蓋的子網域得到 Target IP → 停用後 daemon `dns` 陣列回到原狀（含使用者原有項目）。
 

@@ -466,6 +466,7 @@ The second: **`doctor` reported a failed DNS check and then signed off with "Env
 
 **Deliverables**
 
+- [ ] Implement daemon-environment detection per the 6.2 decision table: **ask the daemon and where the CLI runs, stop inferring the type from the platform**; reintroduce `isWsl()` (signals in 6.2); refuse unverified combinations with an accurate reason pointing at 7.4. The gap is in `daemon-target.ts`'s `detectDaemonEnvironment()`, `enable.ts`'s preflight, and `m6b-safety-net.sh`'s `platform_daemon_path()`
 - [ ] Spec 14.3 platform matrix completed, with the T4 rows' output committed
 - [ ] The image published for both architectures **before** the CLI presents DNS as available (spec 13)
 - [x] `docs/DNS.md`, `docs/DNS.zh-TW.md` and `docs/DNS.ja-JP.md` — the complete user-facing explanation, one language per file with the same structure, covering disclosure items 1–8, 10 and 11 and the manual removal steps (spec 11.4). 317 lines each, identical structure, every internal anchor checked

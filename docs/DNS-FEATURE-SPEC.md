@@ -83,7 +83,7 @@ Costs we explicitly refuse to pay: we do not modify the host operating system's 
 - DNS toggle, upstream DNS, optional daemon fallback entry and automatic-reordering settings in `runestone setup`, together with the matching risk disclosures.
 - Ownership records, precise revocation and Target IP rotation for the Docker daemon `dns` array.
 - dnsmasq mappings generated from the certificate list, integrated with `up` / `stop` / `down` / `certs` / `doctor`.
-- Windows (Docker Desktop), WSL2 (Docker Desktop endpoint), macOS (Docker Desktop) and Linux (rootful Docker Engine).
+- The environments enumerated in the 6.2 decision table, each carrying its own verified / unverified status. **The list is a matrix of daemon type and where the CLI runs, not a list of platforms**: every platform can be Docker Desktop and every platform can be a plain Docker Engine, so a row here means a combination, never an operating system on its own. Verified today: Windows with Docker Desktop, and Linux with a native engine. Everything else is refused with an accurate reason until it is measured.
 
 ### 3.2 Out of scope
 
@@ -175,10 +175,33 @@ Build our own **`cymondez/runestone-dns`**, located in `docker/dns/`:
 
 ### 6.2 Daemon configuration file and restart mechanism
 
-| Platform | Daemon configuration file | Restart mechanism |
+**The platform does not determine what kind of daemon this is, in either direction.** The platform says where the CLI runs; what the daemon is, and which filesystem its configuration lives on, is answerable only from the daemon plus where the CLI runs. All three platforms can be Docker Desktop and all three can be a plain Docker Engine — Windows can run docker-ce inside WSL2, macOS has Colima and Lima, Linux has Docker Desktop for Linux.
+
+The decision needs three inputs, and none of them is optional:
+
+| # | Daemon is Docker Desktop | CLI runs on | Daemon configuration file | Restart mechanism | Status |
+| --- | --- | --- | --- | --- | --- |
+| 1 | yes | Windows / macOS | `~/.docker/daemon.json` | `docker desktop restart`, **only from 4.86.0** | Windows verified (M6b); macOS pending M8 |
+| 2 | yes | Linux **and it is a WSL distro** | on the Windows side, **not on this filesystem** | — | **Refuse**, point at 7.4; measured |
+| 3 | yes | Linux **and it is not WSL** | `~/.docker/daemon.json` (Docker Desktop for Linux) | `docker desktop restart`, **only from 4.86.0** | **Unverified**: needs a machine running Docker Desktop for Linux |
+| 4 | no | Linux | `/etc/docker/daemon.json` | `sudo systemctl restart docker`, falling back to `sudo service docker restart` | Verified (M6b Linux) |
+| 5 | no | Windows / macOS | on another filesystem (docker-ce inside WSL, a Colima/Lima VM) | — | **Refuse**, point at 7.4; unverified |
+
+**Unverified is not the same as unsupported, but nothing is guessed before it is verified.** Rows 3 and 5 refuse with an accurate reason and point at `RUNESTONE_DNS_DAEMON_PATH` until someone measures them on a real machine and puts the evidence in `docs/evidence/dns/` — the same position 6.2 already takes on restarting: Runestone does not guess about environments it cannot verify.
+
+#### Where each input comes from
+
+| Input | Source | Measured values |
 | --- | --- | --- |
-| Windows / macOS Docker Desktop | `~/.docker/daemon.json` | `docker desktop restart`, **but only from Docker Desktop 4.86.0**. Below that, none attempted — see below |
-| Native Linux Docker Engine | `/etc/docker/daemon.json` | `sudo systemctl restart docker`, falling back to `sudo service docker restart` |
+| Is the daemon Docker Desktop | `docker info --format '{{.OperatingSystem}}'` | Desktop: `Docker Desktop`; native engine: `Ubuntu 26.04 LTS` |
+| Where the CLI runs | the platform of the process running the CLI | `win32` / `darwin` / `linux` |
+| Is this a WSL distro | `WSL_DISTRO_NAME` set, `/run/WSL` present, `/proc/version` containing `microsoft` | WSL: `Ubuntu-26.04` / present / `…-microsoft-standard-WSL2`; native Linux: unset / absent / `…-generic` |
+
+**None of these signals is sufficient alone, and that has to be said plainly:**
+
+- **Whether `docker info`'s `ClientInfo.Plugins` contains `desktop` cannot separate rows 1, 2 and 3.** Measured: Docker Desktop on Windows has it, and **a WSL distro with the integration enabled has it too** — the integration brings the Windows-side CLI plugins into the distro. It answers "is this a Desktop environment", not "which filesystem holds the configuration". It is also a client-side artefact: an older Docker Desktop does not ship the plugin (it carries its own version, measured at v0.4.3), so its absence does not prove the daemon is not Desktop.
+- **The context endpoint does not separate them either.** Measured: with WSL integration the current context is `default unix:///var/run/docker.sock`, identical to a native Linux engine's.
+- **Only the WSL markers separate row 2 from row 3**, and they must be read where the CLI runs (see below).
 
 - **An automatic restart must leave the machine's containers recoverable.** `systemctl restart docker` qualifies: the daemon goes down and comes back, nothing *stopped* the containers, and `always` and `unless-stopped` both recover. `docker desktop restart` qualifies **from 4.86.0 onwards**; before that its shutdown stopped the containers, and `unless-stopped` means "restart unless it was stopped", so those stayed down for good (see decision 1 in 15).
 - **The version is read before the plan is built**, from `docker version --format '{{.Server.Platform.Name}}'` — not `docker desktop version`, which reports the CLI plugin. A version that cannot be read counts as too old: not knowing is not the same as knowing it is safe.
@@ -188,12 +211,23 @@ Build our own **`cymondez/runestone-dns`**, located in `docker/dns/`:
 - A restart that is handed back is **not a failure**: the configuration is written and correct, nothing is inverted, and the record rests at `phase: prepared` exactly as `--no-restart` leaves it.
 - Remote contexts and Windows container mode (`docker info` reporting an OSType other than linux) must abort before any daemon configuration is modified.
 
-**There is deliberately no WSL row.** An earlier version of this table had one, pointing at the Windows-side `/mnt/<drive>/Users/<user>/.docker/daemon.json` for a CLI running inside WSL against Docker Desktop. Two things are wrong with it:
+#### On WSL detection — the earlier judgement was made in the wrong place
 
-- **Windows support means running the CLI on Windows.** Whether the user's Docker happens to live in WSL is Docker Desktop's business, not Runestone's; a supported path that nobody runs and nobody can test is worse than no path at all.
-- **The detection it needed cannot work.** Docker Desktop runs its Linux VM on WSL2, so *every container on it* reports a Microsoft kernel in `/proc/version` — the string that would have identified WSL identifies an ordinary Linux container just as well. Guessing from it sent the daemon path hunting for a Windows drive from inside a container.
+An earlier version of this spec removed WSL detection, reasoning that "Docker Desktop runs its Linux VM on WSL2, so *every container on it* reports a Microsoft kernel in `/proc/version`". **That sentence is correct, and it is about the inside of a container; the CLI does not run in a container, it runs in the user's own userland.** The signal was condemned for a property of the wrong location. Where the CLI actually runs the two are cleanly distinguishable (values measured in the table above), and `WSL_DISTRO_NAME` and `/run/WSL` are less ambiguous than a kernel string.
 
-The risk that row was guarding is real and is still handled, but by asking a question that has a reliable answer. **If `docker info` reports the daemon as Docker Desktop while the CLI is running on Linux, preflight refuses**: that daemon's configuration is on the Windows side, so writing this filesystem's `~/.docker/daemon.json` would report success while changing a file Docker never reads — the exact silent-wrong-answer failure this feature exists to remove. The message says to run Runestone on Windows, or to set `RUNESTONE_DNS_DAEMON_PATH` explicitly.
+The rule left in its place was "refuse when the daemon is Docker Desktop and the CLI is on Linux". **That rule treats two different machines as one**: WSL with the integration (configuration on the Windows side, refusing is right) and Docker Desktop for Linux (configuration right here, refusing for that reason is wrong). Its message says the configuration is on the Windows side, which is false for row 3.
+
+So WSL detection comes back, for exactly one purpose: **to separate row 2 from row 3**. It takes no part in deciding what kind of daemon this is, and it does not reintroduce the `/mnt/<drive>/…` path — row 2 still ends in a refusal, but the reason changes from "you are on Linux" to "you are in a WSL distro, and that daemon's configuration is on the Windows side".
+
+#### Gap against the implementation
+
+This table is not implemented yet. The gap is in three places, for whoever picks it up:
+
+- `runestone-cli/src/services/dns/daemon-target.ts`, `detectDaemonEnvironment()`: decides `docker-desktop` or `linux-engine` from the platform alone, never asking the daemon.
+- `runestone-cli/src/services/dns/enable.ts`, preflight: refuses on `daemon.isDockerDesktop && platform === 'linux'`, with a message claiming the configuration is on the Windows side.
+- `docker/dns/test/m6b-safety-net.sh`, `platform_daemon_path()`: the same assumption.
+
+Note also that `isWsl()` in `runestone-cli/src/utils/os-detector.ts` was deleted during this feature's development and needs reintroducing from the signals above.
 
 ## 7. Configuration and Files
 
@@ -698,12 +732,16 @@ The disclosure this feature owes its users does not fit in a README, and burying
 
 ### 14.3 Manual platform verification
 
-| Platform | Tier | Who performs it |
-| --- | --- | --- |
-| Linux rootful | T2 for everything 14.5 covers, T3 for the rest | Any contributor for the dind-covered part; maintainers for sudo and systemd-resolved |
-| Windows Docker Desktop | T4 | Maintainers only |
-| WSL2 (the CLI on Windows, Docker Desktop's WSL2 backend) | T4 | Maintainers only |
-| macOS Intel and Apple Silicon | T4 | Maintainers only |
+**Each row is a combination of daemon type and where the CLI runs**, keyed to the 6.2 decision table — not an operating system.
+
+| 6.2 | Combination | Tier | Who performs it | Status |
+| --- | --- | --- | --- | --- |
+| 4 | Native Linux engine, CLI on the same Linux host | T2 for everything 14.5 covers, T3 for the rest | Any contributor for the dind-covered part; maintainers for sudo and systemd-resolved | **Done** (M6b Linux) |
+| 1 | Windows with Docker Desktop, CLI on Windows | T4 | Maintainers only | **Done** (M6b Windows; the `disable` half after a real restart remains deliberately unverified) |
+| 1 | macOS Intel and Apple Silicon with Docker Desktop | T4 | Maintainers only | Not started |
+| 2 | WSL2 distro with Docker Desktop integration, CLI inside the distro | T4 | Maintainers only | Signals measured; **the refusal path itself is not yet verified** |
+| 3 | Docker Desktop for Linux, CLI on the same Linux host | T4 | Maintainers only | Not started, **needs a machine running Docker Desktop for Linux** |
+| 5 | CLI on Windows/macOS with the daemon elsewhere as a plain engine (docker-ce inside WSL, Colima/Lima) | T4 | Maintainers only | Not started |
 
 On each platform verify: enable → a new container's resolv.conf lists the Target IP first → a subdomain covered by a certificate resolves to the Target IP → after disabling, the daemon `dns` array is back to its original state, including the user's pre-existing entries.
 
