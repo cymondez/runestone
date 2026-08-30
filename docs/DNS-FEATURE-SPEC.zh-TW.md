@@ -740,10 +740,10 @@ DNS 相關共四題，順序固定，第二三四題僅在啟用時出現：
 | --- | --- | --- | --- | --- |
 | 4 | Linux 原生 engine，CLI 在同一台 Linux | 14.5 涵蓋的部分為 T2，其餘為 T3 | dind 涵蓋的部分任何接手者都可做；sudo 與 systemd-resolved 由維護者 | **已完成**（M6b Linux） |
 | 1 | Windows＋Docker Desktop，CLI 在 Windows | T4 | 僅維護者 | **已完成**（M6b Windows；`disable` 在真實重啟後那一半仍為刻意未驗證） |
-| 1 | macOS Intel 與 Apple Silicon＋Docker Desktop | T4 | 僅維護者 | 未開始 |
-| 2 | WSL2 發行版＋Docker Desktop 整合，CLI 在發行版裡 | T4 | 僅維護者 | 訊號已量測；**尚未驗證「拒絕」這條路徑的實際行為** |
-| 3 | Docker Desktop for Linux，CLI 在同一台 Linux | T4 | 僅維護者 | 未開始，**需要一台裝有 Docker Desktop for Linux 的機器** |
-| 5 | CLI 在 Windows／macOS，daemon 是別處的純 Docker Engine（WSL 內的 docker-ce、Colima／Lima） | T4 | 僅維護者 | 未開始 |
+| 1 | macOS Intel 與 Apple Silicon＋Docker Desktop | T4 | 僅維護者 | **延後**：沒有 Mac。這是這個矩陣裡唯一還缺的 Docker Desktop 變體 |
+| 2 | WSL2 發行版＋Docker Desktop 整合，CLI 在發行版裡 | T4 | 僅維護者 | **已完成**（[m8-daemon-elsewhere](evidence/dns/m8-daemon-elsewhere.zh-TW.md)）：三個 `isWsl()` 訊號各自為真，拒絕訊息為 WSL 專屬那條 |
+| 3 | Docker Desktop for Linux，CLI 在同一台 Linux | T4 | 僅維護者 | **延後**：需要一台裝有 Docker Desktop for Linux 的機器。手上的 Linux 是原生 docker-ce，改裝會毀掉它作為第 4、5 列證據來源的角色 |
+| 5 | CLI 在 Windows／macOS，daemon 是別處的純 Docker Engine（WSL 內的 docker-ce、Colima／Lima） | T4 | 僅維護者 | **已完成，但只涵蓋遠端變體**（[m8-daemon-elsewhere](evidence/dns/m8-daemon-elsewhere.zh-TW.md)）：`elsewhere` 的拒絕會觸發且訊息正確。本地 socket 配非 Desktop daemon 在 Windows 上到不了（`isRemoteEndpoint()` 只放行 `unix://` 與 `npipe://`），那個變體要 Mac＋Colima |
 
 每個平台驗證：啟用 → 新 container 的 resolv.conf 首筆為 Target IP → 解析憑證涵蓋的子網域得到 Target IP → 停用後 daemon `dns` 陣列回到原狀（含使用者原有項目）。
 

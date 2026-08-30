@@ -740,10 +740,10 @@ The disclosure this feature owes its users does not fit in a README, and burying
 | --- | --- | --- | --- | --- |
 | 4 | Native Linux engine, CLI on the same Linux host | T2 for everything 14.5 covers, T3 for the rest | Any contributor for the dind-covered part; maintainers for sudo and systemd-resolved | **Done** (M6b Linux) |
 | 1 | Windows with Docker Desktop, CLI on Windows | T4 | Maintainers only | **Done** (M6b Windows; the `disable` half after a real restart remains deliberately unverified) |
-| 1 | macOS Intel and Apple Silicon with Docker Desktop | T4 | Maintainers only | Not started |
-| 2 | WSL2 distro with Docker Desktop integration, CLI inside the distro | T4 | Maintainers only | Signals measured; **the refusal path itself is not yet verified** |
-| 3 | Docker Desktop for Linux, CLI on the same Linux host | T4 | Maintainers only | Not started, **needs a machine running Docker Desktop for Linux** |
-| 5 | CLI on Windows/macOS with the daemon elsewhere as a plain engine (docker-ce inside WSL, Colima/Lima) | T4 | Maintainers only | Not started |
+| 1 | macOS Intel and Apple Silicon with Docker Desktop | T4 | Maintainers only | **Deferred**: no Mac. The one Docker Desktop variant still missing from this matrix |
+| 2 | WSL2 distro with Docker Desktop integration, CLI inside the distro | T4 | Maintainers only | **Done** ([m8-daemon-elsewhere](evidence/dns/m8-daemon-elsewhere.md)): all three `isWsl()` signals true independently, refusal is the WSL-specific message |
+| 3 | Docker Desktop for Linux, CLI on the same Linux host | T4 | Maintainers only | **Deferred**: needs a machine running Docker Desktop for Linux. The Linux host available runs native docker-ce, and converting it would destroy its role as the source for rows 4 and 5 |
+| 5 | CLI on Windows/macOS with the daemon elsewhere as a plain engine (docker-ce inside WSL, Colima/Lima) | T4 | Maintainers only | **Done, remote variant only** ([m8-daemon-elsewhere](evidence/dns/m8-daemon-elsewhere.md)): the `elsewhere` refusal fires with the right message. A local socket with a non-Desktop daemon is unreachable on Windows (`isRemoteEndpoint()` admits only `unix://` and `npipe://`); that variant needs a Mac with Colima |
 
 On each platform verify: enable → a new container's resolv.conf lists the Target IP first → a subdomain covered by a certificate resolves to the Target IP → after disabling, the daemon `dns` array is back to its original state, including the user's pre-existing entries.
 

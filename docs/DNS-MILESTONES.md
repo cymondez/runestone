@@ -25,7 +25,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | M6a | End to end in the dind harness | 2 host / 3 sandbox | T2 | — | **done**, CI gate pending a runner |
 | M6b | Real machine and VM verification | 3 | T3 / T4 | — | **Done**: both halves, Windows and Linux, with evidence |
 | M7 | Lifecycle integration and disclosure | 3 | T1 / T2 | — | **done** |
-| M8 | Platform matrix and release | 3 | T3 / T4 | M6b, M7 | **in progress**: 6.2's decision table and the user documentation are done; two of 14.3's six rows are verified and the image is not published yet |
+| M8 | Platform matrix and release | 3 | T3 / T4 | M6b, M7 | **in progress**: 6.2's decision table, the user documentation and the 14.3 platform matrix are all closed (four rows verified, two deferred for lack of hardware); **only the image publish remains** |
 
 M2 is independent of M1 and can run in parallel with it. Everything else is a chain.
 
@@ -474,14 +474,14 @@ The second: **`doctor` reported a failed DNS check and then signed off with "Env
 **Deliverables**
 
 - [x] Implement daemon-environment detection per the 6.2 decision table: **ask the daemon and where the CLI runs, stop inferring the type from the platform**; reintroduce `isWsl()` (signals in 6.2); refuse unverified combinations with an accurate reason pointing at 7.4. The gap is in `daemon-target.ts`'s `detectDaemonEnvironment()`, `enable.ts`'s preflight, and `m6b-safety-net.sh`'s `platform_daemon_path()` — **landed** (commit `66c5082`): `classifyDaemonEnvironment()` is the table's five rows as a pure function with a test per row; `DaemonHost` gained `elsewhere`, for which `platformDaemonPath()` **returns an empty string rather than a guess**, read/write/delete all fail loudly on an empty path, and `dns status` prints "Path: unknown"; rows 2 and 5 each refuse with their own message. 575 tests pass on Windows, 580 on the Linux VM
-- [ ] Spec 14.3 platform matrix completed, with the T4 rows' output committed
+- [x] Spec 14.3 platform matrix completed, with the T4 rows' output committed — rows 2 and 5 done on 2026-08-30 and committed as [m8-daemon-elsewhere](evidence/dns/m8-daemon-elsewhere.md); row 5 covers the remote variant only. The macOS and Docker Desktop for Linux rows lack hardware and carry their deferral reason in the 14.3 table
 - [ ] The image published for both architectures **before** the CLI presents DNS as available (spec 13)
 - [x] `docs/DNS.md`, `docs/DNS.zh-TW.md` and `docs/DNS.ja-JP.md` — the complete user-facing explanation, one language per file with the same structure, covering disclosure items 1–8, 10 and 11 and the manual removal steps (spec 11.4). 317 lines each, identical structure, every internal anchor checked
 - [x] README gains a short paragraph and a link to that documentation, and nothing more: the disclosure is too long to belong in a README — in all three README languages, with the npm copy's links rewritten to absolute URLs by `sync-readme.js`
 
 **Gate**
 
-- [ ] Every row of the spec 14.3 table is either done or explicitly deferred with a reason
+- [x] Every row of the spec 14.3 table is either done or explicitly deferred with a reason — four done (row 1 Windows, row 2, row 4, row 5 remote variant), two deferred with the reason in the table
 - [x] A fresh install and an upgrade from the previous version both behave correctly with DNS off — a fresh project lands on template 3 and `docker compose config --services` lists only `runestone`; a template-2 project regenerates to 3, keeps the original as `.bak`, and re-running is a no-op
 - [x] `runestone dns disable` documented as required before removing Runestone — disclosure item 6 in all three user documents, with the by-hand removal steps beside it
 - [x] Every language of the user documentation covers the same items — a user warned in their own language can read the explanation in it. Checked mechanically: same heading count and nesting, same tables, same code blocks, all ten disclosure items present in each
@@ -523,8 +523,8 @@ M6b and M8 produce findings that cannot be re-derived from the code. Record them
 | --- | --- | --- | --- | --- |
 | M6b | Windows Docker Desktop | 2026-08-28 | [m6b-windows-docker-desktop.md](evidence/dns/m6b-windows-docker-desktop.md) — decision 1, Target IP, the ICS port 53 conflict and the `0.0.0.0:53:53` bug, the `127.0.0.1` bind, the revocation escape hatch, the real daemon write with `phase: prepared` proven, Docker Desktop rewriting the file, and `docker desktop restart` crashing. Post-restart verification outstanding | cymondez |
 | M6b | Native Linux (VM) | 2026-08-29 | [m6b-linux-native.md](evidence/dns/m6b-linux-native.md) — the full cycle including two real `systemctl restart docker` runs, spec 9.3's elevated write implemented and its refusal path, the safety net guarding the wrong file, the suite's first run on Linux (28 red, one of them a real product defect in `sameDaemonPath`), the retraction of the AAAA-leak finding, and what `traefik.me` actually does | cymondez |
-| M8 | WSL2 | | | |
-| M8 | macOS Intel | | | |
+| M8 | WSL2 distro + remote plain engine | 2026-08-30 | [m8-daemon-elsewhere.md](evidence/dns/m8-daemon-elsewhere.md) — 14.3 rows 2 and 5: the actual output of both `elsewhere` refusals, all three `isWsl()` signals true independently, Windows node/npm leaking into the distro through WSL interop and producing false evidence that looks correct, `RUNESTONE_DNS_DAEMON_PATH` disabling the very check being measured, and row 5’s local-socket variant being unreachable on Windows | cymondez |
+| M8 | macOS Intel | | **Deferred**: no Mac; reason recorded in the 14.3 table | |
 | M8 | macOS Apple Silicon | | | |
 
 ## Current state of the repository

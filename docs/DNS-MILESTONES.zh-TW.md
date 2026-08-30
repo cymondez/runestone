@@ -25,7 +25,7 @@
 | M6a | dind 載具內端到端 | 宿主 2／載具內 3 | T2 | — | **已完成**，CI 通過條件待 runner |
 | M6b | 真機與 VM 驗證 | 3 | T3／T4 | — | **已完成**：Windows 與 Linux 兩半都有證據 |
 | M7 | 生命週期整合與揭露 | 3 | T1／T2 | — | **已完成** |
-| M8 | 平台矩陣與發布 | 3 | T3／T4 | M6b、M7 | **進行中**：6.2 判斷表與使用者說明文件已完成；14.3 六列完成兩列，image 尚未發佈 |
+| M8 | 平台矩陣與發布 | 3 | T3／T4 | M6b、M7 | **進行中**：6.2 判斷表、使用者說明文件與 14.3 平台矩陣都已結案（四列完成、兩列缺硬體並記錄延後）；**只剩 image 尚未發佈** |
 
 M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
@@ -474,14 +474,14 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 **交付項目**
 
 - [x] 依規格 6.2 判斷表實作 daemon 環境偵測：**改問 daemon 與 CLI 所在位置，不再從平台推論型別**；重新引入 `isWsl()`（訊號見 6.2）；未驗證的組合以正確理由拒絕並指向 7.4。落差在 `daemon-target.ts` 的 `detectDaemonEnvironment()`、`enable.ts` 的前置檢查、`m6b-safety-net.sh` 的 `platform_daemon_path()` 三處——**已落地**（commit `66c5082`）：`classifyDaemonEnvironment()` 是判斷表五列的純函式並逐列有測試；`DaemonHost` 多了 `elsewhere`，對它 `platformDaemonPath()` **回傳空字串而不是猜一個**，讀寫刪一律對空路徑大聲失敗，`dns status` 改印「路徑：未知」；第 2 列與第 5 列各有自己的拒絕訊息。Windows 575 通過、Linux VM 580 通過
-- [ ] 完成規格 14.3 平台矩陣，T4 各列的輸出存進 repo
+- [x] 完成規格 14.3 平台矩陣，T4 各列的輸出存進 repo——第 2 列與第 5 列於 2026-08-30 完成並存進 [m8-daemon-elsewhere](evidence/dns/m8-daemon-elsewhere.zh-TW.md)；第 5 列只涵蓋遠端變體。macOS 與 Docker Desktop for Linux 兩列缺硬體，已在 14.3 表格內逐列記錄延後理由
 - [ ] 在 CLI 對外呈現 DNS 之前**先**發布兩種架構的 image（規格 13）
 - [x] `docs/DNS.md`、`docs/DNS.zh-TW.md`、`docs/DNS.ja-JP.md`——完整的使用者說明，一個語言一個檔案且結構相同，涵蓋揭露項目 1–8、10、11 與手動移除步驟（規格 11.4）。三份各 317 行、結構相同，每個內部錨點都檢查過
 - [x] README 只加一小段文字與指向該文件的連結，不加其他：這份揭露太長，不屬於 README——三個 README 語言版本都加了，npm 那份的連結由 `sync-readme.js` 改寫成絕對網址
 
 **通過條件**
 
-- [ ] 規格 14.3 表格每一列都是已完成，或明確記錄理由後延後
+- [x] 規格 14.3 表格每一列都是已完成，或明確記錄理由後延後——四列已完成（第 1 列 Windows、第 2 列、第 4 列、第 5 列遠端變體），兩列延後且理由寫在表格裡
 - [x] 全新安裝與自前一版升級，在 DNS 關閉時都行為正確——全新專案落在模板 3，且 `docker compose config --services` 只列出 `runestone`；模板 2 的專案會重生為 3、把原檔留成 `.bak`，重跑則是 no-op
 - [x] 文件寫明移除 Runestone 前必須先執行 `runestone dns disable`——三份使用者文件的揭露第 6 項，旁邊就是手動移除步驟
 - [x] 使用者說明文件的每個語言版本涵蓋相同項目——使用者既然用自己的語言看到警告，就要能用同一個語言讀到說明。以機械方式檢查過：標題數量與層級相同、表格相同、程式碼區塊相同，十個揭露項目在每一份裡都在
@@ -523,8 +523,8 @@ M6b 與 M8 產出的結論無法從程式碼重新推導。記錄在這裡，並
 | --- | --- | --- | --- | --- |
 | M6b | Windows Docker Desktop | 2026-08-28 | [m6b-windows-docker-desktop.zh-TW.md](evidence/dns/m6b-windows-docker-desktop.zh-TW.md)——裁決 1、Target IP、ICS 的 53 埠衝突與 `0.0.0.0:53:53` 的 bug、`127.0.0.1` 綁定、撤銷逃生口、真實 daemon 寫入並證明 `phase: prepared`、Docker Desktop 自行改寫檔案，以及 `docker desktop restart` 當掉。重啟後的驗證尚未完成 | cymondez |
 | M6b | 原生 Linux（VM） | 2026-08-29 | [m6b-linux-native.zh-TW.md](evidence/dns/m6b-linux-native.zh-TW.md)——完整循環含兩次真實的 `systemctl restart docker`、規格 9.3 提權寫入的實作與被拒時的中止、安全網守錯了檔案、測試套件第一次在 Linux 上跑（28 紅，其中帶出 `sameDaemonPath` 的真實毛病）、AAAA 外洩那個發現的撤回，以及 `traefik.me` 真正的影響 | cymondez |
-| M8 | WSL2 | | | |
-| M8 | macOS Intel | | | |
+| M8 | WSL2 發行版 + 遠端純 Engine | 2026-08-30 | [m8-daemon-elsewhere.zh-TW.md](evidence/dns/m8-daemon-elsewhere.zh-TW.md)——14.3 第 2 與第 5 列：兩條 `elsewhere` 拒絕各自的實際輸出、三個 `isWsl()` 訊號各自為真、Windows 的 node／npm 會透過 WSL interop 漏進發行版而產生看不出錯的假證據、`RUNESTONE_DNS_DAEMON_PATH` 會把第 5 列的檢查整條關掉因而遮住被量的現象，以及第 5 列本地 socket 變體在 Windows 上到不了 | cymondez |
+| M8 | macOS Intel | | **延後**：沒有 Mac，理由記在 14.3 表格 | |
 | M8 | macOS Apple Silicon | | | |
 
 ## repo 現況
