@@ -35,6 +35,8 @@
 npm install -g @developers-homelab/runestone-cli
 ```
 
+Runestone 1.2.x 是 1.x 版本線的最後一個功能版本，詳見[版本與支援](#版本與支援)。
+
 ### 檢查主機環境
 
 Runestone 需要主機上有 Docker、Docker Compose 與平台對應的憑證工具。
@@ -160,6 +162,23 @@ Runestone 設定方法請直接呼叫 `runestone docs --ai-context`。
 
 產生的 AI context 來自 [runestone-cli/tool-docs/ai-prompt-context.tmp.md](../../runestone-cli/tool-docs/ai-prompt-context.tmp.md)。
 您可以在分享產生的 context 給 AI agent 前，先檢閱這個 template。
+
+## 版本與支援
+
+| 版本線 | 狀態 | 支援範圍 |
+| --- | --- | --- |
+| 1.2.x | 1.x 的最後一個功能版本 | 僅 bug 修復，維護至 2026-11-30 |
+| 2.x | 開發中 | 發布後成為預設版本線 |
+
+**1.2.0 是 1.x 版本線的最後一個功能版本。** 在此之後，1.2.x 只接受 bug 修復：不再新增指令、不再新增選項、不再變更行為。1.2.x 的維護於 **2026-11-30** 結束。
+
+下一個主要版本 2.0.0 會變更既有安裝所依賴的行為，因此它是新的主要版本線，而不是 1.x 的更新。
+
+2.0.0 發布後，`npm install -g @developers-homelab/runestone-cli` 會安裝 2.x。若要在支援期間內留在 1.x 版本線：
+
+```bash
+npm install -g @developers-homelab/runestone-cli@1
+```
 
 ## 詳細說明
 

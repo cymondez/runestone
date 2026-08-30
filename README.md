@@ -35,6 +35,8 @@ If you like this project, please also support the original idea by starring [dru
 npm install -g @developers-homelab/runestone-cli
 ```
 
+Runestone 1.2.x is the final feature release of the 1.x line. See [Versions And Support](#versions-and-support).
+
 ### Check Host Environment
 
 Runestone needs Docker, Docker Compose, and platform certificate tools to be available on the host machine.
@@ -160,6 +162,23 @@ For the Runestone settings, call `runestone docs --ai-context` directly.
 
 The generated AI context is rendered from [runestone-cli/tool-docs/ai-prompt-context.tmp.md](runestone-cli/tool-docs/ai-prompt-context.tmp.md).
 You can review this template before sharing the generated context with an AI agent.
+
+## Versions And Support
+
+| Line | Status | Support |
+| --- | --- | --- |
+| 1.2.x | Final feature release of 1.x | Bug fixes only, until 2026-11-30 |
+| 2.x | In development | Becomes the default line once released |
+
+**1.2.0 is the last feature release of the 1.x line.** After it, 1.2.x receives bug fixes only: no new commands, no new options, no behavior changes. Support for 1.2.x ends on **2026-11-30**.
+
+The next major version, 2.0.0, changes behavior that existing installations rely on, which is why it is a new major line rather than an update to 1.x.
+
+Once 2.0.0 is published, `npm install -g @developers-homelab/runestone-cli` installs 2.x. To stay on the 1.x line while it is still supported:
+
+```bash
+npm install -g @developers-homelab/runestone-cli@1
+```
 
 ## More Help
 

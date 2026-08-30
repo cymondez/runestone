@@ -30,6 +30,18 @@
 - Fixed `runestone dns enable` failing to start the dns service on Windows machines running WSL2, which is most of them. The generated `compose.yml` published port 53 as `0.0.0.0:53:53`, and that form collides with the Internet Connection Sharing service WSL2 enables; publishing it as `53:53` does not, and containers reach the service just the same. An all-interfaces bind is now published without an address at all. `compose.yml` is regenerated automatically on upgrade.
 - Fixed the Docker daemon configuration path comparison on Windows, where `C:/x/daemon.json` and `C:\x\daemon.json` are the same file. They were treated as different files, which could make `runestone dns disable` refuse to remove an entry that really was Runestone's, while printing two paths that look identical.
 
+## 1.2.0 - 2026-08-30
+
+**1.2.0 is the final feature release of the 1.x line.** From here on, 1.2.x receives bug fixes only, and support for it ends on 2026-11-30. New features continue in 2.x.
+
+### Added
+
+- Added `runestone certs remove --force` to remove a certificate without the in-use check.
+
+### Changed
+
+- `runestone certs remove` now checks whether any active route still depends on the certificate and asks for confirmation before removing it. Routes that would be left without a matching certificate are listed in the prompt. When the Traefik API cannot be reached, such as while Runestone is stopped, the check is skipped with a warning and the removal still goes ahead.
+
 ## 1.1.1 - 2026-06-23
 
 ### Changed

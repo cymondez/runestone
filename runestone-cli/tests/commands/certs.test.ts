@@ -225,6 +225,18 @@ describe('certs command', () => {
     expect(removeDomainCertificate).toHaveBeenCalled();
   });
 
+  it('skips the in-use check and still removes when the Traefik API cannot be reached', async () => {
+    readTraefikSnapshotMock.mockRejectedValue(new Error('Traefik API request timed out'));
+    const program = createProgram();
+
+    await program.parseAsync(['node', 'runestone', 'certs', 'rm', 'example.test']);
+
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(removeDomainCertificate).toHaveBeenCalledWith('/runestone', 'example.test', { composeFilePath: '/runestone/compose.yml' });
+    const output = warnSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    expect(output).toContain('the in-use check was skipped');
+  });
+
   it('skips in-use route prompts when removing a certificate with force', async () => {
     const program = createProgram();
 

@@ -35,6 +35,8 @@
 npm install -g @developers-homelab/runestone-cli
 ```
 
+Runestone 1.2.x は 1.x 系列の最終機能リリースです。詳細は[バージョンとサポート](#バージョンとサポート)を参照してください。
+
 ### ホスト環境の確認
 
 Runestone を使うには、ホストマシンに Docker、Docker Compose、プラットフォームに応じた証明書ツールが必要です。
@@ -160,6 +162,23 @@ Runestone の設定は `runestone docs --ai-context` を直接呼び出して確
 
 生成される AI context は [runestone-cli/tool-docs/ai-prompt-context.tmp.md](../../runestone-cli/tool-docs/ai-prompt-context.tmp.md) からレンダリングされます。
 生成された context を AI agent に共有する前に、この template を確認できます。
+
+## バージョンとサポート
+
+| バージョンライン | 状態 | サポート範囲 |
+| --- | --- | --- |
+| 1.2.x | 1.x 系列の最終機能リリース | バグ修正のみ、2026-11-30 まで |
+| 2.x | 開発中 | リリース後は既定のバージョンラインになります |
+
+**1.2.0 は 1.x 系列の最後の機能リリースです。** これ以降、1.2.x はバグ修正のみを受け取ります：新しいコマンド、新しいオプション、動作の変更はありません。1.2.x のサポートは **2026-11-30** に終了します。
+
+次のメジャーバージョン 2.0.0 は既存のインストールが依存している動作を変更するため、1.x の更新ではなく新しいメジャーラインとしてリリースされます。
+
+2.0.0 の公開後は、`npm install -g @developers-homelab/runestone-cli` で 2.x がインストールされます。サポート期間中に 1.x 系列にとどまるには：
+
+```bash
+npm install -g @developers-homelab/runestone-cli@1
+```
 
 ## 詳細ヘルプ
 
