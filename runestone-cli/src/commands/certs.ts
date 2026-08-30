@@ -1,11 +1,24 @@
 import { Command } from 'commander';
-import { CertificateListItem, createDomainCertificate, listDomainCertificates, removeDomainCertificate } from '../services/cert-manager';
+import * as p from '@clack/prompts';
+import {
+  CertificateListItem,
+  certificateArtifacts,
+  createDomainCertificate,
+  listDomainCertificates,
+  removeDomainCertificate
+} from '../services/cert-manager';
 import { envLoader } from '../utils/env-loader';
 import { logger } from '../utils/logger';
 import { t } from '../i18n';
 import { createCommand } from '../utils/command';
 import { installRootCa } from '../services/root-ca-installer';
 import { runInDynamicConfigBatch } from '../services/dynamic-config-manager';
+import { findCoveringCertificate } from '../services/service-manager';
+import { readTraefikSnapshot, TraefikNamedResource, TraefikSnapshot } from '../services/traefik-api';
+
+interface RemoveOptions {
+  force?: boolean;
+}
 
 function formatCertificateTable(items: CertificateListItem[], options: { header: boolean }): string {
   const rows = items.map((item) => [
@@ -25,6 +38,113 @@ function formatCertificateTable(items: CertificateListItem[], options: { header:
   return allRows
     .map((row) => row.map((cell, index) => cell.padEnd(widths[index])).join('  ').trimEnd())
     .join('\n');
+}
+
+function traefikApiBaseUrl(hostDomain: string): string {
+  return `https://traefik.${hostDomain}`;
+}
+
+function extractHostRuleDomains(rule: string | undefined): string[] {
+  if (!rule) {
+    return [];
+  }
+
+  const domains = new Set<string>();
+  const hostCalls = rule.matchAll(/Host\(([^)]*)\)/gi);
+  for (const hostCall of hostCalls) {
+    const args = hostCall[1] ?? '';
+    const quotedValues = args.matchAll(/([`'"])(.*?)\1/g);
+    for (const quotedValue of quotedValues) {
+      const domain = quotedValue[2]?.trim().toLowerCase();
+      if (domain) {
+        domains.add(domain);
+      }
+    }
+  }
+
+  return Array.from(domains);
+}
+
+function isCertificateForDomain(certificate: CertificateListItem, projectDir: string, domain: string): boolean {
+  const artifacts = certificateArtifacts(projectDir, domain);
+  const sans = certificate.sans.map((san) => san.trim().toLowerCase());
+  return certificate.certFile === artifacts.certFile ||
+    certificate.keyFile === artifacts.keyFile ||
+    sans.includes(artifacts.domain.toLowerCase()) ||
+    sans.includes(artifacts.wildcardHost.toLowerCase());
+}
+
+function routesNeedingCertificateAfterRemoval(
+  routers: TraefikNamedResource[],
+  certificates: CertificateListItem[],
+  projectDir: string,
+  domain: string
+): string[] {
+  const target = certificates.find((certificate) => isCertificateForDomain(certificate, projectDir, domain));
+  if (!target) {
+    return [];
+  }
+
+  const remaining = certificates.filter((certificate) => certificate !== target);
+  return Array.from(new Set(
+    routers
+      .flatMap((router) => extractHostRuleDomains(router.rule))
+      .filter((route) => findCoveringCertificate(route, [target]) && !findCoveringCertificate(route, remaining))
+  )).sort((left, right) => left.localeCompare(right));
+}
+
+function formatInUseRoutes(routes: string[]): string {
+  const visible = routes.slice(0, 3).map((route) => `       -  ${route}`);
+  if (routes.length > visible.length) {
+    visible.push('          ...');
+  }
+
+  return visible.join('\n');
+}
+
+async function confirmCertificateRemovalIfInUse(
+  hostDomain: string,
+  projectDir: string,
+  domain: string,
+  force?: boolean
+): Promise<boolean> {
+  if (force) {
+    return true;
+  }
+
+  const certificates = listDomainCertificates(projectDir);
+  if (!certificates.some((certificate) => isCertificateForDomain(certificate, projectDir, domain))) {
+    return true;
+  }
+
+  let snapshot: TraefikSnapshot;
+  try {
+    snapshot = await readTraefikSnapshot(traefikApiBaseUrl(hostDomain));
+  } catch {
+    logger.warn(t('certs.remove.checkSkipped'));
+    return true;
+  }
+
+  const routes = routesNeedingCertificateAfterRemoval(snapshot.routers, certificates, projectDir, domain);
+  if (routes.length === 0) {
+    return true;
+  }
+
+  const result = await p.confirm({
+    message: t('certs.remove.inUse.prompt', {
+      domain: certificateArtifacts(projectDir, domain).domain,
+      routes: formatInUseRoutes(routes)
+    }),
+    initialValue: false,
+    active: t('common.yes'),
+    inactive: t('common.no')
+  });
+  if (p.isCancel(result)) {
+    p.cancel(t('certs.remove.cancelled'));
+    process.exit(0);
+  }
+
+  return Boolean(result);
 }
 
 export function createCertsCommand(): Command {
@@ -114,9 +234,21 @@ export function createCertsCommand(): Command {
     .alias('del')
     .description(t('commands.certs.remove.description'))
     .argument('<domain>', t('arguments.domain.remove'))
-    .action(async (domain: string) => {
+    .option('--force', t('options.force.description'))
+    .action(async (domain: string, options: RemoveOptions) => {
       try {
         const config = envLoader.load();
+        const shouldRemove = await confirmCertificateRemovalIfInUse(
+          config.HOST_DOMAIN,
+          config.PROJECT_DIR,
+          domain,
+          options.force
+        );
+        if (!shouldRemove) {
+          logger.warn(t('certs.remove.cancelled'));
+          return;
+        }
+
         const result = await runInDynamicConfigBatch(
           { composeFilePath: config.COMPOSE_FILE_PATH },
           () => removeDomainCertificate(config.PROJECT_DIR, domain, { composeFilePath: config.COMPOSE_FILE_PATH })

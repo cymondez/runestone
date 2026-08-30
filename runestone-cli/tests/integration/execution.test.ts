@@ -219,8 +219,8 @@ describe('runestone CLI actual execution integration', () => {
       'tls:\n  certificates:\n    - certFile: /ssl/example.test.crt\n      keyFile: /ssl/example.test.key\n',
       'utf8'
     );
-    const certRemove = runCli(['cert', 'del', 'example.test'], env);
-    expectSuccess(certRemove, 'runestone cert del');
+    const certRemove = runCli(['cert', 'del', 'example.test', '--force'], env);
+    expectSuccess(certRemove, 'runestone cert del --force');
     expect(fs.existsSync(path.join(certDir, 'example.test.crt'))).toBe(false);
     expect(fs.existsSync(path.join(certDir, 'example.test.key'))).toBe(false);
     expect(fs.existsSync(path.join(dynamicDir, 'example.test.ssl.yml'))).toBe(false);
