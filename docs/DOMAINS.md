@@ -45,7 +45,7 @@ Three things follow, and each has caught someone out:
 
 ## What the DNS feature does to each
 
-The `dns` container writes **one mapping per certificate** in the `certs` directory — the filename is the domain — as `address=/<domain>/<target-ip>`, which covers that domain **and every subdomain of it, to any depth**.
+The `dns` container writes **one mapping per DNS name a certificate carries**, read out of the certificate itself, as `address=/<domain>/<target-ip>` — which covers that domain **and every subdomain of it, to any depth**. A wildcard name maps to the same zone as its base: `*.example.test` and `example.test` are both `address=/example.test/<target-ip>`.
 
 | kind | effect | verdict |
 | --- | --- | --- |
@@ -110,4 +110,4 @@ Recorded because each one has already been hit, or came close.
 - **`address=/domain/ip` is already authoritative for the whole name.** Adding `local=/domain/` alongside it changes nothing — verified per record type, with a control proving forwarding worked. Someone will be tempted by it; it is a no-op. (This one is not hypothetical: it was added on 2026-08-29 to fix an AAAA "leak" that did not exist, and reverted the same day. The full retraction is in [`evidence/dns/m6b-linux-native.md`](evidence/dns/m6b-linux-native.md).)
 - **The mapping covers subdomains to any depth.** A certificate for `example.test` takes `a.b.c.example.test` with it. For a wildcard-DNS service, that means the entire service.
 - **`getent` and busybox `nslookup` are the wrong tools for a DNS claim.** They mix A and AAAA and hide which resolver answered. Use `dig`, name the record type, and name the server.
-- **Certificate filename is the domain.** `rootCA.crt` is excluded, names that are not valid domains are skipped and reported, and `.key` files are ignored. Nothing reads the certificate's contents.
+- **The names come from inside the certificate, not from its filename.** `rootCA.crt` is excluded by name, every other `*.crt` is opened and its `DNS:` names are read, names that are not valid domains are skipped and reported, and a file that cannot be parsed is skipped rather than falling back to what it is called. So one certificate can produce several mappings, and a file named after a domain it does not actually carry produces none for that domain.

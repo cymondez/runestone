@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { RunestoneEnv, envLoader } from '../../utils/env-loader';
 import { DnsOwnershipState, toolState } from '../../utils/tool-state';
+import { readCertificateDnsNames } from '../cert-manager';
 import { COMPOSE_SERVICES, DNS_PROFILE, DockerContainer, composeService } from '../docker-compose';
 import { execService } from '../docker-exec';
 import {
@@ -68,6 +69,12 @@ export interface LifecycleDependencies {
   /** Docker Desktop's own version, for the restart-safety check. */
   desktopVersion: () => ReturnType<typeof readDesktopVersion>;
   readDir: (dir: string) => string[];
+  /**
+   * The `DNS:` names one certificate carries. An unreadable certificate yields
+   * none, matching the entrypoint, which logs the file and moves on rather than
+   * falling back to its name.
+   */
+  readCertNames: (certFile: string) => string[];
   now: () => string;
 }
 
@@ -86,6 +93,13 @@ export const defaultLifecycleDependencies: LifecycleDependencies = {
   targetIp: (image) => resolveTargetIp(image),
   desktopVersion: () => readDesktopVersion(),
   readDir: (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir) : []),
+  readCertNames: (certFile) => {
+    try {
+      return readCertificateDnsNames(certFile);
+    } catch {
+      return [];
+    }
+  },
   now: () => new Date().toISOString()
 };
 
@@ -103,20 +117,40 @@ const DOMAIN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+
 
 /**
  * The certificate-covered domains, derived exactly as the entrypoint derives
- * them: filenames only, `rootCA.crt` excluded, anything that is not a domain
- * skipped. Certificate contents are never read.
+ * them: every `DNS:` name the certificate itself carries, lowercased, with a
+ * leading `*.` removed, `rootCA.crt` excluded, anything that is not a domain
+ * skipped, and duplicates collapsed.
+ *
+ * The names come from the certificate and never from its filename. A file can
+ * be renamed and can carry names that have nothing to do with what it is
+ * called, and the filename is not what Traefik will serve.
+ *
+ * Stripping the wildcard loses nothing: `address=/d/ip` already answers for `d`
+ * and every subdomain of `d`, so `*.example.test` and `example.test` are the
+ * same zone here.
  */
 export function certificateDomains(
   projectDir: string,
-  readDir: LifecycleDependencies['readDir'] = defaultLifecycleDependencies.readDir
+  readDir: LifecycleDependencies['readDir'] = defaultLifecycleDependencies.readDir,
+  readCertNames: LifecycleDependencies['readCertNames'] = defaultLifecycleDependencies.readCertNames
 ): string[] {
-  return readDir(path.join(projectDir, 'certs'))
-    .filter((name) => name.endsWith('.crt'))
-    .map((name) => path.basename(name, '.crt'))
-    .filter((name) => name !== 'rootCA')
-    .map((name) => name.toLowerCase())
-    .filter((domain) => DOMAIN.test(domain))
-    .sort((left, right) => left.localeCompare(right));
+  const certsDir = path.join(projectDir, 'certs');
+  const domains = new Set<string>();
+
+  for (const name of readDir(certsDir)) {
+    if (!name.endsWith('.crt') || name === 'rootCA.crt') {
+      continue;
+    }
+
+    for (const san of readCertNames(path.join(certsDir, name))) {
+      const domain = san.trim().toLowerCase().replace(/^\*\./, '');
+      if (DOMAIN.test(domain)) {
+        domains.add(domain);
+      }
+    }
+  }
+
+  return Array.from(domains).sort((left, right) => left.localeCompare(right));
 }
 
 export function buildManagedMappings(domains: string[], targetIp: string): string[] {
@@ -171,7 +205,7 @@ export function readMappingState(
   dependencies: Partial<LifecycleDependencies> = {}
 ): MappingState {
   const deps = { ...defaultLifecycleDependencies, ...dependencies };
-  const domains = certificateDomains(config.PROJECT_DIR, deps.readDir);
+  const domains = certificateDomains(config.PROJECT_DIR, deps.readDir, deps.readCertNames);
   const desired = buildManagedMappings(domains, targetIp);
   const containerName = dnsContainerName(config);
   const state = dnsContainerState(config, deps);

@@ -45,7 +45,7 @@ Runestone 會碰到三種不同性質的 domain，它們的行為差異很容易
 
 ## DNS 功能對每一種做了什麼
 
-`dns` 容器會為 `certs` 目錄裡的**每一張憑證**寫一條 mapping——檔名就是 domain——形式是 `address=/<domain>/<target-ip>`，而它涵蓋該 domain **以及它底下任意深度的每一個子網域**。
+`dns` 容器會為**憑證裡帶的每一個 DNS 名稱**寫一條 mapping，名稱是從憑證本身讀出來的，形式是 `address=/<domain>/<target-ip>`，而它涵蓋該 domain **以及它底下任意深度的每一個子網域**。萬用名稱與它的基底對應到同一個 zone：`*.example.test` 與 `example.test` 都是 `address=/example.test/<target-ip>`。
 
 | 種類 | 效果 | 評價 |
 | --- | --- | --- |
@@ -110,4 +110,4 @@ Docker 的 IPv6 是**要自己開、而且與主機環境高度相關**的功能
 - **`address=/domain/ip` 本身就已經對整個名稱具權威性。** 在它旁邊再加 `local=/domain/` 不會改變任何事——已逐一型別驗證，並附有「轉發確實有效」的對照組。會有人想加它；那是個 no-op。（這條不是假設：2026-08-29 有人為了修一個並不存在的 AAAA「外洩」而加了它，當天又還原。完整的撤回記錄在 [`evidence/dns/m6b-linux-native.zh-TW.md`](evidence/dns/m6b-linux-native.zh-TW.md)。）
 - **mapping 涵蓋任意深度的子網域。** 一張 `example.test` 的憑證會連 `a.b.c.example.test` 一起帶走。碰上萬用 DNS 服務時，那代表整個服務。
 - **要主張 DNS 行為時，`getent` 與 busybox `nslookup` 是錯的工具。** 它們會把 A 與 AAAA 混在一起，也看不出是哪一台 resolver 回答的。請用 `dig`，明講 record 型別，也明講伺服器。
-- **憑證的檔名就是 domain。** `rootCA.crt` 會被排除，不是合法 domain 的檔名會被跳過並回報，`.key` 檔會被忽略。程式從來不去讀憑證的內容。
+- **名稱來自憑證內容，不是來自檔名。** `rootCA.crt` 依檔名排除，其餘每個 `*.crt` 都會被打開、讀出它的 `DNS:` 名稱，不是合法 domain 的名稱會被跳過並回報，無法解析的檔案直接跳過而不回退到檔名。所以一張憑證可能產生好幾條 mapping，而一個以某 domain 命名、實際上卻沒有帶那個名稱的檔案，不會為它產生任何 mapping。

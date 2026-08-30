@@ -9,6 +9,7 @@ import {
   buildManagedMappings,
   certificateDomains,
   checkDnsHealth,
+  defaultLifecycleDependencies,
   parseManagedMappings,
   planUpDns,
   readMappingState,
@@ -54,11 +55,35 @@ describe('dns lifecycle', () => {
     };
   }
 
+  /**
+   * What each certificate file says its DNS names are. The files themselves stay
+   * empty: the rule under test is how names become zones, not how X.509 is
+   * parsed, which `readCertificateDnsNames` owns and is tested against a real
+   * certificate elsewhere.
+   */
+  let certSans: Map<string, string[]>;
+
+  const readCertNames = (certFile: string): string[] => certSans.get(path.basename(certFile)) ?? [];
+
+  const domainsOf = (dir: string = projectDir): string[] =>
+    certificateDomains(dir, defaultLifecycleDependencies.readDir, readCertNames);
+
+  /**
+   * Certificates carrying the names `runestone certs create` actually puts in
+   * them: the wildcard alone, and nothing else (`mkcert.generate` is called with
+   * `hosts: ['*.<domain>']`).
+   */
   function certs(...names: string[]): void {
+    writeCerts(Object.fromEntries(names.map((name) => [name, [`*.${name.replace(/\.crt$/, '')}`]])));
+  }
+
+  /** Certificates carrying names of their own, whatever the file is called. */
+  function writeCerts(entries: Record<string, string[]>): void {
     const certsDir = path.join(projectDir, 'certs');
     fs.mkdirSync(certsDir, { recursive: true });
-    for (const name of names) {
+    for (const [name, sans] of Object.entries(entries)) {
       fs.writeFileSync(path.join(certsDir, name), '', 'utf8');
+      certSans.set(name, sans);
     }
   }
 
@@ -112,6 +137,7 @@ describe('dns lifecycle', () => {
         options.desktopVersion === null
           ? undefined
           : { raw: `Docker Desktop ${options.desktopVersion ?? '4.88.1'} (1)`, version: options.desktopVersion ?? '4.88.1' },
+      readCertNames,
       now: () => '2026-08-28T00:00:00.000Z'
     };
 
@@ -120,6 +146,7 @@ describe('dns lifecycle', () => {
 
   beforeEach(() => {
     restartDockerMock.mockClear();
+    certSans = new Map();
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-lifecycle-'));
     projectDir = path.join(directory, 'project');
     fs.mkdirSync(projectDir);
@@ -144,11 +171,32 @@ describe('dns lifecycle', () => {
       // `notadomain` has one label and `-bad.host` starts with a hyphen, so
       // neither is a domain the entrypoint would map. `Other.Example.crt` is,
       // once lowercased.
-      expect(certificateDomains(projectDir)).toEqual(['example.test', 'other.example']);
+      expect(domainsOf()).toEqual(['example.test', 'other.example']);
+    });
+
+    it('maps every name a certificate carries, not the one its file is called', () => {
+      writeCerts({
+        // A certificate the filename rule got wrong twice over: `wrong-name` is
+        // not a domain, so the whole file used to be skipped, and `b.test` has
+        // no filename anywhere that would have produced it.
+        'wrong-name.crt': ['*.a.test', 'b.test', 'C.TEST'],
+        // Two files, one zone: `*.shared.test` and `shared.test` are the same
+        // `address=/shared.test/ip`, and it must not be written twice.
+        'shared.crt': ['*.shared.test'],
+        'shared-apex.crt': ['shared.test']
+      });
+
+      expect(domainsOf()).toEqual(['a.test', 'b.test', 'c.test', 'shared.test']);
+    });
+
+    it('skips a certificate whose names cannot be read instead of using its filename', () => {
+      writeCerts({ 'example.test.crt': [] });
+
+      expect(domainsOf()).toEqual([]);
     });
 
     it('returns nothing when there is no certs directory at all', () => {
-      expect(certificateDomains(path.join(directory, 'missing'))).toEqual([]);
+      expect(domainsOf(path.join(directory, 'missing'))).toEqual([]);
     });
 
     it('reads only the address lines out of a generated managed.conf', () => {

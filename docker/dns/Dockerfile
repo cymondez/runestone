@@ -23,7 +23,7 @@ ENV WEBPROC_VERSION=${WEBPROC_VERSION} \
     DNS_UI_PORT=8080 \
     SSL_DIR=/ssl
 
-RUN apk add --no-cache dnsmasq ca-certificates
+RUN apk add --no-cache dnsmasq ca-certificates openssl
 
 # webproc publishes linux_amd64 and linux_arm64 release assets, and TARGETARCH
 # uses exactly those two names, so no architecture mapping table is needed.

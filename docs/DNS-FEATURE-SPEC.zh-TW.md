@@ -339,7 +339,7 @@ DNS_UI_PASS=            # 選填，webproc 基本驗證密碼（HTTP_PASS）
 - `restart: unless-stopped`。
 - 使用 compose profile `dns`。**`DNS_ENABLE=true` 時，CLI 所有 compose 呼叫（`up` / `stop` / `restart` / `ps` / `down`）一律帶 `--profile dns`**，避免不同 Compose 版本對 profile 的處理差異造成行為漂移。
 - 發佈 `${DNS_BIND_PREFIX}53:53/tcp` 與 `${DNS_BIND_PREFIX}53:53/udp`，因此全介面綁定發佈時完全不帶位址（見 6.1）；webproc 的 8080 **不對主機發佈**。
-- 掛載：`./certs:/ssl:ro`（entrypoint 掃描憑證檔名用）、`./dns/custom.conf:/etc/dnsmasq.d/custom.conf`（可寫，使用者與 webproc 的編輯對象）。Runestone 擁有的兩個設定檔只存在容器內、不掛載（見 8.3）。
+- 掛載：`./certs:/ssl:ro`（entrypoint 讀取憑證用）、`./dns/custom.conf:/etc/dnsmasq.d/custom.conf`（可寫，使用者與 webproc 的編輯對象）。Runestone 擁有的兩個設定檔只存在容器內、不掛載（見 8.3）。
 - 環境變數：`DNS_HOST_IP`、`DNS_UPSTREAM` 供 entrypoint render 設定檔；`DNS_UI_USER` / `DNS_UI_PASS` 有值時以 `HTTP_USER` / `HTTP_PASS` 傳入。
 - 服務層直接指定 `dns:` 為上游解析器，確保 dns 容器本身不會被 daemon 的 DNS 設定導回自己而形成迴圈。
 
@@ -357,7 +357,9 @@ Runestone 擁有的兩個設定檔 `/etc/dnsmasq.conf` 與 `/etc/dnsmasq.d/manag
 
 產生規則：
 
-- `managed.conf`：entrypoint 掃描唯讀掛載的 `/ssl`，取 `*.crt`，排除 `rootCA.crt` 與不是合法 domain 的檔名，每個 domain 產生一條 `address=/<domain>/<DNS_HOST_IP>`。dnsmasq 的 `address=/domain/ip` 會同時涵蓋該 domain 與其所有子網域（實測確認）。只需要讀檔名，不需要讀憑證內容。
+- `managed.conf`：entrypoint 掃描唯讀掛載的 `/ssl`，取 `*.crt`，依檔名排除 `rootCA.crt`，然後從每張憑證的 subjectAltName 讀出所有 `DNS:` 項目。每個名稱轉小寫、去掉開頭的 `*.`、不是合法 domain 的跳過並回報、重複的合併，剩下的每一個產生一條 `address=/<domain>/<DNS_HOST_IP>`，而且每寫一條就 log 一條。dnsmasq 的 `address=/domain/ip` 會同時涵蓋該 domain 與其所有子網域（實測確認），所以去掉萬用字元不會損失任何涵蓋範圍。
+
+  **名稱來自憑證本身，絕不來自檔名。** 檔案可以被改名，也可以帶著與檔名毫無關係的名稱，而檔名並不是 Traefik 會拿去服務的東西。讀不到名稱的憑證一律跳過並回報，**不回退到檔名**——回退到一個不可靠的來源，比一條看得見的缺漏更糟。讀憑證需要 image 裡有 `openssl`。
 - `dnsmasq.conf`：entrypoint 依環境變數 render，包含 `no-resolv`、依 `DNS_UPSTREAM` 展開的 `server=` 清單，並 include `managed.conf` 與 `custom.conf`。
 - `custom.conf`：CLI 必須在啟動 dns 服務前確保該檔存在（**bind-mount 一個不存在的檔案會被 Docker 建成目錄**），內容為說明註解。
 
@@ -751,7 +753,7 @@ DNS 相關共四題，順序固定，第二三四題僅在啟用時出現：
 ### 14.4 runestone-dns image 驗證
 
 - `linux/amd64` 與 `linux/arm64` 兩個平台都要能啟動，並確認 dnsmasq 同時回應 53/tcp 與 53/udp。
-- mapping 產生規則（用 fixture `/ssl` 目錄驗證）：每個 `*.crt` 產生一條 `address=`、排除 `rootCA.crt`、排除非法 domain 檔名、目錄為空時仍能正常啟動。
+- mapping 產生規則（用一份放真實憑證的 fixture `/ssl` 目錄驗證）：每個 `DNS:` 名稱產生一條 `address=`、名稱取自憑證而非檔名、`rootCA.crt` 即使帶有名稱仍依檔名排除、排除非法 domain、無法解析的檔案跳過、重複合併、目錄為空時仍能正常啟動。
 - **防篡改**：在容器內手改 `/etc/dnsmasq.conf` 與 `/etc/dnsmasq.d/managed.conf` 後重啟容器，兩者內容都被還原；同一次重啟中 `custom.conf` 的內容完全未被覆寫。
 - 主機重開機／Docker 重啟後由 `restart: unless-stopped` 拉起時，設定同樣正確，且過程中未執行任何 CLI 命令。
 - webproc 修改 `custom.conf` 後，dnsmasq 有被重啟且新規則生效。

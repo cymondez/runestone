@@ -339,7 +339,7 @@ Two environment variables redirect the only two operations that touch global sta
 - `restart: unless-stopped`.
 - Uses the Compose profile `dns`. **When `DNS_ENABLE=true`, every Compose call made by the CLI (`up` / `stop` / `restart` / `ps` / `down`) must pass `--profile dns`**, so behaviour does not drift with differences in how Compose versions treat profiles.
 - Publishes `${DNS_BIND_PREFIX}53:53/tcp` and `${DNS_BIND_PREFIX}53:53/udp`, so an all-interfaces bind is published without an address at all (6.1); webproc's 8080 is **not published to the host**.
-- Mounts: `./certs:/ssl:ro` (so the entrypoint can scan certificate filenames) and `./dns/custom.conf:/etc/dnsmasq.d/custom.conf` (writable, edited by the user and webproc). The two files Runestone owns exist only inside the container and are not mounted (see 8.3).
+- Mounts: `./certs:/ssl:ro` (so the entrypoint can read the certificates) and `./dns/custom.conf:/etc/dnsmasq.d/custom.conf` (writable, edited by the user and webproc). The two files Runestone owns exist only inside the container and are not mounted (see 8.3).
 - Environment: `DNS_HOST_IP` and `DNS_UPSTREAM` for the entrypoint to render the configuration; `DNS_UI_USER` / `DNS_UI_PASS`, when set, are passed in as `HTTP_USER` / `HTTP_PASS`.
 - The service sets `dns:` explicitly to the upstream resolvers, so the dns container itself is never pointed back at itself by the daemon DNS setting and cannot form a loop.
 
@@ -357,7 +357,9 @@ This matches what the runestone image already does: `traefik.tmp.yml` is rendere
 
 Generation rules:
 
-- `managed.conf`: the entrypoint scans the read-only `/ssl` mount for `*.crt`, excluding `rootCA.crt` and any filename that is not a valid domain, and emits one `address=/<domain>/<DNS_HOST_IP>` line per domain. dnsmasq's `address=/domain/ip` covers both the domain and all of its subdomains (verified). Only filenames are needed; certificate contents are never read.
+- `managed.conf`: the entrypoint scans the read-only `/ssl` mount for `*.crt`, excluding `rootCA.crt` by name, and reads every `DNS:` entry out of each certificate's subjectAltName. Each name is lowercased, a leading `*.` is removed, anything that is not a valid domain is skipped and reported, duplicates are collapsed, and one `address=/<domain>/<DNS_HOST_IP>` line is emitted per remaining name. Every line written is logged. dnsmasq's `address=/domain/ip` covers both the domain and all of its subdomains (verified), which is why stripping the wildcard loses nothing.
+
+  **The names come from the certificate, never from its filename.** A file can be renamed, and it can carry names that have nothing to do with what it is called; the filename is not what Traefik will serve. A certificate whose names cannot be read is skipped and reported — it never falls back to the filename, because falling back to an unreliable source is worse than a mapping that is visibly missing. Reading the certificate requires `openssl` in the image.
 - `dnsmasq.conf`: rendered by the entrypoint from environment variables, containing `no-resolv`, the `server=` list expanded from `DNS_UPSTREAM`, and includes of `managed.conf` and `custom.conf`.
 - `custom.conf`: the CLI must ensure this file exists before starting the dns service (**bind-mounting a file that does not exist makes Docker create a directory instead**), containing explanatory comments.
 
@@ -751,7 +753,7 @@ On each platform verify: enable → a new container's resolv.conf lists the Targ
 ### 14.4 runestone-dns image verification
 
 - Both `linux/amd64` and `linux/arm64` start successfully, and dnsmasq answers on both 53/tcp and 53/udp.
-- Mapping generation rules (verified with a fixture `/ssl` directory): one `address=` line per `*.crt`, `rootCA.crt` excluded, invalid domain filenames excluded, and a clean start when the directory is empty.
+- Mapping generation rules (verified with a fixture `/ssl` directory of real certificates): one `address=` line per `DNS:` name, names taken from the certificate rather than the filename, `rootCA.crt` excluded by name even when it carries names, invalid domains excluded, unparseable files skipped, duplicates collapsed, and a clean start when the directory is empty.
 - **Tamper resistance**: after editing `/etc/dnsmasq.conf` and `/etc/dnsmasq.d/managed.conf` inside the container, restarting the container restores both, while `custom.conf` is left completely untouched by the same restart.
 - After a host reboot or Docker restart where `restart: unless-stopped` brings the container back, the configuration is still correct without any CLI command having run.
 - After editing `custom.conf` through webproc, dnsmasq is restarted and the new rules take effect.

@@ -135,7 +135,7 @@ Three things to carry forward:
 - [x] Spec 14.4 green on both architectures — **amd64 32 of 32, arm64 32 of 32**, after registering QEMU emulation
 - [x] **All verification performed on a port other than 53**, so this milestone never fights the host for port 53
 - [x] Tamper resistance: editing the two Runestone-owned files inside the container and restarting restores both, and leaves `custom.conf` untouched
-- [x] Mapping rules: one `address=` per `*.crt`, `rootCA.crt` excluded, invalid domain filenames excluded, empty directory still starts
+- [x] Mapping rules: one `address=` per `DNS:` name read from the certificate, `rootCA.crt` excluded by name, invalid domains excluded, unparseable files skipped, duplicates collapsed, empty directory still starts
 
 **Landed.** `docker/dns/` now holds `Dockerfile`, `entrypoint.sh`, `publish.sh`, `README.md` and `test/verify-image.sh`. Verification on amd64: **32 checks, 32 passing.**
 

@@ -135,7 +135,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 - [x] 規格 14.4 在兩種架構上全綠 — **amd64 32 項、arm64 32 項全過**，在註冊 QEMU 模擬之後
 - [x] **所有驗證都在非 53 的 port 上進行**，讓這個里程碑全程不與宿主爭 53
 - [x] 防篡改：在容器內改掉兩個 Runestone 擁有的檔案後重啟，兩者都被還原，且 `custom.conf` 未被動到
-- [x] mapping 規則：每個 `*.crt` 一條 `address=`、排除 `rootCA.crt`、排除非法 domain 檔名、目錄為空時仍能啟動
+- [x] mapping 規則：每個從憑證讀出的 `DNS:` 名稱一條 `address=`、依檔名排除 `rootCA.crt`、排除非法 domain、無法解析的檔案跳過、重複合併、目錄為空時仍能啟動
 
 **已落地。** `docker/dns/` 現在有 `Dockerfile`、`entrypoint.sh`、`publish.sh`、`README.md` 與 `test/verify-image.sh`。amd64 驗證結果：**32 項檢查，32 項通過。**
 

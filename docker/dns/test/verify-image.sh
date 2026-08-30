@@ -69,9 +69,25 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Filenames the entrypoint must map, ignore or reject (spec 8.3).
-FIXTURE_MAPPED='local.test api.example.test'
-FIXTURE_FILES='local.test.crt local.test.key api.example.test.crt rootCA.crt nodot.crt bad-.test.crt notes.txt'
+# The zones the entrypoint must produce from the fixture certificates (spec 8.3).
+# `a.test` and `b.test` come from wrong-name.crt, whose filename is not a domain
+# at all: they are the case that proves the names are read from the certificate.
+FIXTURE_MAPPED='local.test api.example.test a.test b.test'
+
+# The fixture certificates, as `filename subjectAltName` pairs. Empty files would
+# now test nothing — the entrypoint reads the names out of the certificate, so a
+# file it cannot parse is skipped rather than falling back to its name.
+FIXTURE_CERTS='
+local.test.crt DNS:*.local.test
+api.example.test.crt DNS:*.api.example.test
+wrong-name.crt DNS:*.a.test,DNS:b.test
+nodot.crt DNS:nodot
+bad-.test.crt DNS:bad-.test
+rootCA.crt DNS:*.rootca.test
+'
+
+# Files that are not certificates the entrypoint should look at.
+FIXTURE_PLAIN='local.test.key notes.txt empty.crt'
 
 server_dns_query() {
     # $1 domain, $2 extra dig flags
@@ -106,7 +122,20 @@ docker network create "$NETWORK" >/dev/null || exit 1
 docker volume create "$VOLUME" >/dev/null || exit 1
 
 say "populating the fixture /ssl volume"
-docker run --rm -v "${VOLUME}:/ssl" alpine:3.22 sh -c "cd /ssl && touch ${FIXTURE_FILES}" >/dev/null || exit 1
+# Generated with the image's own openssl, so the fixture needs no host tooling
+# and stays inside the volume, like everything else here.
+docker run --rm -v "${VOLUME}:/ssl" --entrypoint sh "$IMAGE" -c "
+set -eu
+cd /ssl
+touch ${FIXTURE_PLAIN}
+printf '%s\n' '${FIXTURE_CERTS}' | while read -r file sans; do
+    [ -n \"\$file\" ] || continue
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+        -subj '/CN=fixture' -addext \"subjectAltName=\$sans\" \
+        -keyout /tmp/fixture.key -out \"\$file\" >/dev/null 2>&1
+done
+rm -f /tmp/fixture.key
+" >/dev/null || exit 1
 
 say ""
 say "webproc flags pinned by the entrypoint (spec 8.1)"
@@ -131,13 +160,19 @@ rules=$(printf '%s' "$managed" | grep '^address=/')
 for domain in $FIXTURE_MAPPED; do
     expect_contains "maps ${domain}" "$rules" "address=/${domain}/${TARGET_IP}"
 done
-expect_absent "excludes rootCA.crt" "$rules" "rootCA"
-expect_absent "excludes a single-label filename" "$rules" "nodot"
-expect_absent "excludes a filename with an invalid label" "$rules" "bad-"
+expect_absent "excludes rootCA.crt by filename even though it carries names" "$rules" "rootca"
+expect_absent "excludes a single-label name" "$rules" "nodot"
+expect_absent "excludes a name with an invalid label" "$rules" "bad-"
 expect_absent "ignores .key and other files" "$rules" "notes"
-expect_equal "one address= line per valid certificate" "2" \
+# The names are the certificate's, so the file this pair came from must appear
+# nowhere in the output: `wrong-name` is not a domain and never becomes one.
+expect_absent "never maps the filename itself" "$rules" "wrong-name"
+expect_absent "skips a file it cannot parse rather than using its name" "$rules" "empty"
+expect_equal "one address= line per mapped name" "4" \
     "$(printf '%s' "$rules" | grep -c '^address=/' | tr -d ' ')"
-expect_contains "says which filenames it skipped" "$managed" "is not a valid domain name"
+expect_contains "says which names it skipped" "$managed" "not a valid domain name"
+expect_contains "says which files carried no names" "$managed" "no DNS names could be read"
+expect_contains "lists each mapping it wrote" "$managed" "mapping local.test -> ${TARGET_IP}"
 
 expect_contains "forwards only to the given upstreams" "$dnsmasq_conf" "no-resolv"
 expect_contains "first upstream" "$dnsmasq_conf" "server=1.1.1.1"
