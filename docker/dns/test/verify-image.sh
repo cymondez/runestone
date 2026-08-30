@@ -213,11 +213,23 @@ docker run -d --name "$SERVER" --network "$NETWORK" \
     -e HTTP_PASS=verify \
     "$IMAGE" >/dev/null || exit 1
 
-# dnsmasq answers as soon as it has read its configuration; poll rather than sleep.
+# dnsmasq answers as soon as it has read its configuration; poll rather than
+# sleep a fixed amount, so a fast start is not paid for.
+#
+# **Wait for the answer, not for output.** Before dnsmasq binds, dig prints
+# `communications error ... connection refused` on stdout and exits immediately.
+# A `-n` test treats that as success, so the loop used to break on its first
+# attempt and wait for nothing — and adding a delay does not help, because the
+# loop is not reached a second time. The interval matters too: a refused
+# connection returns with no timeout to wait out.
+#
+# Both defects stayed invisible until the arm64 image was verified under
+# emulation, where the container is slow enough to lose the race.
 attempt=0
 while [ "$attempt" -lt 20 ]; do
-    [ -n "$(server_dns_query local.test)" ] && break
+    [ "$(server_dns_query local.test)" = "$TARGET_IP" ] && break
     attempt=$((attempt + 1))
+    sleep 1
 done
 
 expect_equal "answers a managed domain over udp" "$TARGET_IP" "$(server_dns_query local.test)"
