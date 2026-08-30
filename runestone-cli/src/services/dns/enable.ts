@@ -3,7 +3,7 @@ import { RunestoneEnv, envLoader } from '../../utils/env-loader';
 import { osDetector } from '../../utils/os-detector';
 import { ensureProjectFiles } from '../../utils/project-files';
 import { DnsOwnershipState, toolState } from '../../utils/tool-state';
-import { COMPOSE_SERVICES, DNS_PROFILE, composeService } from '../docker-compose';
+import { COMPOSE_SERVICES, DNS_PROFILE, RUNESTONE_IMAGE, composeService } from '../docker-compose';
 import {
   Identification,
   OwnedEntry,
@@ -111,8 +111,8 @@ export const defaultPreflightDependencies: PreflightDependencies = {
   hostResolvers: defaultHostResolvers
 };
 
-export function verificationImage(config: RunestoneEnv): string {
-  return `${config.RUNESTONE_IMAGE}:${config.RUNESTONE_TAG}`;
+export function verificationImage(): string {
+  return RUNESTONE_IMAGE;
 }
 
 /** The domain used to prove the service answers (spec 10.1 steps 3 and 6). */
@@ -164,7 +164,7 @@ export function preflight(
 
   let targetIp: string | undefined;
   if (failures.length === 0) {
-    const resolved = resolveTargetIp(verificationImage(config), deps.probes);
+    const resolved = resolveTargetIp(verificationImage(), deps.probes);
     if (resolved.ip) {
       targetIp = resolved.ip;
     } else {
@@ -471,7 +471,7 @@ export function applyEnable(
   }
 
   result.stage = 'verification';
-  const verification = deps.verify(verificationImage(config), plan.verifyDomain, plan.preflight.targetIp as string);
+  const verification = deps.verify(verificationImage(), plan.verifyDomain, plan.preflight.targetIp as string);
   result.verification = verification;
   if (!verification.ok) {
     // Spec 10.1 step 3: stop the service, restore `.env`, and finish **without
@@ -617,7 +617,7 @@ export function completeEnable(
   options: CompleteOptions = {}
 ): CompleteResult {
   const deps = { ...defaultCompleteDependencies, ...dependencies };
-  const image = verificationImage(config);
+  const image = verificationImage();
   const targetIp = plan.preflight.targetIp as string;
 
   // **Do not restart a machine that is already running the configuration.**

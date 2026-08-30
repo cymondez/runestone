@@ -227,8 +227,6 @@ function setupConfigInput(draft: SetupDraft): EnvInput {
     SMTP_PORT: draft.smtpPort,
     WEB_ENTRYPOINT_PORT: draft.webEntrypointPort,
     WEB_SECURE_ENTRYPOINT_PORT: draft.webSecureEntrypointPort,
-    RUNESTONE_IMAGE: 'cymondez/runestone',
-    RUNESTONE_TAG: '5.2',
     MKCERT_INSTALLED: String(Boolean(draft.installMkcert)),
     WEB_ENTRYPOINT_NAME: draft.webEntrypointName,
     WEB_SECURE_ENTRYPOINT_NAME: draft.webSecureEntrypointName,

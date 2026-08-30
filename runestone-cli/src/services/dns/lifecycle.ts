@@ -3,7 +3,7 @@ import * as path from 'path';
 import { RunestoneEnv, envLoader } from '../../utils/env-loader';
 import { DnsOwnershipState, toolState } from '../../utils/tool-state';
 import { readCertificateDnsNames } from '../cert-manager';
-import { COMPOSE_SERVICES, DNS_PROFILE, DockerContainer, composeService } from '../docker-compose';
+import { COMPOSE_SERVICES, DNS_PROFILE, DockerContainer, RUNESTONE_IMAGE, composeService } from '../docker-compose';
 import { execService } from '../docker-exec';
 import {
   Identification,
@@ -103,8 +103,14 @@ export const defaultLifecycleDependencies: LifecycleDependencies = {
   now: () => new Date().toISOString()
 };
 
-export function dnsImage(config: Pick<RunestoneEnv, 'RUNESTONE_IMAGE' | 'RUNESTONE_TAG'>): string {
-  return `${config.RUNESTONE_IMAGE}:${config.RUNESTONE_TAG}`;
+/**
+ * The image a throwaway probe container runs. It is the runestone image rather
+ * than the dns one because the probe asks `getent ahostsv4 host.docker.internal`
+ * (spec 10.1), which needs an image that is certain to be present — not the one
+ * this feature is still deciding whether to start.
+ */
+export function probeImage(): string {
+  return RUNESTONE_IMAGE;
 }
 
 /**
@@ -347,7 +353,7 @@ export function planUpDns(
     };
   }
 
-  const probe = deps.targetIp(dnsImage(config));
+  const probe = deps.targetIp(probeImage());
   const detected = probe.ip;
   const withFile: UpDnsPlan = {
     ...base,
@@ -619,7 +625,7 @@ export function checkDnsHealth(
     }
   }
 
-  const probe = deps.targetIp(dnsImage(config));
+  const probe = deps.targetIp(probeImage());
   if (!probe.ip) {
     checks.push({ id: 'targetIp', status: 'skip', detail: { message: probe.error ?? '' } });
   } else {

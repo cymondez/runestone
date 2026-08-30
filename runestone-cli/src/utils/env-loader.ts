@@ -10,8 +10,6 @@ export interface RunestoneEnv {
   HTTPS_PORT: string;
   HTTP_PORT: string;
   SMTP_PORT: string;
-  RUNESTONE_IMAGE: string;
-  RUNESTONE_TAG: string;
   MKCERT_INSTALLED: string;
   RUNESTONE_VERSION: string;
   RUNESTONE_LANG: string;
@@ -47,8 +45,6 @@ export type EnvInput = Partial<
     | 'HTTPS_PORT'
     | 'HTTP_PORT'
     | 'SMTP_PORT'
-    | 'RUNESTONE_IMAGE'
-    | 'RUNESTONE_TAG'
     | 'MKCERT_INSTALLED'
     | 'RUNESTONE_VERSION'
     | 'WEB_ENTRYPOINT_PORT'
@@ -75,8 +71,6 @@ export const DEFAULT_ENV: Required<EnvInput> = {
   HTTPS_PORT: '443',
   HTTP_PORT: '80',
   SMTP_PORT: '1025',
-  RUNESTONE_IMAGE: 'cymondez/runestone',
-  RUNESTONE_TAG: '5.2',
   MKCERT_INSTALLED: 'false',
   RUNESTONE_VERSION: '5',
   WEB_ENTRYPOINT_PORT: '80',
@@ -136,8 +130,6 @@ export const envLoader = {
       HTTPS_PORT: merged.HTTPS_PORT || DEFAULT_ENV.HTTPS_PORT,
       HTTP_PORT: merged.HTTP_PORT || DEFAULT_ENV.HTTP_PORT,
       SMTP_PORT: merged.SMTP_PORT || DEFAULT_ENV.SMTP_PORT,
-      RUNESTONE_IMAGE: merged.RUNESTONE_IMAGE || DEFAULT_ENV.RUNESTONE_IMAGE,
-      RUNESTONE_TAG: merged.RUNESTONE_TAG || DEFAULT_ENV.RUNESTONE_TAG,
       MKCERT_INSTALLED: merged.MKCERT_INSTALLED || DEFAULT_ENV.MKCERT_INSTALLED,
       RUNESTONE_VERSION: merged.RUNESTONE_VERSION || DEFAULT_ENV.RUNESTONE_VERSION,
       RUNESTONE_LANG: toolState.readLocale() || 'en',

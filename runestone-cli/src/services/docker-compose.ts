@@ -13,6 +13,28 @@ export const COMPOSE_SERVICES = {
 } as const;
 
 /**
+ * The images this CLI version runs. **Constants, not settings.**
+ *
+ * These used to live in `.env` as `RUNESTONE_IMAGE` / `RUNESTONE_TAG` so a user
+ * could point the stack at a different image. DNS ended that: the entrypoint's
+ * rules, the CLI's own copy of them and the daemon wiring have to agree, so the
+ * CLI and the images it drives are one unit whose parts are not separately
+ * choosable.
+ *
+ * Keeping them in `.env` was also an upgrade hazard, which is the reason they
+ * move now rather than later. `setup` wrote the values once and never asked, so
+ * an installation carried whatever tag was current on the day it was created —
+ * and a newer CLI would have read that stale value back and run the old image.
+ *
+ * There is deliberately no override. Compose substitutes `${VAR}` from `.env`
+ * and from the process environment alike, so any `${...}` left in the template
+ * would let a stale `.env` win again. A literal is the only form that makes the
+ * CLI version decide.
+ */
+export const RUNESTONE_IMAGE = 'cymondez/runestone:5.2';
+export const DNS_IMAGE = 'cymondez/runestone-dns:1.0';
+
+/**
  * The dns service sits behind this Compose profile, so it is invisible to any
  * command that does not name the profile (spec 8.2). That is what keeps the
  * feature off while it is being built.

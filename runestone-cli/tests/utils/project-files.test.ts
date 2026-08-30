@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { load } from 'js-yaml';
-import { COMPOSE_SERVICES } from '../../src/services/docker-compose';
+import { COMPOSE_SERVICES, RUNESTONE_IMAGE } from '../../src/services/docker-compose';
 import {
   COMPOSE_TEMPLATE_VERSION,
   buildComposeFile,
@@ -68,10 +68,22 @@ describe('generated compose file', () => {
   it('describes the runestone service the way the CLI expects', () => {
     const runestone = parseCompose().services[COMPOSE_SERVICES.runestone];
 
-    expect(runestone.image).toBe('${RUNESTONE_IMAGE:-cymondez/runestone}:${RUNESTONE_TAG:-5.2}');
+    expect(runestone.image).toBe(RUNESTONE_IMAGE);
     expect(runestone.container_name).toBe('${PREFIX:-runestone}');
     expect(runestone.restart).toBe('unless-stopped');
     expect(runestone.extra_hosts).toEqual(['host.docker.internal:host-gateway']);
+  });
+
+  it('writes both images literally, so no `.env` can decide which one runs', () => {
+    const services = parseCompose().services;
+
+    // The point of the change, not a restatement of the values: a `${...}` here
+    // is substituted from `.env` as well as from the environment, so leaving one
+    // in would let an installation created years ago pin a new CLI to an old
+    // image. Asserting the absence is what stops it coming back.
+    for (const name of [COMPOSE_SERVICES.runestone, COMPOSE_SERVICES.dns]) {
+      expect(services[name].image).not.toContain('${');
+    }
   });
 
   it('publishes the web, secure web and SMTP ports', () => {

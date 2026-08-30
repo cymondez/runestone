@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { DEFAULT_ENV, EnvInput, RunestoneEnv, envLoader } from './env-loader';
+import { DNS_IMAGE, RUNESTONE_IMAGE } from '../services/docker-compose';
 import { pathHelpers } from './path-helpers';
 
 /**
@@ -10,8 +11,10 @@ import { pathHelpers } from './path-helpers';
  *
  * 1  the pre-DNS template (never carried a marker; an absent marker means this)
  * 2  adds the dns service under profile `dns`
+ * 3  publishes 53 with no address, so the default WSL2 installation works
+ * 4  writes both image references literally instead of substituting `.env`
  */
-export const COMPOSE_TEMPLATE_VERSION = '3';
+export const COMPOSE_TEMPLATE_VERSION = '4';
 
 const COMPOSE_MARKER_PREFIX = '# runestone-compose-template:';
 const COMPOSE_MARKER_PATTERN = /^# runestone-compose-template:\s*(\S+)/m;
@@ -34,7 +37,7 @@ export function buildComposeFile(): string {
 # regenerated; anything you changed here is kept in a .bak file beside it.
 services:
   runestone:
-    image: \${RUNESTONE_IMAGE:-cymondez/runestone}:\${RUNESTONE_TAG:-5.2}
+    image: ${RUNESTONE_IMAGE}
     container_name: \${PREFIX:-runestone}
     restart: unless-stopped
     command: |-
@@ -61,7 +64,7 @@ services:
       - ssh:/tmp/druid_ssh-agent/
 
   dns:
-    image: cymondez/runestone-dns:1.0
+    image: ${DNS_IMAGE}
     container_name: \${PREFIX:-runestone}-dns
     restart: unless-stopped
     profiles:
