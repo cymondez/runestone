@@ -311,7 +311,7 @@ That real run earned its keep by exposing a defect no unit test would have caugh
 - [x] The injected restart timeout results in the daemon file being restored, not a half-applied state
 - [x] `restart: unless-stopped` brings dnsmasq back after the sandbox daemon restart with no CLI involvement
 - [x] The host's daemon file and containers are provably untouched by the whole run
-- [ ] It passes in CI, not only locally — **the pipelines are written but have never run**, which needs a Drone runner pointed at the repository. A pipeline that has not run is not a passing check
+- ~~It passes in CI, not only locally~~ — **dropped on 2026-08-30; this pass condition is withdrawn.** The pipeline files stay in version control (`.drone.yml`, `.github/workflows/dns-harness.yml`), but no runner points at this repository and none is planned. The harness itself remains normative: `docker/dns/test/dind-harness.sh`, run locally by the maintainer, 13 checks passing. **State the cost plainly**: with no automated gate these checks run only when someone remembers to run them, and a regression will slip through quietly
 
 **Landed.** `docker/dns/test/dind-harness.sh`, 13 checks, all passing.
 

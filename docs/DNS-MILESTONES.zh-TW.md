@@ -311,7 +311,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 - [x] 注入的重啟逾時導致 daemon 檔案被還原，而不是留下半套狀態
 - [x] 沙箱 daemon 重啟後 `restart: unless-stopped` 把 dnsmasq 拉回，過程無任何 CLI 介入
 - [x] 能證明整趟執行都沒有動到宿主的 daemon 檔案與容器
-- [ ] 在 CI 上也通過，不只是本機 —— **pipeline 寫好了，但從來沒有跑過**，那需要一個指向這個 repo 的 Drone runner。沒有跑過的 pipeline 不算是通過的檢查
+- ~~在 CI 上也通過，不只是本機~~ —— **2026-08-30 決定不做，這條通過條件撤銷。** pipeline 檔案留在版控裡（`.drone.yml`、`.github/workflows/dns-harness.yml`），但沒有 runner 指向這個 repo，也不打算架。載具本身仍是規範：`docker/dns/test/dind-harness.sh` 由維護者在本機執行，13 項全過。**代價要說清楚**：沒有自動化把關，這批檢查只在有人想到要跑的時候才會跑，而回歸會安靜地溜過去
 
 **已落地。** `docker/dns/test/dind-harness.sh`，13 項檢查全過。
 
