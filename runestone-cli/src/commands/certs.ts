@@ -14,7 +14,7 @@ import { createCommand } from '../utils/command';
 import { installRootCa } from '../services/root-ca-installer';
 import { runInDynamicConfigBatch } from '../services/dynamic-config-manager';
 import { findCoveringCertificate } from '../services/service-manager';
-import { readTraefikSnapshot, TraefikNamedResource } from '../services/traefik-api';
+import { readTraefikSnapshot, TraefikNamedResource, TraefikSnapshot } from '../services/traefik-api';
 
 interface RemoveOptions {
   force?: boolean;
@@ -117,7 +117,14 @@ async function confirmCertificateRemovalIfInUse(
     return true;
   }
 
-  const snapshot = await readTraefikSnapshot(traefikApiBaseUrl(hostDomain));
+  let snapshot: TraefikSnapshot;
+  try {
+    snapshot = await readTraefikSnapshot(traefikApiBaseUrl(hostDomain));
+  } catch {
+    logger.warn(t('certs.remove.checkSkipped'));
+    return true;
+  }
+
   const routes = routesNeedingCertificateAfterRemoval(snapshot.routers, certificates, projectDir, domain);
   if (routes.length === 0) {
     return true;
