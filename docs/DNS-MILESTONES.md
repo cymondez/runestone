@@ -18,7 +18,7 @@ Risk levels (spec 16.1) and contribution tiers (spec 16.2) are referenced by nam
 | --- | --- | --- | --- | --- | --- |
 | M0 | Safety rails | 0 | T0 | — | **done** |
 | M1 | Daemon ownership engine | 0 | T0 | M0 | **done** |
-| M2 | runestone-dns image | 1 | T1 | — | **done**, amd64 and arm64 both 32 of 32 |
+| M2 | runestone-dns image | 1 | T1 | — | **done**, amd64 and arm64 both 38 of 38 (re-verified after the derivation rule changed to SAN on 2026-08-30) |
 | M3 | Service plumbing and `dns status` | 0 | T1 | — | **done** |
 | M4 | `dns disable` | 2 (redirected) | T0 | — | **done** |
 | M5 | `dns enable` to `prepared` | 2 | T1 | — | **done**, real-machine gate items pending the 16.5 safety net |
@@ -36,8 +36,8 @@ The four items in spec 15 have milestone deadlines (spec 16.6). A milestone must
 | Decision | Deadline | Status | Cost of deciding late |
 | --- | --- | --- | --- |
 | 3 — fallback DNS in dnsmasq's upstream or in the daemon array | before M1 | **settled: both** — the dnsmasq upstream is mandatory and never empty (spec 8.4), the daemon-array fallback is optional and off by default (spec 9.7) | Settled in time. `insertedEntries` is an array of owned entries, which M1 implements from the start |
-| 2 — how the image is built and published, its name and initial tag | before M2 | **settled for now: a committed buildx script**, `cymondez/runestone-dns:1.0`. Publishing from CI is deferred, not abandoned — the registry token takes time M2 should not wait on. **CI itself is Drone**, against the self-hosted Gitea that is `origin`; a GitHub Actions workflow is kept for the mirror | Settled in time. The debt is traceability: a hand-run publish is reconstructable only because the script is in the repository |
-| 4 — `compose.yml` regeneration strategy | before M3 | **settled: automatic**, driven by `COMPOSE_TEMPLATE_VERSION` in `.env`, and a file the user hand-edited is backed up beside the original before being overwritten | Settled in time |
+| 2 — how the image is built and published, its name and initial tag | before M2 | **settled (revised 2026-08-30): one command, written down and run by hand**, `cymondez/runestone-dns:<tag>`, with no script and no CI. Both premises of the earlier answer fell — CI is decided against, and the POSIX-shell script could not run on the platform this project is mostly developed on | Settled in time, then revised. The debt is now permanent: traceability rests entirely on the person publishing (from a clean `main` only, that commit in the revision label, never a defaulted `latest`), and nothing afterwards can detect a breach |
+| 4 — `compose.yml` regeneration strategy | before M3 | **settled: automatic**, driven by the template-version marker in the Compose file’s own header (**not `.env`** — rewriting that would drop the user’s comments on an ordinary `up`, see spec 15.4), and a file the user hand-edited is backed up beside the original before being overwritten | Settled in time |
 | 1 — whether `docker desktop restart` exists | before M6b | **settled: it exists** (CLI plugin `v0.4.3`, synchronous unless detached), and both the detection and the manual fallback stay — the plugin is versioned separately from Docker Desktop, so an older installation will not have it | Settled in time, by measurement rather than by assumption |
 
 ## M0 — Safety rails
@@ -125,26 +125,26 @@ Three things to carry forward:
 
 - [x] `docker/dns/Dockerfile` — Alpine, dnsmasq, pinned webproc selected by `TARGETARCH` (spec 8.1)
 - [x] `docker/dns/entrypoint.sh` — regenerate `/etc/dnsmasq.conf` and `/etc/dnsmasq.d/managed.conf` on every start, then exec webproc and dnsmasq (spec 8.3)
-- [x] `docker/dns/publish.sh` — `docker buildx build --platform linux/amd64,linux/arm64 --push`, requiring an explicit tag argument rather than defaulting to `latest` (decision 2, interim)
+- ~~`docker/dns/publish.sh`~~ — **removed on 2026-08-30**. Publishing is now one command written down in `docker/dns/README.md`; the script was POSIX shell and could not run on the platform this project is mostly developed on (decision 2, revised)
 - [x] `docker/dns/test/verify-image.sh` — the 14.4 checks, driven from a throwaway network and a populated volume so that it needs no host paths and never touches port 53
 - [x] Image verification tests with a fixture `/ssl` directory
 - [x] webproc 0.4.0's `--config`, `--port` and `--user`/`--pass` flags confirmed against the pinned version (spec 8.1)
 
 **Gate**
 
-- [x] Spec 14.4 green on both architectures — **amd64 32 of 32, arm64 32 of 32**, after registering QEMU emulation
+- [x] Spec 14.4 green on both architectures — **amd64 32 of 32, arm64 32 of 32** (the rule changed to SAN on 2026-08-30; the suite grew to 38 checks and both architectures were re-verified), after registering QEMU emulation
 - [x] **All verification performed on a port other than 53**, so this milestone never fights the host for port 53
 - [x] Tamper resistance: editing the two Runestone-owned files inside the container and restarting restores both, and leaves `custom.conf` untouched
 - [x] Mapping rules: one `address=` per `DNS:` name read from the certificate, `rootCA.crt` excluded by name, invalid domains excluded, unparseable files skipped, duplicates collapsed, empty directory still starts
 
-**Landed.** `docker/dns/` now holds `Dockerfile`, `entrypoint.sh`, `publish.sh`, `README.md` and `test/verify-image.sh`. Verification on amd64: **32 checks, 32 passing.**
+**Landed.** `docker/dns/` now holds `Dockerfile`, `entrypoint.sh`, `README.md` and `test/verify-image.sh` (`publish.sh` was removed on 2026-08-30). Verification on amd64: **32 checks, 32 passing.**
 
 The verification script deliberately avoids two things. It **never uses port 53** — the service is published on 15353 — so the milestone that builds the image is not the milestone that first contends for the real DNS port. And it **uses no host paths**: the fixture `/ssl` directory is a Docker volume populated by a helper container, so it behaves identically in Git Bash on Windows and in a Linux shell. (That second choice earned itself: an earlier draft passed a container path directly to `docker exec`, and MSYS rewrote `/etc/dnsmasq.d/custom.conf` into `C:/Program Files/Git/etc/dnsmasq.d/custom.conf`. Every container-side path now lives inside `sh -c`.)
 
 Two findings worth carrying:
 
 - **The spec's webproc invocation was wrong, and 8.1 has been corrected.** `--config` does not exist in webproc 0.4.0; the writable-configuration flag is `--configuration-file` (`-c`). `--port`, `--user` and `--pass` do exist. Two improvements came out of checking: `--restart-watch` makes a change to `custom.conf` *on disk* restart dnsmasq, which covers a user editing their own file with an editor rather than through the UI; and `HTTP_USER` / `HTTP_PASS` are passed as environment variables rather than flags, because a password on the command line appears in the container's process list. This is exactly the open item 8.1 asked to be confirmed at build time — one of the four assumed flags did not survive contact.
-- **arm64 is built and verified: 32 of 32, the same as amd64.** It needed QEMU emulation registered in the kernel the Docker daemon runs on — `docker run --privileged --rm tonistiigi/binfmt --install arm64`, reversible with `--uninstall`. Worth recording, because `publish.sh` used to offer a second remedy that does not work on its own: a freshly bootstrapped `docker-container` builder reported only `linux/amd64` and `linux/386` here, so that driver helps when the docker driver is the limitation and not when the emulators are missing. The script now says so.
+- **arm64 is built and verified: 32 of 32, the same as amd64.** (Re-verified at 38 of 38 on 2026-08-30, still green on both.) It needed QEMU emulation registered in the kernel the Docker daemon runs on — `docker run --privileged --rm tonistiigi/binfmt --install arm64`, reversible with `--uninstall`. Worth recording, because the `docker-container` builder is often taken for a second remedy and does not work on its own: a freshly bootstrapped `docker-container` builder reported only `linux/amd64` and `linux/386` here, so that driver helps when the docker driver is the limitation and not when the emulators are missing. This is recorded in `docker/dns/README.md`.
 
 **Carried debt.** The publish path is a script a maintainer runs, so nothing records what produced a published tag beyond the script being in the repository. CI replaces it later; until then, a published tag and the commit it was built from have to be associated by hand.
 
@@ -475,7 +475,7 @@ The second: **`doctor` reported a failed DNS check and then signed off with "Env
 
 - [x] Implement daemon-environment detection per the 6.2 decision table: **ask the daemon and where the CLI runs, stop inferring the type from the platform**; reintroduce `isWsl()` (signals in 6.2); refuse unverified combinations with an accurate reason pointing at 7.4. The gap is in `daemon-target.ts`'s `detectDaemonEnvironment()`, `enable.ts`'s preflight, and `m6b-safety-net.sh`'s `platform_daemon_path()` — **landed** (commit `66c5082`): `classifyDaemonEnvironment()` is the table's five rows as a pure function with a test per row; `DaemonHost` gained `elsewhere`, for which `platformDaemonPath()` **returns an empty string rather than a guess**, read/write/delete all fail loudly on an empty path, and `dns status` prints "Path: unknown"; rows 2 and 5 each refuse with their own message. 575 tests pass on Windows, 580 on the Linux VM
 - [x] Spec 14.3 platform matrix completed, with the T4 rows' output committed — rows 2 and 5 done on 2026-08-30 and committed as [m8-daemon-elsewhere](evidence/dns/m8-daemon-elsewhere.md); row 5 covers the remote variant only. The macOS and Docker Desktop for Linux rows lack hardware and carry their deferral reason in the 14.3 table
-- [ ] The image published for both architectures **before** the CLI presents DNS as available (spec 13)
+- [ ] **(a release-time step, not a merge prerequisite)** The image published for both architectures before the CLI presents DNS as available (spec 13). Traceability requires the revision label to name a `main` commit, and that commit does not exist until after the merge — so this cannot be completed beforehand by construction. The order is: merge to develop → merge to main → publish the image → publish to npm
 - [x] `docs/DNS.md`, `docs/DNS.zh-TW.md` and `docs/DNS.ja-JP.md` — the complete user-facing explanation, one language per file with the same structure, covering disclosure items 1–8, 10 and 11 and the manual removal steps (spec 11.4). 317 lines each, identical structure, every internal anchor checked
 - [x] README gains a short paragraph and a link to that documentation, and nothing more: the disclosure is too long to belong in a README — in all three README languages, with the npm copy's links rewritten to absolute URLs by `sync-readme.js`
 
@@ -511,8 +511,8 @@ sh docker/dns/test/m6b-safety-net.sh capture
 That snapshots the daemon file and its hash, the Runestone tool state, and every running container together with its restart policy. `status` compares the machine with the snapshot at any point; `restore` puts the daemon file back, restarts Docker so the restored file is actually read, and starts whatever was running before and is not now.
 
 - [x] Container list saved
-- [ ] Nothing long-running or stateful is mid-flight in any container
-- [ ] A window agreed, because every container on the machine restarts
+- ~~Nothing long-running or stateful is mid-flight in any container~~ — M6b ran on 2026-08-28/29; this was that session’s immediate preparation, not an open item
+- ~~A window agreed, because every container on the machine restarts~~ — as above
 - [x] **The restart policy of every running container noted** — `capture` records it and reports how many will not return on their own. Whether `unless-stopped` survives a *graceful* `docker desktop restart`, as opposed to the killed daemon M6a exercised, is still unestablished and is tracked as an M6b item
 
 ## Evidence log
@@ -533,5 +533,5 @@ Refreshed after M7:
 
 - `docker/dns/` holds M2's image, entrypoint, publish script, README and verification script, plus M6a's dind harness; nothing from commit `3581211` survives in it. `runestone-cli/src/services/dns/` holds the whole engine, and **M7 is the point at which existing command paths began importing it**: `up`, `stop`, `down`, `certs` and `doctor` all reach into `lifecycle.ts` now. Milestones M0 to M6a remain individually revertible; from M7 on, a revert takes the lifecycle wiring with it.
 - The dnsmasq and webproc code that commit `3581211` added to the runestone image — `start_dnsmasq()` in `docker/traefik/entrypoint.sh` and the `{{ if env "DNS_ENABLE" }}` blocks in `docker/traefik/dynamic/traefik.dynamic.yml` — was removed in M3 (spec 5.3, 13).
-- CI is `.drone.yml`, with `.github/workflows/dns-harness.yml` kept for the GitHub mirror; both invoke the same scripts. **Neither has ever run**, which needs a Drone runner pointed at the repository. Publishing the image is still the committed `docker/dns/publish.sh` and still needs a registry token (decision 2).
+- The CI files are `.drone.yml` and `.github/workflows/dns-harness.yml` for the GitHub mirror. **Neither has ever run, and CI was decided against on 2026-08-30** (see the withdrawn M6a pass condition). Publishing the image is one command written down in `docker/dns/README.md` and needs a registry token (decision 2, revised).
 - **The `make/` directory is inherited from [druidfi/stonehenge](https://github.com/druidfi/stonehenge) and is void.** Replacing that Makefile-based installation and management flow with the npm CLI is the reason this fork exists (see the README), so nothing in the build or release plan may be derived from it. It is debris, not a baseline — and the image build path decided in decision 2 should fit the CLI's release flow.

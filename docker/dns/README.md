@@ -54,17 +54,22 @@ It needs `docker`, `node` and `npm` on the host. No virtual machine.
 
 ## Publishing
 
+Publishing is a manual command, run from a clean `main` checkout (spec 15.2). There is no script: one that only runs under a POSIX shell was of no use on the platform this project is mostly developed on, and a wrapper nobody can run is worse than a command written down.
+
 ```bash
-sh docker/dns/publish.sh 1.0
+docker buildx build --platform linux/amd64,linux/arm64 --tag cymondez/runestone-dns:<tag> --label "org.opencontainers.image.source=https://github.com/cymondez/runestone" --label "org.opencontainers.image.revision=<commit>" --label "org.opencontainers.image.version=<tag>" --push docker/dns
 ```
 
-A tag is required and never defaulted, because `latest` as a default is how an unfinished image reaches everyone's next `docker pull`. The script refuses to publish from a dirty working tree, and stamps the commit into the image as `org.opencontainers.image.revision` — a hand-run publish otherwise has no traceable origin at all.
+Four things the script used to enforce and that are now yours to hold:
 
-This is the interim publish path (spec 15.2). CI is the intended destination and is deferred, not abandoned.
+- **Name the tag.** `latest` as a default is how an unfinished image reaches everyone's next `docker pull`.
+- **Publish from `main`, with nothing uncommitted**, and put that commit in the revision label. It is the image's only link back to its source, and a commit that lives on a feature branch or only on one machine makes the label a lie.
+- **Verify both architectures first** with `verify-image.sh` against each build.
+- **Check `docker buildx inspect` lists `linux/arm64`** before building.
 
 ### arm64 needs emulation the default builder may not have
 
-The image targets `linux/amd64` and `linux/arm64`. Docker Desktop's default builder often supports only amd64, in which case an arm64 build fails with `exec format error`. `publish.sh` checks the builder's platform list first and refuses with the remedy rather than failing deep inside the build. Either:
+The image targets `linux/amd64` and `linux/arm64`. Docker Desktop's default builder often supports only amd64, in which case an arm64 build fails with `exec format error`. `docker buildx inspect` lists what the builder can actually produce, so check it before building rather than reading the failure. Either:
 
 ```bash
 docker run --privileged --rm tonistiigi/binfmt --install arm64
@@ -76,4 +81,4 @@ or:
 docker buildx create --name runestone --driver docker-container --use
 ```
 
-Both change state outside this repository, so neither is done automatically.
+Both change state outside this repository, so neither is done for you. The second is **not** an alternative on its own: measured on Docker Desktop for Windows, a freshly bootstrapped `docker-container` builder reported only `linux/amd64` and `linux/386` until binfmt was registered. It helps when the limitation is the docker driver, not when the emulators are missing.

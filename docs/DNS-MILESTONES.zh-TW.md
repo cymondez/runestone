@@ -18,7 +18,7 @@
 | --- | --- | --- | --- | --- | --- |
 | M0 | 安全鋼索 | 0 | T0 | — | **已完成** |
 | M1 | daemon 所有權引擎 | 0 | T0 | M0 | **已完成** |
-| M2 | runestone-dns image | 1 | T1 | — | **已完成**，amd64 與 arm64 都 32 項全過 |
+| M2 | runestone-dns image | 1 | T1 | — | **已完成**，amd64 與 arm64 都 38 項全過（產生規則於 2026-08-30 改為讀 SAN 後重驗）|
 | M3 | 服務接線與 `dns status` | 0 | T1 | — | **已完成** |
 | M4 | `dns disable` | 2（導向） | T0 | — | **已完成** |
 | M5 | `dns enable` 到 `prepared` | 2 | T1 | — | **已完成**，真機通過條件待 16.5 安全網 |
@@ -36,8 +36,8 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 | 裁決 | 截止 | 狀態 | 延後定案的代價 |
 | --- | --- | --- | --- |
 | 3——備援 DNS 放 dnsmasq 上游還是 daemon 陣列 | M1 之前 | **已定案：兩者都做**——dnsmasq 上游為必要且永不為空（規格 8.4），daemon 陣列備援為選用且預設關閉（規格 9.7） | 及時定案。`insertedEntries` 是自有項目的陣列，M1 一開始就照此實作 |
-| 2——image 的建置發佈方式、名稱與起始 tag | M2 之前 | **暫定：進版控的 buildx 腳本**，`cymondez/runestone-dns:1.0`。「從 CI 發佈」是延後而非放棄——申請 registry token 需要時間，M2 不該等。**CI 本身用 Drone**，跑在作為 `origin` 的自架 Gitea 上；另保留一份 GitHub Actions workflow 給鏡像 | 及時定案。欠下的債是可追溯性：手動跑的發佈之所以還能回推，只因為腳本在 repo 裡 |
-| 4——`compose.yml` 重生策略 | M3 之前 | **已定案：自動重生**，由 `.env` 內的 `COMPOSE_TEMPLATE_VERSION` 驅動；使用者手改過的檔案在被覆寫前先在原地旁邊備份 | 及時定案 |
+| 2——image 的建置發佈方式、名稱與起始 tag | M2 之前 | **已定案（2026-08-30 改判）：手動執行一條記在文件裡的指令**，`cymondez/runestone-dns:<tag>`，沒有腳本也沒有 CI。原本的「進版控腳本＋CI 是延後而非放棄」兩個前提都倒了——CI 已確定不做，而那個 POSIX shell 腳本在主要開發平台 PowerShell 上跑不起來 | 及時定案，後來改判。欠的債現在是永久的：可追溯性完全靠人守（只從乾淨的 main 發、revision 填那個 commit、tag 不得預設 latest），沒有任何自動化能事後察覺它被違反 |
+| 4——`compose.yml` 重生策略 | M3 之前 | **已定案：自動重生**，由 Compose 檔自己標頭裡的模板版本標記驅動（**不是 `.env`**——寫 `.env` 會在一次普通 `up` 就吃掉使用者的註解，見規格 15.4）；使用者手改過的檔案在被覆寫前先在原地旁邊備份 | 及時定案 |
 | 1——`docker desktop restart` 是否存在 | M6b 之前 | **已定案：存在**（CLI plugin `v0.4.3`，除非 detach 否則同步），而且偵測與手動備援兩者都保留——這個 plugin 的版本與 Docker Desktop 分開，較舊的安裝不會有 | 及時定案，靠量測而非假設 |
 
 ## M0 — 安全鋼索
@@ -125,26 +125,26 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 - [x] `docker/dns/Dockerfile` — Alpine、dnsmasq、依 `TARGETARCH` 選取的釘版 webproc（規格 8.1）
 - [x] `docker/dns/entrypoint.sh` — 每次啟動重生 `/etc/dnsmasq.conf` 與 `/etc/dnsmasq.d/managed.conf`，然後 exec webproc 與 dnsmasq（規格 8.3）
-- [x] `docker/dns/publish.sh` — `docker buildx build --platform linux/amd64,linux/arm64 --push`，必須明確給定 tag 才發佈，不得預設成 `latest`（裁決 2，過渡）
+- ~~`docker/dns/publish.sh`~~ —— **2026-08-30 移除**。發布改為手動執行一條記在 `docker/dns/README.md` 的指令；腳本是 POSIX shell，在主要開發平台上跑不起來（裁決 2 改判）
 - [x] `docker/dns/test/verify-image.sh` — 規格 14.4 的檢查，跑在臨時網路與預先填好的 volume 上，因此不需要任何宿主路徑，也全程不碰 53 port
 - [x] 用 fixture `/ssl` 目錄的 image 驗證測試
 - [x] webproc 0.4.0 的 `--config`、`--port`、`--user`/`--pass` 旗標對釘定版本確認過（規格 8.1）
 
 **通過條件**
 
-- [x] 規格 14.4 在兩種架構上全綠 — **amd64 32 項、arm64 32 項全過**，在註冊 QEMU 模擬之後
+- [x] 規格 14.4 在兩種架構上全綠 — **amd64 32 項、arm64 32 項全過**（規則於 2026-08-30 改為讀 SAN，檢查增為 38 項並在兩種架構重驗，見該日的 commit），在註冊 QEMU 模擬之後
 - [x] **所有驗證都在非 53 的 port 上進行**，讓這個里程碑全程不與宿主爭 53
 - [x] 防篡改：在容器內改掉兩個 Runestone 擁有的檔案後重啟，兩者都被還原，且 `custom.conf` 未被動到
 - [x] mapping 規則：每個從憑證讀出的 `DNS:` 名稱一條 `address=`、依檔名排除 `rootCA.crt`、排除非法 domain、無法解析的檔案跳過、重複合併、目錄為空時仍能啟動
 
-**已落地。** `docker/dns/` 現在有 `Dockerfile`、`entrypoint.sh`、`publish.sh`、`README.md` 與 `test/verify-image.sh`。amd64 驗證結果：**32 項檢查，32 項通過。**
+**已落地。** `docker/dns/` 現在有 `Dockerfile`、`entrypoint.sh`、`README.md` 與 `test/verify-image.sh`（`publish.sh` 已於 2026-08-30 移除）。amd64 驗證結果：**32 項檢查，32 項通過。**
 
 驗證腳本刻意避開兩件事。它**全程不用 53 port**——服務發佈在 15353——所以「建 image 的里程碑」不會同時變成「第一個去爭真實 DNS port 的里程碑」。它也**不使用任何宿主路徑**：fixture `/ssl` 目錄是由輔助容器填好的 Docker volume，因此在 Windows 的 Git Bash 與 Linux shell 上行為完全一致。（第二點是自己掙來的：早期草稿把容器內路徑直接當參數傳給 `docker exec`，MSYS 把 `/etc/dnsmasq.d/custom.conf` 改寫成了 `C:/Program Files/Git/etc/dnsmasq.d/custom.conf`。現在所有容器內路徑都寫在 `sh -c` 裡面。）
 
 有兩項發現要往下帶：
 
 - **規格原本寫的 webproc 呼叫是錯的，8.1 已修正。** webproc 0.4.0 沒有 `--config`，可寫設定檔的旗標是 `--configuration-file`（`-c`）。`--port`、`--user`、`--pass` 確實存在。順著這次確認多得到兩項改善：`--restart-watch` 讓 `custom.conf` 在**磁碟上**被改動時也會重啟 dnsmasq，覆蓋了使用者用編輯器而非 UI 修改自己檔案的情況；以及 `HTTP_USER` / `HTTP_PASS` 改以環境變數傳入而非旗標，因為命令列上的密碼會出現在容器的行程清單裡。這正是 8.1 要求「在建置時確認」的待辦——四個假設的旗標裡有一個沒有撐過實測。
-- **arm64 已經建起來並驗證過：32 項全過，與 amd64 相同。** 它需要在「Docker daemon 所在的那個核心」註冊 QEMU 模擬——`docker run --privileged --rm tonistiigi/binfmt --install arm64`，可用 `--uninstall` 還原。值得記錄的是：`publish.sh` 原本提供的第二條補救方式，單獨使用並不管用——這裡剛 bootstrap 起來的 `docker-container` builder 只回報 `linux/amd64` 與 `linux/386`，所以那個 driver 是在「docker driver 是限制來源」時有用，不是在「缺少模擬器」時。腳本現在把這件事講清楚了。
+- **arm64 已經建起來並驗證過：32 項全過，與 amd64 相同。**（2026-08-30 以 38 項重驗，仍是兩種架構全過。） 它需要在「Docker daemon 所在的那個核心」註冊 QEMU 模擬——`docker run --privileged --rm tonistiigi/binfmt --install arm64`，可用 `--uninstall` 還原。值得記錄的是：常被當成第二條補救方式的 `docker-container` builder，單獨使用並不管用——這裡剛 bootstrap 起來的 `docker-container` builder 只回報 `linux/amd64` 與 `linux/386`，所以那個 driver 是在「docker driver 是限制來源」時有用，不是在「缺少模擬器」時。這一點記在 `docker/dns/README.md` 裡。
 
 **帶著走的債。** 發佈路徑是維護者手動執行的腳本，因此除了「腳本在 repo 裡」以外，沒有任何東西記錄一個已發佈 tag 是怎麼來的。之後由 CI 取代；在那之前，已發佈的 tag 與它建置自哪個 commit 只能靠人工對應。
 
@@ -475,7 +475,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 
 - [x] 依規格 6.2 判斷表實作 daemon 環境偵測：**改問 daemon 與 CLI 所在位置，不再從平台推論型別**；重新引入 `isWsl()`（訊號見 6.2）；未驗證的組合以正確理由拒絕並指向 7.4。落差在 `daemon-target.ts` 的 `detectDaemonEnvironment()`、`enable.ts` 的前置檢查、`m6b-safety-net.sh` 的 `platform_daemon_path()` 三處——**已落地**（commit `66c5082`）：`classifyDaemonEnvironment()` 是判斷表五列的純函式並逐列有測試；`DaemonHost` 多了 `elsewhere`，對它 `platformDaemonPath()` **回傳空字串而不是猜一個**，讀寫刪一律對空路徑大聲失敗，`dns status` 改印「路徑：未知」；第 2 列與第 5 列各有自己的拒絕訊息。Windows 575 通過、Linux VM 580 通過
 - [x] 完成規格 14.3 平台矩陣，T4 各列的輸出存進 repo——第 2 列與第 5 列於 2026-08-30 完成並存進 [m8-daemon-elsewhere](evidence/dns/m8-daemon-elsewhere.zh-TW.md)；第 5 列只涵蓋遠端變體。macOS 與 Docker Desktop for Linux 兩列缺硬體，已在 14.3 表格內逐列記錄延後理由
-- [ ] 在 CLI 對外呈現 DNS 之前**先**發布兩種架構的 image（規格 13）
+- [ ] **（發版時執行，不是合併前提）** 在 CLI 對外呈現 DNS 之前先發布兩種架構的 image（規格 13）。可追溯性要求 revision 指向 `main` 的 commit，而那個 commit 要等合併之後才存在——所以這一項在構造上不可能於合併前完成。順序是：合併 develop → 合併 main → 發布 image → npm 發布
 - [x] `docs/DNS.md`、`docs/DNS.zh-TW.md`、`docs/DNS.ja-JP.md`——完整的使用者說明，一個語言一個檔案且結構相同，涵蓋揭露項目 1–8、10、11 與手動移除步驟（規格 11.4）。三份各 317 行、結構相同，每個內部錨點都檢查過
 - [x] README 只加一小段文字與指向該文件的連結，不加其他：這份揭露太長，不屬於 README——三個 README 語言版本都加了，npm 那份的連結由 `sync-readme.js` 改寫成絕對網址
 
@@ -511,8 +511,8 @@ sh docker/dns/test/m6b-safety-net.sh capture
 它會快照 daemon 檔與其雜湊、Runestone 的工具狀態，以及每個執行中的容器連同它的 restart policy。`status` 可在任何時候比對機器與快照；`restore` 會把 daemon 檔放回去、重啟 Docker 讓還原後的檔案真的被讀到，並把「先前在跑、現在沒在跑」的容器叫起來。
 
 - [x] 容器清單已存
-- [ ] 沒有任何長時間執行或帶狀態的工作正在容器內進行中
-- [ ] 已約好時間，因為機器上每個容器都會重啟
+- ~~沒有任何長時間執行或帶狀態的工作正在容器內進行中~~ —— M6b 已於 2026-08-28／29 執行完畢，這是當次動手前的臨場準備，不是待辦
+- ~~已約好時間，因為機器上每個容器都會重啟~~ —— 同上
 - [x] **每個執行中容器的 restart policy 都已記下**——`capture` 會記錄，並回報有幾個不會自己回來。至於 `unless-stopped` 能不能撐過**優雅的** `docker desktop restart`（相對於 M6a 演練的「被砍掉的 daemon」），仍無定論，列為 M6b 項目追蹤
 
 ## 證據記錄
@@ -533,5 +533,5 @@ M7 之後更新：
 
 - `docker/dns/` 放著 M2 的 image、entrypoint、發佈腳本、README 與驗證腳本，加上 M6a 的 dind 載具；commit `3581211` 的東西沒有在裡面留下任何檔案。`runestone-cli/src/services/dns/` 已是完整的引擎，而 **M7 正是既有指令路徑開始 import 它的那一刻**：`up`、`stop`、`down`、`certs`、`doctor` 現在都會進到 `lifecycle.ts`。M0 到 M6a 仍然可以各自 revert；從 M7 開始，revert 會連生命週期接線一起帶走。
 - commit `3581211` 加進 runestone image 的 dnsmasq 與 webproc 相關程式——`docker/traefik/entrypoint.sh` 的 `start_dnsmasq()` 與 `docker/traefik/dynamic/traefik.dynamic.yml` 的 `{{ if env "DNS_ENABLE" }}` 區塊——已在 M3 移除（規格 5.3、13）。
-- CI 是 `.drone.yml`，另保留 `.github/workflows/dns-harness.yml` 給 GitHub 鏡像；兩者呼叫同一批腳本。**兩者都還沒有跑過**，那需要一個指向這個 repo 的 Drone runner。image 發佈仍然是進版控的 `docker/dns/publish.sh`，仍然需要一個 registry token（裁決 2）。
+- CI 檔案是 `.drone.yml` 與給 GitHub 鏡像用的 `.github/workflows/dns-harness.yml`。**兩者都從來沒有跑過，而且 2026-08-30 已決定不做 CI**（見 M6a 那條撤銷的通過條件）。image 發佈是手動執行一條記在 `docker/dns/README.md` 的指令，需要一個 registry token（裁決 2 改判）。
 - **`make/` 目錄是從 [druidfi/stonehenge](https://github.com/druidfi/stonehenge) 繼承來的，已作廢。** 把那套 Makefile 式的安裝與管理換成 npm CLI 正是這個 fork 存在的理由（見 README），因此建置與發布計畫不得從它推導任何東西。它是殘骸，不是基準——裁決 2 決定的 image 建置路徑應該貼合 CLI 的發布流程。
