@@ -303,7 +303,7 @@ That real run earned its keep by exposing a defect no unit test would have caugh
 - [x] `docker/dns/test/` — the harness from spec 14.5, plus instructions for reproducing this milestone without a virtual machine
 - [x] Full cycle inside the harness: preflight → write → restart → resolv.conf → wildcard resolution → disable → file restored
 - [x] A deliberately injected restart timeout, proving the rollback actually rolls back
-- [x] The harness wired into CI — `.drone.yml` (Drone against the self-hosted Gitea) and `.github/workflows/dns-harness.yml` for the mirror, both calling the same scripts
+- ~~The harness wired into CI~~ — once done (`.drone.yml` and `.github/workflows/dns-harness.yml` for the mirror, both calling the same scripts), **removed on 2026-08-30 along with the decision against CI**. Start again on a branch of its own when CI is wanted; the starting point is the scripts under `docker/dns/test/`
 
 **Gate**
 
@@ -311,7 +311,7 @@ That real run earned its keep by exposing a defect no unit test would have caugh
 - [x] The injected restart timeout results in the daemon file being restored, not a half-applied state
 - [x] `restart: unless-stopped` brings dnsmasq back after the sandbox daemon restart with no CLI involvement
 - [x] The host's daemon file and containers are provably untouched by the whole run
-- ~~It passes in CI, not only locally~~ — **dropped on 2026-08-30; this pass condition is withdrawn.** The pipeline files stay in version control (`.drone.yml`, `.github/workflows/dns-harness.yml`), but no runner points at this repository and none is planned. The harness itself remains normative: `docker/dns/test/dind-harness.sh`, run locally by the maintainer, 13 checks passing. **State the cost plainly**: with no automated gate these checks run only when someone remembers to run them, and a regression will slip through quietly
+- ~~It passes in CI, not only locally~~ — **dropped on 2026-08-30; this pass condition is withdrawn.** The pipeline files are removed from version control too — keeping two configurations that have never run and are not going to only makes a successor think CI is alive. Start again on a branch when it is wanted. The harness itself remains normative: `docker/dns/test/dind-harness.sh`, run locally by the maintainer, 13 checks passing. **State the cost plainly**: with no automated gate these checks run only when someone remembers to run them, and a regression will slip through quietly
 
 **Landed.** `docker/dns/test/dind-harness.sh`, 13 checks, all passing.
 
@@ -533,5 +533,5 @@ Refreshed after M7:
 
 - `docker/dns/` holds M2's image, entrypoint, publish script, README and verification script, plus M6a's dind harness; nothing from commit `3581211` survives in it. `runestone-cli/src/services/dns/` holds the whole engine, and **M7 is the point at which existing command paths began importing it**: `up`, `stop`, `down`, `certs` and `doctor` all reach into `lifecycle.ts` now. Milestones M0 to M6a remain individually revertible; from M7 on, a revert takes the lifecycle wiring with it.
 - The dnsmasq and webproc code that commit `3581211` added to the runestone image — `start_dnsmasq()` in `docker/traefik/entrypoint.sh` and the `{{ if env "DNS_ENABLE" }}` blocks in `docker/traefik/dynamic/traefik.dynamic.yml` — was removed in M3 (spec 5.3, 13).
-- The CI files are `.drone.yml` and `.github/workflows/dns-harness.yml` for the GitHub mirror. **Neither has ever run, and CI was decided against on 2026-08-30** (see the withdrawn M6a pass condition). Publishing the image is one command written down in `docker/dns/README.md` and needs a registry token (decision 2, revised).
+- **There is no CI.** There were `.drone.yml` and `.github/workflows/dns-harness.yml` for the GitHub mirror; neither ever ran, and both were removed on 2026-08-30 along with that decision (see the withdrawn M6a pass condition). Publishing the image is one command written down in `docker/dns/README.md` and needs a registry token (decision 2, revised).
 - **The `make/` directory is inherited from [druidfi/stonehenge](https://github.com/druidfi/stonehenge) and is void.** Replacing that Makefile-based installation and management flow with the npm CLI is the reason this fork exists (see the README), so nothing in the build or release plan may be derived from it. It is debris, not a baseline — and the image build path decided in decision 2 should fit the CLI's release flow.

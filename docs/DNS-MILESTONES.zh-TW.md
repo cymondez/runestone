@@ -303,7 +303,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 - [x] `docker/dns/test/` — 規格 14.5 的載具，以及「不用虛擬機重現本里程碑」的說明
 - [x] 載具內的完整循環：前置檢查 → 寫入 → 重啟 → resolv.conf → 通配解析 → 停用 → 檔案復原
 - [x] 刻意注入重啟逾時，證明反向還原真的會還原
-- [x] 載具接進 CI —— `.drone.yml`（Drone，對著自架 Gitea）與給鏡像用的 `.github/workflows/dns-harness.yml`，兩者呼叫同一批腳本
+- ~~載具接進 CI~~ —— 曾經完成（`.drone.yml` 與給鏡像用的 `.github/workflows/dns-harness.yml`，兩者呼叫同一批腳本），**2026-08-30 連同 CI 的決定一起移除**。要做 CI 時另開分支重來，起點是 `docker/dns/test/` 底下那批腳本
 
 **通過條件**
 
@@ -311,7 +311,7 @@ M2 與 M1 互不相依，可以並行。其餘是一條鏈。
 - [x] 注入的重啟逾時導致 daemon 檔案被還原，而不是留下半套狀態
 - [x] 沙箱 daemon 重啟後 `restart: unless-stopped` 把 dnsmasq 拉回，過程無任何 CLI 介入
 - [x] 能證明整趟執行都沒有動到宿主的 daemon 檔案與容器
-- ~~在 CI 上也通過，不只是本機~~ —— **2026-08-30 決定不做，這條通過條件撤銷。** pipeline 檔案留在版控裡（`.drone.yml`、`.github/workflows/dns-harness.yml`），但沒有 runner 指向這個 repo，也不打算架。載具本身仍是規範：`docker/dns/test/dind-harness.sh` 由維護者在本機執行，13 項全過。**代價要說清楚**：沒有自動化把關，這批檢查只在有人想到要跑的時候才會跑，而回歸會安靜地溜過去
+- ~~在 CI 上也通過，不只是本機~~ —— **2026-08-30 決定不做，這條通過條件撤銷。** pipeline 檔案也一併從版控移除——留著兩個從來沒跑過、也不打算跑的設定檔，只會讓接手者以為 CI 是活的。要做的時候另開分支。載具本身仍是規範：`docker/dns/test/dind-harness.sh` 由維護者在本機執行，13 項全過。**代價要說清楚**：沒有自動化把關，這批檢查只在有人想到要跑的時候才會跑，而回歸會安靜地溜過去
 
 **已落地。** `docker/dns/test/dind-harness.sh`，13 項檢查全過。
 
@@ -533,5 +533,5 @@ M7 之後更新：
 
 - `docker/dns/` 放著 M2 的 image、entrypoint、發佈腳本、README 與驗證腳本，加上 M6a 的 dind 載具；commit `3581211` 的東西沒有在裡面留下任何檔案。`runestone-cli/src/services/dns/` 已是完整的引擎，而 **M7 正是既有指令路徑開始 import 它的那一刻**：`up`、`stop`、`down`、`certs`、`doctor` 現在都會進到 `lifecycle.ts`。M0 到 M6a 仍然可以各自 revert；從 M7 開始，revert 會連生命週期接線一起帶走。
 - commit `3581211` 加進 runestone image 的 dnsmasq 與 webproc 相關程式——`docker/traefik/entrypoint.sh` 的 `start_dnsmasq()` 與 `docker/traefik/dynamic/traefik.dynamic.yml` 的 `{{ if env "DNS_ENABLE" }}` 區塊——已在 M3 移除（規格 5.3、13）。
-- CI 檔案是 `.drone.yml` 與給 GitHub 鏡像用的 `.github/workflows/dns-harness.yml`。**兩者都從來沒有跑過，而且 2026-08-30 已決定不做 CI**（見 M6a 那條撤銷的通過條件）。image 發佈是手動執行一條記在 `docker/dns/README.md` 的指令，需要一個 registry token（裁決 2 改判）。
+- **沒有 CI。** 曾有 `.drone.yml` 與給 GitHub 鏡像用的 `.github/workflows/dns-harness.yml`，兩者都從來沒有跑過，已於 2026-08-30 連同那個決定一起移除（見 M6a 那條撤銷的通過條件）。image 發佈是手動執行一條記在 `docker/dns/README.md` 的指令，需要一個 registry token（裁決 2 改判）。
 - **`make/` 目錄是從 [druidfi/stonehenge](https://github.com/druidfi/stonehenge) 繼承來的，已作廢。** 把那套 Makefile 式的安裝與管理換成 npm CLI 正是這個 fork 存在的理由（見 README），因此建置與發布計畫不得從它推導任何東西。它是殘骸，不是基準——裁決 2 決定的 image 建置路徑應該貼合 CLI 的發布流程。
