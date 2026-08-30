@@ -35,7 +35,7 @@ If you like this project, please also support the original idea by starring [dru
 npm install -g @developers-homelab/runestone-cli
 ```
 
-Runestone 1.2.x is the final feature release of the 1.x line. See [Versions And Support](#versions-and-support).
+This installs the 2.x line. 1.2.x still receives bug fixes — see [Versions And Support](#versions-and-support).
 
 ### Check Host Environment
 
@@ -69,6 +69,22 @@ Shut down (stop and remove containers):
 ```bash
 runestone down
 ```
+
+## DNS For Containers (Optional)
+
+A Runestone domain resolves to `127.0.0.1`, which inside a container is the container itself — so containers cannot reach each other by domain. The optional DNS feature fixes that by giving containers a resolver that knows your Runestone domains.
+
+It is off by default, and turning it on is invasive: it adds an entry to the **Docker daemon's own configuration** and requires a Docker restart, which stops every container on the machine. After that, DNS for every container on the machine goes through a Runestone container.
+
+Read the full explanation before enabling it — what it changes, how to turn it off, and how to remove the entry by hand: **[DNS documentation](docs/DNS.md)** ([繁體中文](docs/DNS.zh-TW.md) | [日本語](docs/DNS.ja-JP.md)).
+
+How the domains themselves resolve — the Runestone domain, `traefik.me`'s address-decoding, and why the feature is IPv4 only — is in **[DOMAINS.md](docs/DOMAINS.md)** ([繁體中文](docs/DOMAINS.zh-TW.md)).
+
+```bash
+runestone dns enable --dry-run
+```
+
+That prints exactly what would change, with your real values, and writes nothing.
 
 ## Certificate Management
 
@@ -151,14 +167,14 @@ You can review this template before sharing the generated context with an AI age
 
 | Line | Status | Support |
 | --- | --- | --- |
+| 2.x | Current | Where new features happen |
 | 1.2.x | Final feature release of 1.x | Bug fixes only, until 2026-11-30 |
-| 2.x | In development | Becomes the default line once released |
 
-**1.2.0 is the last feature release of the 1.x line.** After it, 1.2.x receives bug fixes only: no new commands, no new options, no behavior changes. Support for 1.2.x ends on **2026-11-30**.
+**2.x is the current line**, and `npm install -g @developers-homelab/runestone-cli` installs it.
 
-The next major version, 2.0.0, changes behavior that existing installations rely on, which is why it is a new major line rather than an update to 1.x.
+**1.2.0 was the last feature release of the 1.x line.** It receives bug fixes only: no new commands, no new options, no behavior changes. Support for 1.2.x ends on **2026-11-30**.
 
-Once 2.0.0 is published, `npm install -g @developers-homelab/runestone-cli` installs 2.x. To stay on the 1.x line while it is still supported:
+Upgrading from 1.x rewrites your `compose.yml` on the first `up`, keeping the old file as a `.bak` beside it. To stay on the 1.x line while it is still supported:
 
 ```bash
 npm install -g @developers-homelab/runestone-cli@1

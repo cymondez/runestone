@@ -2,12 +2,57 @@ import { SpawnSyncReturns } from 'child_process';
 import * as path from 'path';
 import { spawnCommand } from '../utils/spawn';
 
+/**
+ * Service names as they appear in the generated compose file. Kept here so that
+ * every scoped `docker compose` invocation names a service from one list rather
+ * than an inline string literal.
+ */
+export const COMPOSE_SERVICES = {
+  runestone: 'runestone',
+  dns: 'dns'
+} as const;
+
+/**
+ * The images this CLI version runs. **Constants, not settings.**
+ *
+ * These used to live in `.env` as `RUNESTONE_IMAGE` / `RUNESTONE_TAG` so a user
+ * could point the stack at a different image. DNS ended that: the entrypoint's
+ * rules, the CLI's own copy of them and the daemon wiring have to agree, so the
+ * CLI and the images it drives are one unit whose parts are not separately
+ * choosable.
+ *
+ * Keeping them in `.env` was also an upgrade hazard, which is the reason they
+ * move now rather than later. `setup` wrote the values once and never asked, so
+ * an installation carried whatever tag was current on the day it was created —
+ * and a newer CLI would have read that stale value back and run the old image.
+ *
+ * There is deliberately no override. Compose substitutes `${VAR}` from `.env`
+ * and from the process environment alike, so any `${...}` left in the template
+ * would let a stale `.env` win again. A literal is the only form that makes the
+ * CLI version decide.
+ */
+export const RUNESTONE_IMAGE = 'cymondez/runestone:5.2';
+export const DNS_IMAGE = 'cymondez/runestone-dns:1.0';
+
+/**
+ * The dns service sits behind this Compose profile, so it is invisible to any
+ * command that does not name the profile (spec 8.2). That is what keeps the
+ * feature off while it is being built.
+ */
+export const DNS_PROFILE = 'dns';
+
+export type ComposeServiceName = (typeof COMPOSE_SERVICES)[keyof typeof COMPOSE_SERVICES];
+
 export interface ComposeOptions {
   wait?: boolean;
   removeVolumes?: boolean;
   removeImages?: boolean;
   forceRecreate?: boolean;
   noDeps?: boolean;
+  /** Compose profiles to activate; without one, a profiled service is invisible. */
+  profiles?: string[];
+  /** Limit the command to these services instead of the whole project. */
+  services?: string[];
 }
 
 export interface DockerContainer {
@@ -18,13 +63,26 @@ export interface DockerContainer {
   Service: string;
 }
 
-function composeArgs(composePath: string, args: string[]): string[] {
+function composeArgs(composePath: string, args: string[], profiles: string[] = []): string[] {
   const absolutePath = path.resolve(composePath);
-  return ['compose', '--project-directory', path.dirname(absolutePath), '-f', absolutePath, ...args];
+  return [
+    'compose',
+    '--project-directory',
+    path.dirname(absolutePath),
+    '-f',
+    absolutePath,
+    ...profiles.flatMap((profile) => ['--profile', profile]),
+    ...args
+  ];
 }
 
-function runCompose(args: string[], composePath: string, timeout = 120000): SpawnSyncReturns<string> {
-  const result = spawnCommand('docker', composeArgs(composePath, args), {
+function runCompose(
+  args: string[],
+  composePath: string,
+  timeout = 120000,
+  profiles: string[] = []
+): SpawnSyncReturns<string> {
+  const result = spawnCommand('docker', composeArgs(composePath, args, profiles), {
     encoding: 'utf8',
     timeout
   });
@@ -38,10 +96,38 @@ function runCompose(args: string[], composePath: string, timeout = 120000): Spaw
   }
 
   if (result.status !== 0) {
-    throw new Error(`docker compose failed: ${result.stderr?.trim() || result.stdout?.trim() || 'unknown error'}`);
+    throw new Error(`docker compose failed: ${composeFailure(result)}`);
   }
 
   return result;
+}
+
+/**
+ * The part of a failed `docker compose` run worth showing a user.
+ *
+ * Compose draws its progress with carriage returns, so the raw stream is one
+ * long line of "Container x Creating", "Container x Created" and so on, with
+ * the real error at the end. Printed as it stands, the terminal replays those
+ * overwrites and the **error is the one thing you cannot see**: the last write
+ * wins, and it is a progress line. Measured against a real port conflict, which
+ * reported itself to the user as "Container runestone-dns Creating" and told
+ * them nothing at all.
+ *
+ * So the carriage returns become separators and the progress chatter is
+ * dropped, leaving whatever actually went wrong.
+ */
+function composeFailure(result: SpawnSyncReturns<string>): string {
+  const raw = [result.stderr ?? '', result.stdout ?? ''].join('\n');
+  const lines = raw
+    .split(/[\r\n]+/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+
+  const progress =
+    /^Container .+ (Creating|Created|Starting|Started|Stopping|Stopped|Removing|Removed|Recreate|Recreated|Waiting|Healthy)$/;
+  const meaningful = lines.filter((line) => !progress.test(line));
+
+  return meaningful.join(' ') || lines[lines.length - 1] || 'unknown error';
 }
 
 function normalizeContainer(input: Record<string, unknown>): DockerContainer {
@@ -54,21 +140,38 @@ function normalizeContainer(input: Record<string, unknown>): DockerContainer {
   };
 }
 
+/**
+ * `docker compose ps --format json` emits **JSON Lines** — one object per line,
+ * not an array — and has done since Compose v2.21. Parsing the whole text first
+ * and only then falling back to line-by-line looks equivalent and is not: with
+ * two or more containers the whole-text parse throws, and the fallback below it
+ * was never reached. It went unnoticed because the test fed a single line, which
+ * happens to be valid JSON on its own.
+ *
+ * The consequence was quiet and wide: every caller of `ps` — `dns status`,
+ * `doctor`, the mapping refresh in `up`, the setup restart check — saw a parse
+ * failure on any project with more than one container, which is every real one.
+ */
 function parsePsOutput(stdout: string): DockerContainer[] {
   const text = stdout.trim();
   if (!text) {
     return [];
   }
 
-  const parsed = JSON.parse(text) as unknown;
-  if (Array.isArray(parsed)) {
-    return parsed.map((item) => normalizeContainer(item as Record<string, unknown>));
-  }
+  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
 
-  return text
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => normalizeContainer(JSON.parse(line) as Record<string, unknown>));
+  try {
+    // An array document, or a single object — both are valid JSON on their own.
+    const parsed = JSON.parse(text) as unknown;
+    return (Array.isArray(parsed) ? parsed : [parsed]).map((item) =>
+      normalizeContainer(item as Record<string, unknown>)
+    );
+  } catch {
+    // Two or more objects separated by newlines are not a valid document as a
+    // whole, which is exactly why this fallback has to sit behind a `catch`
+    // rather than behind an `Array.isArray` check that never runs.
+    return lines.map((line) => normalizeContainer(JSON.parse(line) as Record<string, unknown>));
+  }
 }
 
 export const composeService = {
@@ -83,8 +186,11 @@ export const composeService = {
     if (options?.noDeps) {
       args.push('--no-deps');
     }
+    if (options?.services) {
+      args.push(...options.services);
+    }
 
-    runCompose(args, composePath);
+    runCompose(args, composePath, 120000, options?.profiles ?? []);
   },
 
   down(composePath: string, options?: ComposeOptions): void {
@@ -99,12 +205,40 @@ export const composeService = {
     runCompose(args, composePath);
   },
 
-  stop(composePath: string): void {
-    runCompose(['stop'], composePath);
+  /**
+   * Without a service list this stops the whole project, which is what `stop`
+   * has always done. The list exists so that `stop` can leave the dns service
+   * running: the Docker daemon points at it, so stopping it would break name
+   * resolution for every container on the machine (spec 10.4).
+   */
+  stop(composePath: string, options?: ComposeOptions): void {
+    runCompose(['stop', ...(options?.services ?? [])], composePath, 120000, options?.profiles ?? []);
   },
 
-  restart(composePath: string): void {
-    runCompose(['restart'], composePath);
+  /**
+   * Restarts only the named services. The service list is mandatory: an
+   * unscoped `docker compose restart` restarts every service in the project,
+   * which would let an unrelated change interrupt long-lived services.
+   */
+  restart(composePath: string, services: string[]): void {
+    if (services.length === 0) {
+      throw new Error('composeService.restart requires at least one service name');
+    }
+
+    runCompose(['restart', ...services], composePath);
+  },
+
+  /**
+   * Stops and removes the named services in one step. Used when revoking DNS:
+   * the service has to go, and leaving a stopped container behind would keep
+   * `status` reporting a service that is no longer meant to exist.
+   */
+  removeServices(composePath: string, services: string[], options?: { profiles?: string[] }): void {
+    if (services.length === 0) {
+      throw new Error('composeService.removeServices requires at least one service name');
+    }
+
+    runCompose(['rm', '--stop', '--force', ...services], composePath, 120000, options?.profiles ?? []);
   },
 
   ps(composePath: string): DockerContainer[] {

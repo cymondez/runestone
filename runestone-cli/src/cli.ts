@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createCertsCommand } from './commands/certs';
+import { createDnsCommand } from './commands/dns';
 import { createDownCommand } from './commands/down';
 import { createDocsCommand } from './commands/docs';
 import { createDoctorCommand } from './commands/doctor';
@@ -36,6 +37,7 @@ export function createProgram(): Command {
     .addCommand(createCertsCommand())
     .addCommand(createKeysCommand())
     .addCommand(createServiceCommand())
+    .addCommand(createDnsCommand())
     .addCommand(createDoctorCommand())
     .addCommand(createDocsCommand())
     .addCommand(createStatusCommand());

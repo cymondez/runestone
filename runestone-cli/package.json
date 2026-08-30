@@ -1,6 +1,6 @@
 {
   "name": "@developers-homelab/runestone-cli",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "Cross-platform CLI tool for the runestone Docker development environment",
   "author": "cymondez",
   "url": "https://github.com/cymondez/runestone",
@@ -10,12 +10,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cymondez/runestone.git"
+    "url": "https://github.com/cymondez/runestone"
   },
   "main": "dist/cli.js",
   "types": "dist/cli.d.ts",
   "bin": {
-    "runestone": "bin/runestone"
+    "runestone": "./bin/runestone"
   },
   "scripts": {
     "sync:readme": "node scripts/sync-readme.js",
@@ -60,6 +60,7 @@
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
     "jest": "^29.7.0",
+    "js-yaml": "^5.4.1",
     "ts-jest": "^29.1.0",
     "typescript": "^5.4.0"
   }

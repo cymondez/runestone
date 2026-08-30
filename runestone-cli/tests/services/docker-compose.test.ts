@@ -1,6 +1,6 @@
 import { spawnSync } from 'child_process';
 import * as path from 'path';
-import { composeService } from '../../src/services/docker-compose';
+import { COMPOSE_SERVICES, composeService } from '../../src/services/docker-compose';
 
 jest.mock('child_process', () => ({
   spawnSync: jest.fn()
@@ -59,16 +59,50 @@ describe('composeService', () => {
     );
   });
 
-  it('restarts compose services', () => {
+  it('never passes a profile, so a profiled service stays out of every command', () => {
+    // The dns service sits behind `profiles: [dns]`. As long as no invocation
+    // names that profile, `up` / `stop` / `down` behave exactly as they did
+    // before the service existed — which is what keeps the feature off.
     const composePath = path.resolve('compose.yml');
 
-    composeService.restart(composePath);
+    composeService.up(composePath, { wait: true });
+    composeService.stop(composePath);
+    composeService.down(composePath);
+    composeService.restart(composePath, [COMPOSE_SERVICES.runestone]);
+    composeService.pull(composePath);
+
+    expect(spawnSyncMock.mock.calls.length).toBe(5);
+    for (const call of spawnSyncMock.mock.calls) {
+      expect(call[1]).not.toContain('--profile');
+      expect(call[1]).not.toContain('dns');
+    }
+  });
+
+  it('restarts only the named services', () => {
+    const composePath = path.resolve('compose.yml');
+
+    composeService.restart(composePath, [COMPOSE_SERVICES.runestone]);
 
     expect(spawnSyncMock).toHaveBeenCalledWith(
       'docker',
-      expect.arrayContaining(['restart']),
+      [
+        'compose',
+        '--project-directory',
+        path.dirname(composePath),
+        '-f',
+        composePath,
+        'restart',
+        'runestone'
+      ],
       expect.any(Object)
     );
+  });
+
+  it('never issues an unscoped restart', () => {
+    expect(() => composeService.restart(path.resolve('compose.yml'), [])).toThrow(
+      'composeService.restart requires at least one service name'
+    );
+    expect(spawnSyncMock).not.toHaveBeenCalled();
   });
 
   it('parses docker compose ps JSON array output', () => {
@@ -85,6 +119,23 @@ describe('composeService', () => {
         Service: 'runestone'
       }
     ]);
+  });
+
+  it('parses JSON Lines with more than one container, which is every real project', () => {
+    // The single-line case parses as JSON on its own, so it hid the bug: the
+    // whole-text parse threw here and the line-by-line fallback below it was
+    // never reached.
+    spawnSyncMock.mockReturnValueOnce(
+      ok(
+        '{"ID":"a","Name":"runestone","State":"running","Status":"Up","Service":"runestone"}\n'
+        + '{"ID":"b","Name":"runestone-dns","State":"running","Status":"Up","Service":"dns"}\n'
+      ) as never
+    );
+
+    const containers = composeService.ps('compose.yml');
+
+    expect(containers).toHaveLength(2);
+    expect(containers.map((c) => c.Service)).toEqual(['runestone', 'dns']);
   });
 
   it('parses docker compose ps JSON-lines output', () => {
@@ -104,4 +155,47 @@ describe('composeService', () => {
 
     expect(() => composeService.stop('compose.yml')).toThrow('bad compose');
   });
+  describe('reporting a failure', () => {
+    // Compose draws progress with carriage returns. Printed raw, the terminal
+    // replays the overwrites and the last write wins — which is a progress
+    // line, not the error. A real port conflict reached a user as
+    // "Container runestone-dns Creating".
+    function failed(stderr: string) {
+      return {
+        status: 1,
+        stdout: '',
+        stderr,
+        pid: 1,
+        output: [null, '', stderr],
+        signal: null
+      };
+    }
+
+    it('reports what went wrong, not the progress line that overwrote it', () => {
+      const stderr =
+        ' Container runestone-dns Creating \r'
+        + ' Container runestone-dns Created \r'
+        + ' Container runestone-dns Starting \r'
+        + 'Error response from daemon: Bind for 0.0.0.0:53 failed: port is already allocated';
+      spawnSyncMock.mockReturnValue(failed(stderr) as never);
+
+      expect(() => composeService.up('compose.yml')).toThrow(/port is already allocated/);
+      expect(() => composeService.up('compose.yml')).not.toThrow(/Creating/);
+    });
+
+    it('falls back to the last line when everything looks like progress', () => {
+      spawnSyncMock.mockReturnValue(
+        failed(' Container a Creating \r Container a Created') as never
+      );
+
+      expect(() => composeService.up('compose.yml')).toThrow(/Container a Created/);
+    });
+
+    it('says something rather than nothing when compose printed nothing', () => {
+      spawnSyncMock.mockReturnValue(failed('') as never);
+
+      expect(() => composeService.up('compose.yml')).toThrow(/unknown error/);
+    });
+  });
+
 });

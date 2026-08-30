@@ -20,6 +20,9 @@ let content = fs.readFileSync(source, 'utf8');
 content = content
   .replace(/\]\(docs\/README\/README\.zh-TW\.md\)/g, `](${blobBase}/docs/README/README.zh-TW.md)`)
   .replace(/\]\(docs\/README\/README\.ja-JP\.md\)/g, `](${blobBase}/docs/README/README.ja-JP.md)`)
+  .replace(/\]\(docs\/DNS\.md\)/g, `](${blobBase}/docs/DNS.md)`)
+  .replace(/\]\(docs\/DNS\.zh-TW\.md\)/g, `](${blobBase}/docs/DNS.zh-TW.md)`)
+  .replace(/\]\(docs\/DNS\.ja-JP\.md\)/g, `](${blobBase}/docs/DNS.ja-JP.md)`)
   .replace(/\]\(logos\/runestone_icon_gray_large\.png\)/g, `](${rawBase}/logos/runestone_icon_gray_large.png)`);
 
 fs.writeFileSync(target, content, 'utf8');

@@ -1,5 +1,8 @@
 import { Command } from 'commander';
-import { composeService } from '../services/docker-compose';
+import { DNS_PROFILE, composeService } from '../services/docker-compose';
+import { applyUpDns, planUpDns } from '../services/dns/lifecycle';
+import { isDnsEnabled } from '../services/dns/settings';
+import { printUpDns } from './dns-notices';
 import { networkService } from '../services/docker-network';
 import { sshManager } from '../services/ssh-manager';
 import { volumeService } from '../services/docker-volume';
@@ -57,11 +60,17 @@ export function createUpCommand(): Command {
           volumeService.createVolume(config.SSH_VOLUME_NAME);
         }
 
+        // Spec 10.4: with DNS enabled the dns service comes up alongside the
+        // rest. Without the profile it is invisible to Compose, which is what
+        // keeps it out of the way of everyone who has not enabled it.
+        const dnsEnabled = isDnsEnabled(config);
+
         logger.info('Starting Docker Compose services');
         composeService.up(config.COMPOSE_FILE_PATH, {
           wait: true,
           forceRecreate: Boolean(options.forceRecreate),
-          noDeps: options.deps === false
+          noDeps: options.deps === false,
+          profiles: dnsEnabled ? [DNS_PROFILE] : []
         });
 
         if (process.env.RUNESTONE_SKIP_SSH_KEYS === '1') {
@@ -69,6 +78,20 @@ export function createUpCommand(): Command {
         } else {
           logger.info('Injecting SSH keys');
           sshManager.addKeys(undefined, config.SSH_VOLUME_NAME);
+        }
+
+        if (dnsEnabled) {
+          // Reconciling reads Docker and may write the daemon configuration, but
+          // it never restarts Docker (spec 9.6), and it never fails `up`: an
+          // environment that started is an environment that started, and a DNS
+          // problem is reported rather than turned into a failed startup.
+          try {
+            const plan = planUpDns(config);
+            printUpDns(config, applyUpDns(config, plan));
+          } catch (dnsError) {
+            const dnsMessage = dnsError instanceof Error ? dnsError.message : String(dnsError);
+            logger.warn(t('dns.up.failed', { message: dnsMessage }));
+          }
         }
 
         logger.success(`runestone is ready at https://traefik.${config.HOST_DOMAIN}`);

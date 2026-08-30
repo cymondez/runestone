@@ -10,6 +10,15 @@
     - service list|ls 顯示已加入的服務
     - service remove|rm \<service-name> 移除已加入的服務
     - service add|a \<service-name>  加入新的服務 ，以互動式為主，但也可以用參數直接帶入 --domain --target-url ； service-name 跟 domain 需檢查是否已被使用
+3. 加入 DNS支援，改進其他container呼叫runestone自訂domain會因為解析成127.0.0.1造成路由失敗的問題
+   - 技術原理：設定dockerd的daemon.json，加入 dns 設定，讓  container 內部的 dns 解析可以指向 host.docker.internal 所指向的 IP
+   - runestone image 加入 `dnsmasq`，並且在一環境變數全定是否在 runestone container 內部啟動 `dnsmasq`
+   - 必須占用 53 port (不能更改)
+   - 請動時掃描 /ssl - 讀取 /ssl 下的所有 certs，且將 domain 加入 `dnsmasq` 的`dnsmasq.conf`設定檔中，並對應到 `host.docker.internal` 所指向的 IP
+   - 修改 `daemon.json`，加入 dns ，位置為`host.docker.internal` 所指向的 IP，如果使用者取消dns支援時，必須只能撤銷針對 runestone container 的 dns 設定，不能影響其他設定值
+     - <ip of host.docker.internal\> 必須放在最前面，否則會被其他 dns 設定覆蓋
+     - runestone 必須記住當次解析的 `host.docker.internal` IP位置，以應付如果 host.docker.internal 的 IP 位置改變時，能找到並刪除舊的ip位置
+     - 必須讓使用者設定其他dns作為備援 dns，
 
 ## bug fix
 

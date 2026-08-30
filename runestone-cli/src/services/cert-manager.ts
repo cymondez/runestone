@@ -224,6 +224,24 @@ function parseSubjectAltName(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+/**
+ * The DNS names a certificate carries, as the certificate states them.
+ *
+ * Only `DNS:` entries are returned. A certificate may also carry `IP Address:`
+ * or `email:` entries, and callers that want names cannot use either. That is
+ * why this does not reuse `parseSubjectAltName`, which keeps every entry so
+ * `certs list` can display the certificate as it really is.
+ */
+export function readCertificateDnsNames(certFile: string): string[] {
+  const certificate = new X509Certificate(fs.readFileSync(certFile));
+  return (certificate.subjectAltName ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => /^DNS:/i.test(entry))
+    .map((entry) => entry.replace(/^DNS:/i, '').trim())
+    .filter(Boolean);
+}
+
 function parseIssuer(value: string): string {
   const parts = value.split('\n').map((part) => part.trim()).filter(Boolean);
   const organization = parts.find((part) => part.startsWith('O='));

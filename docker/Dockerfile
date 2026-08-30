@@ -15,6 +15,13 @@ RUN tar --strip-components=1 -zxf v${MAILPIT_VERSION}.tar.gz -C .
 RUN npm install && npm run package
 RUN CGO_ENABLED=0 go build -ldflags "-s -w -X github.com/axllent/mailpit/config.Version=${MAILPIT_VERSION}" -o /mailpit
 
+
+#
+# Dnsmasq binary
+#
+
+
+
 #
 # Runestone
 #

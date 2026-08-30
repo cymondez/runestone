@@ -35,7 +35,7 @@
 npm install -g @developers-homelab/runestone-cli
 ```
 
-Runestone 1.2.x 是 1.x 版本線的最後一個功能版本，詳見[版本與支援](#版本與支援)。
+這會安裝 2.x 版本線。1.2.x 仍持續提供 bug 修復，詳見[版本與支援](#版本與支援)。
 
 ### 檢查主機環境
 
@@ -69,6 +69,22 @@ runestone stop
 ```bash
 runestone down
 ```
+
+## 容器用 DNS（選用）
+
+Runestone 網域會解析到 `127.0.0.1`，而在容器裡那就是容器自己——所以容器之間無法用網域互相連到。選用的 DNS 功能解決這件事，方法是給容器一個認得你的 Runestone 網域的解析器。
+
+它預設關閉，而開啟它是侵入性的：它會在 **Docker daemon 自己的設定**裡加入一筆項目，並且需要重啟 Docker，那會停掉這台機器上每一個容器。之後，這台機器上每一個容器的 DNS 都會經過一個 Runestone 容器。
+
+啟用之前請先讀完整說明——它改動什麼、怎麼關掉、以及怎麼手動移除那筆項目：**[DNS 說明文件](DNS.zh-TW.md)**（[English](DNS.md) | [日本語](DNS.ja-JP.md)）。
+
+domain 本身是怎麼解析的——Runestone domain、`traefik.me` 的位址解碼、以及這個功能為什麼只支援 IPv4——寫在 **[DOMAINS.zh-TW.md](DOMAINS.zh-TW.md)**（[English](DOMAINS.md)）。
+
+```bash
+runestone dns enable --dry-run
+```
+
+那會印出「會變成什麼樣」的精確內容，帶入你實際的數值，而且什麼都不寫。
 
 ## 憑證管理
 
@@ -151,14 +167,14 @@ Runestone 設定方法請直接呼叫 `runestone docs --ai-context`。
 
 | 版本線 | 狀態 | 支援範圍 |
 | --- | --- | --- |
+| 2.x | 目前版本線 | 新功能都在這裡 |
 | 1.2.x | 1.x 的最後一個功能版本 | 僅 bug 修復，維護至 2026-11-30 |
-| 2.x | 開發中 | 發布後成為預設版本線 |
 
-**1.2.0 是 1.x 版本線的最後一個功能版本。** 在此之後，1.2.x 只接受 bug 修復：不再新增指令、不再新增選項、不再變更行為。1.2.x 的維護於 **2026-11-30** 結束。
+**2.x 是目前的版本線**，`npm install -g @developers-homelab/runestone-cli` 安裝的就是它。
 
-下一個主要版本 2.0.0 會變更既有安裝所依賴的行為，因此它是新的主要版本線，而不是 1.x 的更新。
+**1.2.0 是 1.x 版本線的最後一個功能版本。** 它只接受 bug 修復：不再新增指令、不再新增選項、不再變更行為。1.2.x 的維護於 **2026-11-30** 結束。
 
-2.0.0 發布後，`npm install -g @developers-homelab/runestone-cli` 會安裝 2.x。若要在支援期間內留在 1.x 版本線：
+從 1.x 升級後，第一次 `up` 會重新產生你的 `compose.yml`，原檔會以 `.bak` 留在旁邊。若要在支援期間內留在 1.x 版本線：
 
 ```bash
 npm install -g @developers-homelab/runestone-cli@1
