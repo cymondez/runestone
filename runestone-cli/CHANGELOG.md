@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 2.0.0 - 2026-08-30
+
+**Container DNS.** Runestone domains now resolve correctly from inside containers, not just from your browser. It is off by default, and turning it on edits the Docker daemon's own configuration and requires a Docker restart — read [docs/DNS.md](../docs/DNS.md) before enabling it.
+
+This is a major version because it also changes behaviour existing installations rely on, whether or not you use DNS: your `compose.yml` is regenerated on the first `up` after upgrading (the old file is kept as a `.bak` beside it), and the image versions Runestone runs are no longer read from `.env`.
 
 ### Added
 
@@ -20,6 +24,8 @@
 - Upstream DNS is now detected from the Docker daemon configuration and the host's own resolvers before falling back to `1.1.1.1`, instead of always using `1.1.1.1`. On a network that only permits internal resolvers, container lookups no longer go to a public resolver.
 - `compose.yml` is now regenerated when Runestone's template changes, so an upgrade no longer leaves you with an outdated Compose file. The file already on disk is kept as a `.bak` beside it first.
 - `runestone doctor` now exits non-zero when a DNS check fails, instead of reporting the failure and then signing off as passed. It says the host environment is fine and that nothing needs installing, rather than sending you to install something.
+- The images Runestone runs are now fixed by the CLI version instead of read from `RUNESTONE_IMAGE` and `RUNESTONE_TAG` in `.env`. Those keys are no longer used; `setup` wrote them once and never asked, so an upgrade would otherwise have kept running whatever tag was current on the day the installation was created. DNS is what ends the choice: the image and the CLI have to agree on rules they both implement.
+- DNS domain mappings are now read from the names inside each certificate rather than from its filename. A certificate covering several domains maps all of them, and one whose filename does not match its contents no longer maps a name it does not actually serve. For certificates created by `runestone certs create` the result is unchanged.
 
 ### Documentation
 
