@@ -87,6 +87,24 @@ describe('DESIGNE.md functional acceptance', () => {
     expect(list?.aliases()).toContain('list');
   });
 
+  it('never issues an unscoped docker compose restart', () => {
+    // An unscoped `docker compose restart` restarts every service in the
+    // project, so a certificate or service change would interrupt unrelated
+    // long-lived services. The service list is a required parameter.
+    expect(composeService.restart).toHaveLength(2);
+
+    const callSites = listFiles(srcDir)
+      .filter((file) => file.endsWith('.ts'))
+      .flatMap((file) => {
+        const relative = path.relative(srcDir, file);
+        const calls = fs.readFileSync(file, 'utf8').match(/composeService\.restart\([^)]*\)/g) ?? [];
+        return calls.map((call) => ({ file: relative, call }));
+      });
+
+    expect(callSites.length).toBeGreaterThan(0);
+    expect(callSites.filter((site) => !site.call.includes(','))).toEqual([]);
+  });
+
   it('keeps Docker CLI execution behind services and docker checker utilities', () => {
     const sourceFiles = listFiles(srcDir).filter((file) => file.endsWith('.ts'));
     const forbiddenCallers = sourceFiles.filter((file) => {

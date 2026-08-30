@@ -21,6 +21,7 @@ jest.mock('../../src/services/root-ca-installer', () => ({
 }));
 
 jest.mock('../../src/utils/env-loader', () => ({
+  ...jest.requireActual('../../src/utils/env-loader'),
   envLoader: {
     load: jest.fn()
   }

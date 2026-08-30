@@ -1,0 +1,440 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { restartDocker } from '../../../src/services/dns/docker-restart';
+import { DAEMON_PATH_OVERRIDE_ENV } from '../../../src/services/dns/daemon-target';
+import {
+  LifecycleDependencies,
+  applyUpDns,
+  buildManagedMappings,
+  certificateDomains,
+  checkDnsHealth,
+  defaultLifecycleDependencies,
+  parseManagedMappings,
+  planUpDns,
+  readMappingState,
+  stopTargets,
+  syncDnsMappings
+} from '../../../src/services/dns/lifecycle';
+import { DNS_STATE_SCHEMA_VERSION, DnsOwnershipState } from '../../../src/utils/tool-state';
+import { testEnv } from '../../helpers/env';
+
+jest.mock('../../../src/services/dns/docker-restart', () => ({
+  ...jest.requireActual('../../../src/services/dns/docker-restart'),
+  restartDocker: jest.fn(() => ({ status: 'restarted', waitedMs: 0 }))
+}));
+
+const TARGET = '192.168.65.254';
+const restartDockerMock = restartDocker as jest.MockedFunction<typeof restartDocker>;
+
+describe('dns lifecycle', () => {
+  let directory: string;
+  let projectDir: string;
+  let daemonPath: string;
+  let savedOverride: string | undefined;
+
+  function daemon(dns: string[]): string {
+    const text = `${JSON.stringify({ dns, 'log-level': 'info' }, null, 2)}\n`;
+    fs.writeFileSync(daemonPath, text, 'utf8');
+    return text;
+  }
+
+  function record(overrides: Partial<DnsOwnershipState> = {}): DnsOwnershipState {
+    return {
+      schemaVersion: DNS_STATE_SCHEMA_VERSION,
+      phase: 'applied',
+      contextName: 'desktop-linux',
+      daemonPath,
+      targetIp: TARGET,
+      insertedEntries: [{ role: 'target', value: TARGET, index: 0 }],
+      createdDnsKey: false,
+      createdDaemonFile: false,
+      upstreams: ['8.8.8.8'],
+      updatedAt: '2026-08-27T10:00:00.000Z',
+      ...overrides
+    };
+  }
+
+  /**
+   * What each certificate file says its DNS names are. The files themselves stay
+   * empty: the rule under test is how names become zones, not how X.509 is
+   * parsed, which `readCertificateDnsNames` owns and is tested against a real
+   * certificate elsewhere.
+   */
+  let certSans: Map<string, string[]>;
+
+  const readCertNames = (certFile: string): string[] => certSans.get(path.basename(certFile)) ?? [];
+
+  const domainsOf = (dir: string = projectDir): string[] =>
+    certificateDomains(dir, defaultLifecycleDependencies.readDir, readCertNames);
+
+  /**
+   * Certificates carrying the names `runestone certs create` actually puts in
+   * them: the wildcard alone, and nothing else (`mkcert.generate` is called with
+   * `hosts: ['*.<domain>']`).
+   */
+  function certs(...names: string[]): void {
+    writeCerts(Object.fromEntries(names.map((name) => [name, [`*.${name.replace(/\.crt$/, '')}`]])));
+  }
+
+  /** Certificates carrying names of their own, whatever the file is called. */
+  function writeCerts(entries: Record<string, string[]>): void {
+    const certsDir = path.join(projectDir, 'certs');
+    fs.mkdirSync(certsDir, { recursive: true });
+    for (const [name, sans] of Object.entries(entries)) {
+      fs.writeFileSync(path.join(certsDir, name), '', 'utf8');
+      certSans.set(name, sans);
+    }
+  }
+
+  interface Harness {
+    deps: Partial<LifecycleDependencies>;
+    written: Array<{ path: string; text: string }>;
+    records: DnsOwnershipState[];
+    env: Array<Record<string, string>>;
+    restarts: number;
+    recreates: number;
+  }
+
+  function harness(options: {
+    state?: DnsOwnershipState;
+    /** Which machine this is (spec 6.2). Defaults to a native Linux engine. */
+    host?: 'docker-desktop' | 'linux-engine' | 'elsewhere';
+    running?: boolean;
+    managed?: string;
+    detected?: string;
+    probeError?: string;
+    desktopVersion?: string | null;
+  } = {}): Harness {
+    const result: Harness = { deps: {}, written: [], records: [], env: [], restarts: 0, recreates: 0 };
+
+    result.deps = {
+      environment: () => ({ host: options.host ?? 'linux-engine', homeDir: directory }),
+      readRecord: () => options.state,
+      writeRecord: (state) => {
+        result.records.push(state);
+      },
+      writeDaemon: (target, text) => {
+        result.written.push({ path: target, text });
+        fs.writeFileSync(target, text, 'utf8');
+      },
+      writeEnv: (_envPath, values) => {
+        result.env.push(values);
+      },
+      listContainers: () =>
+        options.running === false
+          ? []
+          : [{ Id: '1', Name: 'runestone-dns', State: 'running', Status: 'Up', Service: 'dns' }],
+      readManagedConf: () => options.managed ?? '',
+      restartDnsService: () => {
+        result.restarts += 1;
+      },
+      recreateDnsService: () => {
+        result.recreates += 1;
+      },
+      targetIp: () => (options.probeError ? { error: options.probeError } : { ip: options.detected ?? TARGET }),
+      desktopVersion: () =>
+        options.desktopVersion === null
+          ? undefined
+          : { raw: `Docker Desktop ${options.desktopVersion ?? '4.88.1'} (1)`, version: options.desktopVersion ?? '4.88.1' },
+      readCertNames,
+      now: () => '2026-08-28T00:00:00.000Z'
+    };
+
+    return result;
+  }
+
+  beforeEach(() => {
+    restartDockerMock.mockClear();
+    certSans = new Map();
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-lifecycle-'));
+    projectDir = path.join(directory, 'project');
+    fs.mkdirSync(projectDir);
+    daemonPath = path.join(directory, 'daemon.json');
+    savedOverride = process.env[DAEMON_PATH_OVERRIDE_ENV];
+    process.env[DAEMON_PATH_OVERRIDE_ENV] = daemonPath;
+  });
+
+  afterEach(() => {
+    if (savedOverride === undefined) {
+      delete process.env[DAEMON_PATH_OVERRIDE_ENV];
+    } else {
+      process.env[DAEMON_PATH_OVERRIDE_ENV] = savedOverride;
+    }
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  describe('certificate domains', () => {
+    it('derives the domain set the way the image entrypoint does', () => {
+      certs('example.test.crt', 'rootCA.crt', 'Other.Example.crt', 'notadomain.crt', 'ignored.txt', '-bad.host.crt');
+
+      // `notadomain` has one label and `-bad.host` starts with a hyphen, so
+      // neither is a domain the entrypoint would map. `Other.Example.crt` is,
+      // once lowercased.
+      expect(domainsOf()).toEqual(['example.test', 'other.example']);
+    });
+
+    it('maps every name a certificate carries, not the one its file is called', () => {
+      writeCerts({
+        // A certificate the filename rule got wrong twice over: `wrong-name` is
+        // not a domain, so the whole file used to be skipped, and `b.test` has
+        // no filename anywhere that would have produced it.
+        'wrong-name.crt': ['*.a.test', 'b.test', 'C.TEST'],
+        // Two files, one zone: `*.shared.test` and `shared.test` are the same
+        // `address=/shared.test/ip`, and it must not be written twice.
+        'shared.crt': ['*.shared.test'],
+        'shared-apex.crt': ['shared.test']
+      });
+
+      expect(domainsOf()).toEqual(['a.test', 'b.test', 'c.test', 'shared.test']);
+    });
+
+    it('skips a certificate whose names cannot be read instead of using its filename', () => {
+      writeCerts({ 'example.test.crt': [] });
+
+      expect(domainsOf()).toEqual([]);
+    });
+
+    it('returns nothing when there is no certs directory at all', () => {
+      expect(domainsOf(path.join(directory, 'missing'))).toEqual([]);
+    });
+
+    it('reads only the address lines out of a generated managed.conf', () => {
+      const text = ['# Generated by runestone-dns', '', `address=/example.test/${TARGET}`, ''].join('\n');
+      expect(parseManagedMappings(text)).toEqual([`address=/example.test/${TARGET}`]);
+      expect(buildManagedMappings(['example.test'], TARGET)).toEqual([`address=/example.test/${TARGET}`]);
+    });
+  });
+
+  describe('mapping refresh', () => {
+    it('restarts the dns service only when the certificate domain set actually changed', () => {
+      certs('example.test.crt');
+      const config = testEnv(projectDir, { DNS_ENABLE: 'true', DNS_HOST_IP: TARGET });
+
+      const unchanged = harness({ managed: `address=/example.test/${TARGET}` });
+      expect(syncDnsMappings(config, unchanged.deps).restarted).toBe(false);
+      expect(unchanged.restarts).toBe(0);
+
+      const changed = harness({ managed: '' });
+      expect(syncDnsMappings(config, changed.deps).restarted).toBe(true);
+      expect(changed.restarts).toBe(1);
+    });
+
+    it('does nothing at all when DNS is off', () => {
+      certs('example.test.crt');
+      const off = harness({ managed: '' });
+      const result = syncDnsMappings(testEnv(projectDir), off.deps);
+
+      expect(result).toEqual({ enabled: false, restarted: false });
+      expect(off.restarts).toBe(0);
+    });
+
+    it('leaves a stopped service alone, because its next start regenerates them', () => {
+      certs('example.test.crt');
+      const stopped = harness({ running: false });
+      const state = readMappingState(testEnv(projectDir, { DNS_HOST_IP: TARGET }), TARGET, stopped.deps);
+
+      expect(state.running).toBe(false);
+      expect(state.changed).toBe(false);
+    });
+  });
+
+  describe('up reconciliation', () => {
+    const enabled = (overrides = {}) =>
+      testEnv(projectDir, { DNS_ENABLE: 'true', DNS_HOST_IP: TARGET, ...overrides });
+
+    it('does nothing when DNS is disabled', () => {
+      daemon([TARGET]);
+      const plan = planUpDns(testEnv(projectDir), harness().deps);
+
+      expect(plan.status).toBe('disabled');
+      expect(plan.changesFile).toBe(false);
+    });
+
+    it('reports a missing ownership record rather than inserting one', () => {
+      daemon(['8.8.8.8']);
+      const bare = harness();
+      const plan = planUpDns(enabled(), bare.deps);
+      applyUpDns(enabled(), plan, bare.deps);
+
+      expect(plan.status).toBe('no-record');
+      expect(bare.written).toHaveLength(0);
+      expect(JSON.parse(fs.readFileSync(daemonPath, 'utf8')).dns).toEqual(['8.8.8.8']);
+    });
+
+    it('refuses to act when the record was written against another daemon path', () => {
+      daemon([TARGET]);
+      const elsewhere = harness({ state: record({ daemonPath: path.join(directory, 'other.json') }) });
+      const plan = planUpDns(enabled(), elsewhere.deps);
+
+      expect(plan.status).toBe('path-mismatch');
+      expect(elsewhere.written).toHaveLength(0);
+    });
+
+    it('is quiet when our entry is already first', () => {
+      daemon([TARGET, '8.8.8.8']);
+      const clean = harness({ state: record(), managed: '' });
+      const plan = planUpDns(enabled(), clean.deps);
+
+      expect(plan.status).toBe('ok');
+      expect(plan.changesFile).toBe(false);
+    });
+
+    it('warns without changing anything when our entry is not first and reordering is off', () => {
+      const before = daemon(['10.0.0.53', TARGET]);
+      const passive = harness({ state: record(), managed: '' });
+      const plan = planUpDns(enabled(), passive.deps);
+      applyUpDns(enabled(), plan, passive.deps);
+
+      expect(plan.status).toBe('not-at-front');
+      expect(passive.written).toHaveLength(0);
+      expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
+    });
+
+    it('moves only our own entries to the front when reordering is on', () => {
+      daemon(['10.0.0.53', TARGET, '8.8.8.8']);
+      const active = harness({ state: record({ insertedEntries: [{ role: 'target', value: TARGET, index: 0 }] }) });
+      const config = enabled({ DNS_AUTO_REORDER: 'true' });
+      const plan = planUpDns(config, active.deps);
+      applyUpDns(config, plan, active.deps);
+
+      expect(plan.status).toBe('reorder');
+      expect(JSON.parse(fs.readFileSync(daemonPath, 'utf8')).dns).toEqual([TARGET, '10.0.0.53', '8.8.8.8']);
+      // Written but not in effect: the record says so rather than claiming applied.
+      expect(active.records[0].phase).toBe('prepared');
+      expect(active.records[0].preparedReason).toBe('no-restart');
+    });
+
+    it('rotates the Target IP as one transaction and recreates the service', () => {
+      daemon([TARGET, '8.8.8.8']);
+      const rotated = harness({ state: record(), detected: '192.168.65.2' });
+      const config = enabled();
+      const plan = planUpDns(config, rotated.deps);
+      const result = applyUpDns(config, plan, rotated.deps);
+
+      expect(plan.status).toBe('rotate');
+      expect(JSON.parse(fs.readFileSync(daemonPath, 'utf8')).dns).toEqual(['192.168.65.2', '8.8.8.8']);
+      expect(rotated.env).toEqual([{ DNS_HOST_IP: '192.168.65.2' }]);
+      expect(result.recreatedService).toBe(true);
+      expect(rotated.records[0].targetIp).toBe('192.168.65.2');
+    });
+
+    it('changes nothing when it cannot tell which entry is ours', () => {
+      const before = daemon([TARGET, TARGET]);
+      const ambiguous = harness({ state: record({ insertedEntries: [{ role: 'target', value: TARGET, index: 5 }] }) });
+      const plan = planUpDns(enabled(), ambiguous.deps);
+
+      expect(plan.status).toBe('conflict');
+      expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
+    });
+
+    it('carries on when the Target IP cannot be detected', () => {
+      daemon([TARGET]);
+      const blind = harness({ state: record(), probeError: 'docker did not answer', managed: '' });
+      const plan = planUpDns(enabled(), blind.deps);
+
+      expect(plan.probeError).toBe('docker did not answer');
+      expect(plan.status).toBe('ok');
+    });
+
+    it('never restarts Docker, whatever it decided to write', () => {
+      daemon(['10.0.0.53', TARGET]);
+      const active = harness({ state: record(), detected: '192.168.65.2' });
+      const config = enabled({ DNS_AUTO_REORDER: 'true' });
+      applyUpDns(config, planUpDns(config, active.deps), active.deps);
+
+      expect(active.written.length).toBeGreaterThan(0);
+      expect(restartDockerMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('doctor', () => {
+    it('reports the state and writes absolutely nothing', () => {
+      const before = daemon(['10.0.0.53', TARGET]);
+      certs('example.test.crt');
+      const inspection = harness({ state: record(), managed: '' });
+      const config = testEnv(projectDir, { DNS_ENABLE: 'true', DNS_HOST_IP: TARGET });
+
+      const report = checkDnsHealth(config, inspection.deps);
+      const byId = Object.fromEntries(report.checks.map((check) => [check.id, check]));
+
+      expect(byId.ownership.status).toBe('pass');
+      expect(byId.position.status).toBe('warn');
+      expect(byId.service.status).toBe('pass');
+      expect(byId.targetIp.status).toBe('pass');
+      expect(byId.mappings.status).toBe('warn');
+
+      expect(inspection.written).toHaveLength(0);
+      expect(inspection.records).toHaveLength(0);
+      expect(inspection.restarts + inspection.recreates).toBe(0);
+      expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
+      expect(restartDockerMock).not.toHaveBeenCalled();
+    });
+
+    it('says nothing when DNS is off', () => {
+      expect(checkDnsHealth(testEnv(projectDir), harness().deps)).toEqual({ enabled: false, checks: [] });
+    });
+
+    it('fails the ownership check when DNS is on with nothing recorded', () => {
+      daemon(['8.8.8.8']);
+      const report = checkDnsHealth(testEnv(projectDir, { DNS_ENABLE: 'true' }), harness().deps);
+
+      expect(report.checks[0]).toMatchObject({ id: 'ownership', status: 'fail' });
+    });
+  });
+
+  describe('stop targets', () => {
+    it('stops the whole project when DNS is off, exactly as before', () => {
+      expect(stopTargets(testEnv(projectDir), false)).toEqual({ services: [], profiles: [], keepsDns: false });
+    });
+
+    it('stops only runestone when DNS is on', () => {
+      const targets = stopTargets(testEnv(projectDir, { DNS_ENABLE: 'true' }), false);
+      expect(targets).toEqual({ services: ['runestone'], profiles: [], keepsDns: true });
+    });
+
+    it('stops everything, dns included, only with --all', () => {
+      const targets = stopTargets(testEnv(projectDir, { DNS_ENABLE: 'true' }), true);
+      expect(targets).toEqual({ services: [], profiles: ['dns'], keepsDns: false });
+    });
+  });
+  describe('doctor and the Docker Desktop restart check', () => {
+    // A Docker Desktop machine, said out loud through the dependency the
+    // product takes. Stubbing the host platform instead made this pass on
+    // Windows and fail on Linux — the check exists only for Desktop, and which
+    // machine a test is about is the test's to state.
+
+    const enabled = () => testEnv(projectDir, { DNS_ENABLE: 'true', DNS_HOST_IP: TARGET });
+
+    function checkFor(desktopVersion: string | null | undefined) {
+      daemon([TARGET]);
+      const inspection = harness({ state: record(), managed: '', desktopVersion, host: 'docker-desktop' });
+      const report = checkDnsHealth(enabled(), inspection.deps);
+      return report.checks.find((check) => check.id === 'desktopRestart');
+    }
+
+    it('passes on a version whose restart leaves containers recoverable', () => {
+      expect(checkFor('4.88.1')).toMatchObject({ status: 'pass', detail: { version: '4.88.1' } });
+    });
+
+    it('warns on an older version, because dns enable will not restart it', () => {
+      expect(checkFor('4.85.0')).toMatchObject({ status: 'warn', detail: { version: '4.85.0' } });
+    });
+
+    it('reports the threshold even when the version cannot be read', () => {
+      expect(checkFor(null)).toMatchObject({ status: 'skip', detail: { minimum: '4.86.0' } });
+    });
+
+    it('still writes nothing, whatever it found', () => {
+      const before = daemon([TARGET]);
+      const inspection = harness({ state: record(), managed: '', desktopVersion: '4.85.0' });
+
+      checkDnsHealth(enabled(), inspection.deps);
+
+      expect(inspection.written).toHaveLength(0);
+      expect(inspection.records).toHaveLength(0);
+      expect(fs.readFileSync(daemonPath, 'utf8')).toBe(before);
+    });
+  });
+
+});

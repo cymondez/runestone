@@ -9,6 +9,7 @@ import {
   ensureRootCaAliases,
   ensureWildcardCertificate,
   listDomainCertificates,
+  readCertificateDnsNames,
   removeDomainCertificate
 } from '../../src/services/cert-manager';
 
@@ -173,6 +174,24 @@ describe('cert-manager', () => {
       validUntil: '2036-06-13',
       expiry: '3650d'
     });
+  });
+
+  it('reads the DNS names out of a real certificate and leaves the wildcard alone', () => {
+    const certFile = path.join(tempDir, 'certs', 'named-something-else.crt');
+    fs.mkdirSync(path.dirname(certFile), { recursive: true });
+    fs.writeFileSync(certFile, fixtureCertificate, 'utf8');
+
+    // Straight from the certificate, in its order, with the wildcard as written.
+    // The filename says nothing and is not consulted.
+    expect(readCertificateDnsNames(certFile)).toEqual(['*.example.test', 'example.test']);
+  });
+
+  it('throws rather than guessing when the certificate cannot be parsed', () => {
+    const certFile = path.join(tempDir, 'certs', 'corrupt.test.crt');
+    fs.mkdirSync(path.dirname(certFile), { recursive: true });
+    fs.writeFileSync(certFile, 'not a certificate', 'utf8');
+
+    expect(() => readCertificateDnsNames(certFile)).toThrow();
   });
 
   it('marks certificates without dynamic config as usable when the key exists', () => {

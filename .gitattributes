@@ -1,0 +1,5 @@
+# Shell scripts must keep LF endings. A CRLF script copied into a Linux image
+# fails on its own shebang line, because the kernel reads the interpreter as
+# "/bin/sh\r" and reports a bad interpreter. Windows checkouts with
+# core.autocrlf=true would otherwise produce exactly that.
+*.sh text eol=lf

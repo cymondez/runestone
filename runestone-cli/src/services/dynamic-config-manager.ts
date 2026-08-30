@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { AsyncLocalStorage } from 'async_hooks';
-import { composeService } from './docker-compose';
+import { COMPOSE_SERVICES, composeService } from './docker-compose';
 import { logger } from '../utils/logger';
 import { pathHelpers } from '../utils/path-helpers';
 import { t } from '../i18n';
@@ -29,7 +29,7 @@ function restartRunestoneAfterDynamicConfigChange(runtime: DynamicConfigRuntime 
   }
 
   logger.info(t('dynamicConfig.restart.info'));
-  composeService.restart(runtime.composeFilePath);
+  composeService.restart(runtime.composeFilePath, [COMPOSE_SERVICES.runestone]);
 }
 
 function markDynamicConfigChanged(runtime?: DynamicConfigRuntime): void {
