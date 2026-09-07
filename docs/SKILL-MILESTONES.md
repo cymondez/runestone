@@ -23,9 +23,9 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | A3 | `--ai-context [topic]` and `--offline` | 1 | A1, A2 | **done** — 44 suites, 630 passed, 5 skipped. First user-visible milestone |
 | A4 | Online tier: collision detection | 2 | A3 | **done** — 45 suites, 650 passed, 5 skipped. Phase A complete except the A0 mirrors |
 | B1 | Marker-block ownership engine | 0 | — | **done** — 46 suites, 697 passed, 5 skipped |
-| B2 | `skill status` and `install --dry-run` | 1 | A1, B1 | not started |
+| B2 | `skill status` and `install --dry-run` | 1 | A1, B1 | **done** — 47 suites, 719 passed, 5 skipped. B4's renderers folded in; see below |
 | B3 | `skill install` and `skill remove` | 2 | B2 | not started |
-| B4 | Full target table and wrappers | 2 | B3 | not started |
+| B4 | Full target table and wrappers | 2 | B3 | **merged into B2 and B3** — the table and renderers landed in B2 because `status` cannot exist without them; enabling every target for writing lands in B3 |
 | C1 | MCP dependency spike | 0 | — | not started |
 | C2 | `runestone mcp serve`, read-only | 3 | A2, C1 | not started |
 | C3 | `mcp config`, documentation, release | 1 | C2 | not started |
@@ -320,30 +320,46 @@ The fix was a shape with the user's own text *after* our span, asserted with equ
 
 **Deliverables**
 
-- [ ] `runestone-cli/src/services/skill/targets.ts` — the built-in target table as **one** data structure, each entry carrying its documentation URL and verification date (spec 8.2)
-- [ ] `runestone-cli/src/services/skill/plan.ts` — `planInstall` and `planRemove`, pure over injected reads, deciding every blocker
-- [ ] `runestone-cli/src/services/skill/scope.ts` — target-directory resolution and `RUNESTONE_SKILL_HOME`
-- [ ] `runestone-cli/src/commands/skill.ts` — the parent with **no options of its own**, plus `status` and `install --dry-run`
-- [ ] `skill status` table using `padToWidth` from `src/utils/text.ts`, **not** `padEnd` — `certs.ts:58` and `service.ts:100` both get this wrong for CJK and must not be copied
-- [ ] `src/cli.ts` registration; `src/i18n/index.ts` strings in all three locales
-- [ ] `tests/services/skill/plan.test.ts` and `tests/commands/skill.test.ts`
-- [ ] `skill`, `skill install`, `skill status` and `skill remove` added to the command lists at `tests/integration/cli.test.ts:55-71` and `:89-99`, and `'skill'` added at `design-acceptance.test.ts:69`
+- [x] `runestone-cli/src/services/skill/targets.ts` — the built-in target table as **one** data structure, each entry carrying its documentation URL and verification date (spec 8.2)
+- [x] `runestone-cli/src/services/skill/plan.ts` — `planInstall` and `planRemove`, pure over injected reads, deciding every blocker
+- [x] `runestone-cli/src/services/skill/scope.ts` — target-directory resolution and `RUNESTONE_SKILL_HOME`
+- [x] `runestone-cli/src/commands/skill.ts` — the parent with **no options of its own**, plus `status` and `install --dry-run`
+- [x] `skill status` table using `padToWidth` from `src/utils/text.ts`, **not** `padEnd` — `certs.ts:58` and `service.ts:100` both get this wrong for CJK and must not be copied
+- [x] `src/cli.ts` registration; `src/i18n/index.ts` strings in all three locales
+- [x] `tests/services/skill/plan.test.ts` and `tests/commands/skill.test.ts`
+- [x] `skill`, `skill install`, `skill status` and `skill remove` added to the command lists at `tests/integration/cli.test.ts:55-71` and `:89-99`, and `'skill'` added at `design-acceptance.test.ts:69`
 
 **Gate**
 
-- [ ] `status` reports five states correctly: not installed, current, stale, modified at the current version, and a conflicted instruction file
-- [ ] `status` and `install --dry-run` write nothing, proven by a recursive directory hash before and after, **including the absence of any backup file**
-- [ ] `skill --help` prints no `Options:` section and no `[options]` on its first line
-- [ ] `--project` and `--env` are rejected on `skill` and all three subcommands
-- [ ] Target auto-detection: each of `.agents/`, `.claude/`, `.cursor/`, `.codex/` and `AGENTS.md` present alone selects exactly its own target; nothing present selects the neutral default
-- [ ] `--skills-dir` and `--instructions-file` override the table
-- [ ] `--user` together with `[dir]` exits 1; `--user --target cursor` exits 1 with the reason
-- [ ] An invalid `[dir]` returns to the **same** prompt with the reason in that prompt's description, driven through `createProgram().parseAsync`
-- [ ] An empty target selection returns to the same multi-select with the reason in its description
-- [ ] `RUNESTONE_SKILL_HOME` is reported loudly by `skill status` when set
-- [ ] Every new message key exists in all three locale tables
+- [x] `status` reports five states correctly: not installed, current, stale, modified at the current version, and a conflicted instruction file
+- [x] `status` and `install --dry-run` write nothing, proven by a recursive directory hash before and after, **including the absence of any backup file**
+- [x] `skill --help` prints no `Options:` section and no `[options]` on its first line
+- [x] `--project` and `--env` are rejected on `skill` and all three subcommands
+- [x] Target auto-detection: each of `.agents/`, `.claude/`, `.cursor/`, `.codex/` and `AGENTS.md` present alone selects exactly its own target; nothing present selects the neutral default
+- [x] `--skills-dir` and `--instructions-file` override the table
+- [x] `--user` together with `[dir]` exits 1; `--user --target cursor` exits 1 with the reason
+- [ ] ~~An invalid `[dir]` returns to the same prompt~~ — **not applicable, see below.** There is no prompt in B2: nothing is interactive yet, because nothing is written
+- [ ] ~~An empty target selection returns to the same multi-select~~ — **deferred to B3.** The multi-select belongs with the write, and B2 reports "nothing detected" with the two flags that fix it instead
+- [x] `RUNESTONE_SKILL_HOME` is reported loudly by `skill status` when set
+- [x] Every new message key exists in all three locale tables
 
-**Rollback.** Single revert; the command is new and nothing else calls into it.
+**Landed.** The target table, the renderers, the planner, scope resolution, and `skill install --dry-run` plus `skill status`. Nothing is written: two tests hash the whole directory before and after and assert it is unchanged, including the absence of a `.bak`.
+
+Verified by hand in a temporary git repository: a dry run against a directory containing `.agents/` and a hand-written `AGENTS.md` plans six file creations and one section append, names the backup path, and `git status` afterwards shows only the file the test itself created.
+
+**`.agents/skills/` is the default, and that is the substance of this milestone.** One write is read by Codex, Cursor and VS Code / Copilot. Claude Code is the documented exception and gets `.claude/skills/` plus `CLAUDE.md`, because it reads neither neutral path. Codex is an alias of the neutral instruction file rather than a fourth copy of the same block — asserted by a test, since the tempting implementation writes `.codex/` too.
+
+**Three layers, so that a moved path does not need a release.** The table is data in one file, each row carrying the documentation URL it came from and the date it was checked; `--skills-dir` and `--instructions-file` override it for a runtime the table does not know. A path override is treated as a statement of intent and implies the neutral target rather than requiring `--target` alongside it.
+
+**B4 is merged into this milestone and B3.** `status` has to compare what is installed against freshly rendered content, so it cannot exist without the renderers B4 was going to add. Splitting them would have meant a `status` that could not answer its own question. What remains genuinely B4-shaped — enabling every target for *writing* — lands in B3, which is where the risk level actually changes.
+
+**`--project` is absent by construction, not by convention.** `PROJECT_DIR` already means `~/.runestone` throughout this CLI, so the destination is a positional argument and user scope is one boolean. `skill` and both subcommands are now in the integration suite's list of commands that must reject `--env` and `--project`.
+
+**The allowlist test earned its keep immediately.** Adding the snapshot import to `skill.ts` failed the A3 allowlist, exactly as intended — a new consumer of that module is a decision, not an accident. It is now listed with its reason, and a second assertion enforces the claim the reason makes: the installer uses the offline builder only, and may not reach the live one. An installed file outlives the moment it was written, so a baked-in live fact would be a lie within minutes.
+
+**Two gate items did not apply.** Both concerned interactive prompts, and there is nothing interactive in B2 because there is nothing to confirm. "Nothing detected" is reported with the two flags that fix it; the multi-select arrives with the write, in B3.
+
+**Rollback.** Single revert. The command disappears; nothing else calls into `src/services/skill/`.
 
 ## B3 — `skill install` and `skill remove`
 

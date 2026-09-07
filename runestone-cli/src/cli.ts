@@ -9,6 +9,7 @@ import { createDoctorCommand } from './commands/doctor';
 import { createKeysCommand } from './commands/keys';
 import { createServiceCommand } from './commands/service';
 import { createSetupCommand } from './commands/setup';
+import { createSkillCommand } from './commands/skill';
 import { createStatusCommand } from './commands/status';
 import { createStopCommand } from './commands/stop';
 import { createUpCommand } from './commands/up';
@@ -40,6 +41,7 @@ export function createProgram(): Command {
     .addCommand(createDnsCommand())
     .addCommand(createDoctorCommand())
     .addCommand(createDocsCommand())
+    .addCommand(createSkillCommand())
     .addCommand(createStatusCommand());
 }
 

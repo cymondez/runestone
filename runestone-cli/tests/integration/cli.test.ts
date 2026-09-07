@@ -67,7 +67,10 @@ describe('runestone CLI integration', () => {
       ['certs', 'remove'],
       ['keys'],
       ['keys', 'ls'],
-      ['keys', 'add']
+      ['keys', 'add'],
+      ['skill'],
+      ['skill', 'install'],
+      ['skill', 'status']
     ];
 
     for (const command of commands) {
@@ -95,7 +98,10 @@ describe('runestone CLI integration', () => {
       ['certs', 'create'],
       ['keys'],
       ['keys', 'ls'],
-      ['keys', 'add']
+      ['keys', 'add'],
+      // The parent carries no options of its own, deliberately: every flag
+      // lives on a subcommand so this assertion keeps holding.
+      ['skill']
     ];
 
     for (const command of commands) {
@@ -387,6 +393,20 @@ describe('runestone CLI integration', () => {
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it('localizes the skill command in all three languages', () => {
+    // MessageKey is derived from the `en` table alone, so a missing zh-TW or
+    // ja-JP entry compiles and falls back to English at runtime without
+    // anything failing. This is the check that notices.
+    const en = runCli(['skill', '--help'], { RUNESTONE_LANG: 'en' });
+    expect(en.stdout).toContain('Install the Runestone agent guidance');
+
+    const zh = runCli(['skill', '--help'], { RUNESTONE_LANG: 'zh-TW' });
+    expect(zh.stdout).toContain('把 Runestone 的 agent 指引安裝進專案');
+
+    const ja = runCli(['skill', '--help'], { RUNESTONE_LANG: 'ja-JP' });
+    expect(ja.stdout).toContain('agent ガイダンス');
   });
 
   it('localizes command descriptions for zh-TW and ja-JP', () => {

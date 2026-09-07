@@ -371,7 +371,11 @@ describe('who is allowed to reach the snapshot module', () => {
     // exists — a Docker probe with it. Adding a consumer should be a decision,
     // which means seeing this list change in a diff.
     const allowed = [
-      path.join('src', 'commands', 'docs.ts')
+      path.join('src', 'commands', 'docs.ts'),
+      // Renders the corpus for installation. It uses the offline builder only:
+      // an installed file outlives the moment it was written, so a live fact
+      // baked into one would be a lie within minutes.
+      path.join('src', 'commands', 'skill.ts')
     ];
 
     const srcDir = path.resolve(__dirname, '..', '..', '..', 'src');
@@ -392,5 +396,19 @@ describe('who is allowed to reach the snapshot module', () => {
       .sort();
 
     expect(importers).toEqual(allowed.sort());
+  });
+
+  it('does not let the installer reach the live builder', () => {
+    // The comment in the allowlist above is a claim; this is the assertion.
+    // An installed file carries offline scalars and tells the agent to run the
+    // state topic for anything live, which is the whole reason to install a
+    // skill rather than paste a blob of context.
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '..', '..', '..', 'src', 'commands', 'skill.ts'),
+      'utf8'
+    );
+
+    expect(source).toContain('buildOfflineSnapshot');
+    expect(source).not.toContain('buildLiveSnapshot');
   });
 });
