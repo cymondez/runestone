@@ -566,12 +566,13 @@ Verified against the real binary: four requests and one notification in, four fr
 | A0 | `service` field contract measured from the validators | 2026-09-07 | Spec 5.2 |
 | A0 | `service.validation.urlNoPath` has zero call sites | 2026-09-07 | Spec 5.2 |
 | A0 | Claude Code does not load this repository's `AGENTS.md` | 2026-09-07 | Spec 8.1 |
+| A4 | Spec 14.4 end-to-end: an agent given `docs --ai-context` in a real project | 2026-09-08 | **Verified by the repository owner.** No transcript was captured, so this row records that the check was run and passed, not what the agent did step by step |
 
 ## Current state of the repository
 
 - The branch is `feat/skill-support`, cut from `develop` at `ba67a7e`, which is where `main` and `origin/develop` also sit. Nothing unmerged is inherited.
 - `runestone-cli` is at 2.0.0 with an unreleased section in the changelog. The agent-facing surface is three commands: `docs --ai-context [topic]` over five topics, `skill install | status | remove` across four targets, and `mcp serve | config`. **Production dependencies are unchanged at 13** — the MCP server is hand-written, which is what the C1 ruling bought.
-- Phases A, B and C are functionally complete. Open: A0's two Traditional Chinese specification mirrors, and B5 (user scope), deferred by spec decision 5.
+- Phases A, B and C are functionally complete, and the specification 14.4 end-to-end check has been run and passed by the repository owner. Open: A0's two Traditional Chinese specification mirrors, and B5 (user scope), deferred by spec decision 5.
 - **There is no CI.** Every gate in this document is run by hand.
 - Publishing is manual and the order is fixed: merge to `develop`, merge to `main`, then publish to npm.
 - Three cleanups were found during A0 and deliberately left out of this branch: the three locale tables have no automated key-parity test, `service.validation.urlNoPath` is an orphan key, and `certs list` and `service list` compute column widths with `String.length` instead of the CJK-aware helper that already exists.
