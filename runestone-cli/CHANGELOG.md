@@ -10,7 +10,7 @@
 - `runestone docs --ai-context` takes a topic: `service` for a project that is not in Docker, `state` for live facts about this machine, `troubleshoot` for 404s, 502s and certificate warnings, and `overview` for how to choose between them. Every topic ends with the list of the others.
 - `runestone docs --ai-context` now also reports which hostnames a certificate covers and which service names and routes are already taken, so an agent stops guessing.
 - `runestone docs --ai-context state` additionally reports the router names other projects have registered with Traefik, which is not visible from your own project.
-- `runestone mcp serve` exposes Runestone to MCP-capable agents over stdio, read-only. `runestone mcp config` prints what your client needs for Claude Code, Codex, Cursor, VS Code, Gemini CLI, Windsurf and Zed — the shapes are not interchangeable, so it emits TOML for Codex, the `servers` key for VS Code and `context_servers` for Zed. Where a client has its own registration command it prints that too.
+- `runestone mcp serve` exposes Runestone to MCP-capable agents over stdio, read-only. `runestone mcp config` prints what your client needs for Claude Code, Codex, GitHub Copilot CLI, Cursor, VS Code, Gemini CLI, Windsurf and Zed — the shapes are not interchangeable, so it emits TOML for Codex, the `servers` key for VS Code, `context_servers` for Zed, and `"type": "local"` for Copilot CLI, which is a different tool from VS Code with its own file. Where a client has its own registration command it prints that too.
 - `runestone docs --offline` skips the Docker and Traefik checks.
 
 ### Changed

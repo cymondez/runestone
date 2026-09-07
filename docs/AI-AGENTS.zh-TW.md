@@ -74,7 +74,7 @@ Runestone 只擁有它自己寫的東西。它會在你既有的檔案裡加一�
 runestone mcp config --client claude-code
 ```
 
-印出你的 client 需要的東西。支援 `claude-code`、`codex`、`cursor`、`vscode`、`gemini`、`windsurf`、`zed`；不給 `--client` 就全部印出。Runestone 只印，不會自己去改你 client 的設定檔。
+印出你的 client 需要的東西。支援 `claude-code`、`codex`、`copilot-cli`、`cursor`、`vscode`、`gemini`、`windsurf`、`zed`；不給 `--client` 就全部印出。注意 `vscode` 與 `copilot-cli` 是兩個不同的工具、讀不同的檔案 —— VS Code 自己的文件寫明 Agent Host 不會讀 `.vscode/mcp.json`。Runestone 只印，不會自己去改你 client 的設定檔。
 
 各家的形狀不能互換，這正是這個指令存在的理由。Codex 用的是 TOML 不是 JSON。VS Code 的 key 是 `servers`、Zed 是 `context_servers`，其餘才是 `mcpServers`。如果某個 client 有自己的註冊指令（`claude mcp add`、`codex mcp add`），也會一併印出來 —— 因為你執行的指令不會被貼錯檔案。
 

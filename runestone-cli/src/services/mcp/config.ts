@@ -40,14 +40,17 @@ export interface McpClient {
    */
   addCommand?: string;
   /**
-   * Whether this client's own documentation shows a `type` field.
+   * The value this client's own documentation gives for `type`, or undefined
+   * where it shows none.
    *
-   * Only Claude Code and VS Code document it; Gemini, Windsurf and Zed show
-   * `command` and `args` alone. Emitting a field a vendor does not document is
-   * a guess, and a guess that a schema validator may reject — so each row emits
-   * exactly the shape its cited documentation shows.
+   * Not a boolean, because the answer is not yes-or-no: VS Code documents
+   * `"stdio"`, **Copilot CLI documents `"local"`**, and Gemini, Windsurf and Zed
+   * show `command` and `args` alone. Emitting a field — or a value — a vendor
+   * does not document is a guess, and one a schema validator may reject.
    */
-  stdioTypeField: boolean;
+  typeValue?: string;
+  /** Anything else the vendor's own example carries. */
+  extraFields?: Record<string, unknown>;
   /** Anything the user needs in order not to think it is broken. */
   note?: string;
 }
@@ -59,7 +62,7 @@ const ARGS = ['mcp', 'serve'];
 export const MCP_CLIENTS: readonly McpClient[] = [
   {
     id: 'claude-code',
-    stdioTypeField: true,
+    typeValue: 'stdio',
     title: 'Claude Code',
     location: '.mcp.json at the project root',
     format: 'json',
@@ -73,7 +76,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   },
   {
     id: 'codex',
-    stdioTypeField: false,
     title: 'Codex CLI',
     location: '~/.codex/config.toml, or .codex/config.toml for one project',
     format: 'toml',
@@ -85,7 +87,7 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   },
   {
     id: 'cursor',
-    stdioTypeField: true,
+    typeValue: 'stdio',
     title: 'Cursor',
     location: '.cursor/mcp.json in the project, or ~/.cursor/mcp.json for every project',
     format: 'json',
@@ -95,18 +97,35 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   },
   {
     id: 'vscode',
-    stdioTypeField: true,
+    typeValue: 'stdio',
     title: 'VS Code',
     location: '.vscode/mcp.json in the workspace',
     format: 'json',
     key: 'servers',
     docsUrl: 'https://code.visualstudio.com/docs/agents/reference/mcp-configuration',
     verifiedOn: '2026-09-07',
-    note: 'VS Code uses the key "servers" rather than "mcpServers". The rest of the block is the same.'
+    note:
+      'VS Code uses the key "servers" rather than "mcpServers". This is the editor only — GitHub Copilot CLI is a ' +
+      'separate client with its own file; see --client copilot-cli.'
+  },
+  {
+    id: 'copilot-cli',
+    typeValue: 'local',
+    extraFields: { tools: ['*'] },
+    title: 'GitHub Copilot CLI',
+    location: '~/.copilot/mcp-config.json',
+    format: 'json',
+    key: 'mcpServers',
+    docsUrl: 'https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers',
+    verifiedOn: '2026-09-08',
+    addCommand: `copilot mcp add ${SERVER_NAME} -- ${COMMAND} ${ARGS.join(' ')}`,
+    note:
+      'This is not the same as VS Code. Copilot CLI reads its own file, uses the key "mcpServers" rather than ' +
+      '"servers", and writes "type": "local" rather than "stdio". VS Code documentation states the Agent Host does ' +
+      'not read .vscode/mcp.json directly.'
   },
   {
     id: 'gemini',
-    stdioTypeField: false,
     title: 'Gemini CLI',
     location: '~/.gemini/settings.json, or .gemini/settings.json for one project',
     format: 'json',
@@ -116,7 +135,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   },
   {
     id: 'windsurf',
-    stdioTypeField: false,
     title: 'Windsurf',
     location: '~/.codeium/windsurf/mcp_config.json',
     format: 'json',
@@ -126,7 +144,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   },
   {
     id: 'zed',
-    stdioTypeField: false,
     title: 'Zed',
     location: 'the Zed settings file, via the "zed: open settings file" command',
     format: 'json',
@@ -159,9 +176,12 @@ function renderToml(client: McpClient): string {
 }
 
 function renderJson(client: McpClient): string {
-  const entry = client.stdioTypeField
-    ? { type: 'stdio', command: COMMAND, args: ARGS }
-    : { command: COMMAND, args: ARGS };
+  const entry = {
+    ...(client.typeValue ? { type: client.typeValue } : {}),
+    command: COMMAND,
+    args: ARGS,
+    ...(client.extraFields ?? {})
+  };
 
   return JSON.stringify({ [client.key]: { [SERVER_NAME]: entry } }, null, 2);
 }

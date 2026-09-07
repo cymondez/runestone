@@ -91,8 +91,11 @@ and it leaves alone anything you edited afterwards.
 runestone mcp config --client claude-code
 ```
 
-Prints what your client needs. Supported: `claude-code`, `codex`, `cursor`,
-`vscode`, `gemini`, `windsurf` and `zed`; omit `--client` to see them all.
+Prints what your client needs. Supported: `claude-code`, `codex`, `copilot-cli`,
+`cursor`, `vscode`, `gemini`, `windsurf` and `zed`; omit `--client` to see them
+all. Note that `vscode` and `copilot-cli` are different tools with different
+files — VS Code's own documentation says the Agent Host does not read
+`.vscode/mcp.json`.
 Runestone prints rather than editing your client's configuration itself.
 
 The shapes are not interchangeable, which is why this command exists at all.

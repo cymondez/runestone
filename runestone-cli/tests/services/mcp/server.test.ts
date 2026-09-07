@@ -306,6 +306,7 @@ describe('the registration block', () => {
     ['codex', 'toml', 'mcp_servers'],
     ['cursor', 'json', 'mcpServers'],
     ['vscode', 'json', 'servers'],
+    ['copilot-cli', 'json', 'mcpServers'],
     ['gemini', 'json', 'mcpServers'],
     ['windsurf', 'json', 'mcpServers'],
     ['zed', 'json', 'context_servers']
@@ -342,16 +343,35 @@ describe('the registration block', () => {
     }
   });
 
-  it('emits a type field only where the vendor documents one', () => {
-    // Gemini, Windsurf and Zed show `command` and `args` alone. Adding a field
-    // their documentation does not mention is a guess, and one a schema
-    // validator may reject.
+  it('emits the type value each vendor documents, and none where they show none', () => {
+    // Not a yes-or-no question: VS Code documents "stdio", Copilot CLI
+    // documents "local", and Gemini, Windsurf and Zed show `command` and `args`
+    // alone. Emitting a field, or a value, a vendor does not document is a
+    // guess that a schema validator may reject.
     for (const client of MCP_CLIENTS.filter((candidate) => candidate.format === 'json')) {
       const parsed = JSON.parse(renderClientConfig(client)) as Record<string, Record<string, unknown>>;
       const entry = parsed[client.key].runestone as { type?: string };
 
-      expect(entry.type).toBe(client.stdioTypeField ? 'stdio' : undefined);
+      expect(entry.type).toBe(client.typeValue);
     }
+
+    expect((findClient('vscode') as McpClient).typeValue).toBe('stdio');
+    expect((findClient('copilot-cli') as McpClient).typeValue).toBe('local');
+    expect((findClient('zed') as McpClient).typeValue).toBeUndefined();
+  });
+
+  it('keeps VS Code and Copilot CLI apart, because they are different tools', () => {
+    // They are routinely assumed to share configuration and do not: different
+    // file, different key, different type value. VS Code's own documentation
+    // states the Agent Host does not read .vscode/mcp.json.
+    const vscode = findClient('vscode') as McpClient;
+    const copilot = findClient('copilot-cli') as McpClient;
+
+    expect(vscode.location).not.toBe(copilot.location);
+    expect(vscode.key).not.toBe(copilot.key);
+    expect(vscode.typeValue).not.toBe(copilot.typeValue);
+    expect(vscode.note).toContain('copilot-cli');
+    expect(copilot.note).toContain('not the same as VS Code');
   });
 
   it('carries the provenance of every row', () => {
@@ -366,7 +386,7 @@ describe('the registration block', () => {
 
   it('offers a registration command wherever the client has one', () => {
     // A command the user runs cannot be pasted into the wrong file.
-    for (const id of ['claude-code', 'codex']) {
+    for (const id of ['claude-code', 'codex', 'copilot-cli']) {
       const client = findClient(id) as McpClient;
       expect(client.addCommand).toContain('mcp add runestone');
       expect(client.addCommand).toContain('runestone mcp serve');
@@ -385,6 +405,7 @@ describe('the registration block', () => {
     expect(MCP_CLIENTS.map((client) => client.id).sort()).toEqual([
       'claude-code',
       'codex',
+      'copilot-cli',
       'cursor',
       'gemini',
       'vscode',
