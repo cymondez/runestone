@@ -91,9 +91,15 @@ and it leaves alone anything you edited afterwards.
 runestone mcp config --client claude-code
 ```
 
-Prints the block to paste into your client's configuration. `--client cursor`
-and `--client vscode` print the right shape for those; omit it to see all three.
-Runestone prints it rather than editing your client's configuration itself.
+Prints what your client needs. Supported: `claude-code`, `codex`, `cursor`,
+`vscode`, `gemini`, `windsurf` and `zed`; omit `--client` to see them all.
+Runestone prints rather than editing your client's configuration itself.
+
+The shapes are not interchangeable, which is why this command exists at all.
+Codex uses TOML, not JSON. VS Code uses the key `servers` and Zed uses
+`context_servers`, where the rest use `mcpServers`. Where a client has its own
+registration command — `claude mcp add`, `codex mcp add` — that is printed too,
+because a command you run cannot be pasted into the wrong file.
 
 The server is read-only. It answers questions and returns the exact command for
 you to run; it never changes anything. Its most useful tool is

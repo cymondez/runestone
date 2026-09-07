@@ -42,7 +42,14 @@ export function createMcpCommand(): Command {
 
       const clients = requested ? [requested] : MCP_CLIENTS;
       const blocks = clients.map((client) => {
-        const lines = [`# ${client.title} — ${t('mcp.config.where', { location: client.location })}`];
+        const lines = [`# ${client.title}`];
+
+        // A command the user runs cannot be pasted into the wrong file, so it
+        // is offered first wherever the client provides one.
+        if (client.addCommand) {
+          lines.push(`# ${t('mcp.config.orRun')}`, `#   ${client.addCommand}`);
+        }
+        lines.push(`# ${t('mcp.config.where', { location: client.location })}`);
         if (client.note) {
           lines.push(`# ${client.note}`);
         }

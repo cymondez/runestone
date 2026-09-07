@@ -298,28 +298,65 @@ describe('stdout purity', () => {
 });
 
 describe('the registration block', () => {
-  it('uses the key each client actually reads', () => {
-    // The trap: everything else about these blocks looks identical, so a single
-    // "here is the JSON" answer would be silently wrong for VS Code.
-    expect(JSON.parse(renderClientConfig(findClient('claude-code') as McpClient))).toHaveProperty('mcpServers');
-    expect(JSON.parse(renderClientConfig(findClient('cursor') as McpClient))).toHaveProperty('mcpServers');
-    expect(JSON.parse(renderClientConfig(findClient('vscode') as McpClient))).toHaveProperty('servers');
+  // Every difference below produces a configuration that silently does not
+  // work rather than one that errors, which is why each is asserted rather
+  // than assumed to follow the others.
+  it.each([
+    ['claude-code', 'json', 'mcpServers'],
+    ['codex', 'toml', 'mcp_servers'],
+    ['cursor', 'json', 'mcpServers'],
+    ['vscode', 'json', 'servers'],
+    ['gemini', 'json', 'mcpServers'],
+    ['windsurf', 'json', 'mcpServers'],
+    ['zed', 'json', 'context_servers']
+  ])('renders %s as %s under the key %s', (id, format, key) => {
+    const client = findClient(id) as McpClient;
+    expect(client.format).toBe(format);
+    expect(client.key).toBe(key);
+
+    const block = renderClientConfig(client);
+    if (format === 'toml') {
+      // A JSON block pasted into config.toml is simply not a configuration, so
+      // this is the assertion that keeps Codex working at all.
+      expect(block).toContain(`[${key}.runestone]`);
+      expect(block).not.toContain('{');
+    } else {
+      expect(JSON.parse(block)).toHaveProperty(key);
+    }
   });
 
-  it('names a command the handshake test actually drives', () => {
+  it('names the command the handshake test actually drives, in both formats', () => {
     for (const client of MCP_CLIENTS) {
-      const block = JSON.parse(renderClientConfig(client)) as Record<string, Record<string, unknown>>;
-      const entry = block[client.key].runestone as { type: string; command: string; args: string[] };
+      const block = renderClientConfig(client);
 
-      expect(entry.type).toBe('stdio');
+      if (client.format === 'toml') {
+        expect(block).toContain('command = "runestone"');
+        expect(block).toContain('args = ["mcp", "serve"]');
+        continue;
+      }
+
+      const parsed = JSON.parse(block) as Record<string, Record<string, unknown>>;
+      const entry = parsed[client.key].runestone as { command: string; args: string[] };
       expect(entry.command).toBe('runestone');
       expect(entry.args).toEqual(['mcp', 'serve']);
     }
   });
 
+  it('emits a type field only where the vendor documents one', () => {
+    // Gemini, Windsurf and Zed show `command` and `args` alone. Adding a field
+    // their documentation does not mention is a guess, and one a schema
+    // validator may reject.
+    for (const client of MCP_CLIENTS.filter((candidate) => candidate.format === 'json')) {
+      const parsed = JSON.parse(renderClientConfig(client)) as Record<string, Record<string, unknown>>;
+      const entry = parsed[client.key].runestone as { type?: string };
+
+      expect(entry.type).toBe(client.stdioTypeField ? 'stdio' : undefined);
+    }
+  });
+
   it('carries the provenance of every row', () => {
-    // The install-path landscape moves. A row without a source and a date is a
-    // row nobody can check.
+    // The configuration landscape moves. A row without a source and a date is
+    // a row nobody can check.
     for (const client of MCP_CLIENTS) {
       expect(client.docsUrl).toMatch(/^https:\/\//);
       expect(client.verifiedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -327,9 +364,32 @@ describe('the registration block', () => {
     }
   });
 
-  it('warns that a project-scoped .mcp.json waits for approval', () => {
-    // Without this the user concludes the install is broken.
-    const claude = findClient('claude-code') as McpClient;
-    expect(claude.note).toContain('approval');
+  it('offers a registration command wherever the client has one', () => {
+    // A command the user runs cannot be pasted into the wrong file.
+    for (const id of ['claude-code', 'codex']) {
+      const client = findClient(id) as McpClient;
+      expect(client.addCommand).toContain('mcp add runestone');
+      expect(client.addCommand).toContain('runestone mcp serve');
+    }
+  });
+
+  it('warns where a client would otherwise look broken', () => {
+    expect((findClient('claude-code') as McpClient).note).toContain('approval');
+    // Pasting JSON into a TOML file fails in a way that gives no clue.
+    expect((findClient('codex') as McpClient).note).toContain('TOML');
+    expect((findClient('vscode') as McpClient).note).toContain('servers');
+    expect((findClient('zed') as McpClient).note).toContain('context_servers');
+  });
+
+  it('covers the mainstream agents rather than only the ones I happened to know', () => {
+    expect(MCP_CLIENTS.map((client) => client.id).sort()).toEqual([
+      'claude-code',
+      'codex',
+      'cursor',
+      'gemini',
+      'vscode',
+      'windsurf',
+      'zed'
+    ]);
   });
 });
