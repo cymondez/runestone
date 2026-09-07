@@ -61,7 +61,7 @@ const ARGS = ['mcp', 'serve'];
 
 export const MCP_CLIENTS: readonly McpClient[] = [
   {
-    id: 'claude-code',
+    id: 'claude',
     typeValue: 'stdio',
     title: 'Claude Code',
     location: '.mcp.json at the project root',
@@ -106,17 +106,17 @@ export const MCP_CLIENTS: readonly McpClient[] = [
     verifiedOn: '2026-09-07',
     note:
       'VS Code uses the key "servers" rather than "mcpServers". This is the editor only — GitHub Copilot CLI is a ' +
-      'separate client with its own file; see --client copilot-cli.'
+      'separate client with its own file; see --client copilot.'
   },
   {
-    id: 'copilot-cli',
+    id: 'copilot',
     typeValue: 'local',
     extraFields: { tools: ['*'] },
     title: 'GitHub Copilot CLI',
     location: '~/.copilot/mcp-config.json',
     format: 'json',
     key: 'mcpServers',
-    docsUrl: 'https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers',
+    docsUrl: 'https://docs.github.com/en/copilot/how-tos/copilot/customize-copilot/add-mcp-servers',
     verifiedOn: '2026-09-08',
     addCommand: `copilot mcp add ${SERVER_NAME} -- ${COMMAND} ${ARGS.join(' ')}`,
     note:

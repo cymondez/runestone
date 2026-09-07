@@ -71,10 +71,10 @@ Runestone は自分が書いたものだけを所有します。既存のファ�
 ### MCP サーバーとして接続する
 
 ```bash
-runestone mcp config --client claude-code
+runestone mcp config --client claude
 ```
 
-クライアントに必要なものを出力します。対応: `claude-code`、`codex`、`copilot-cli`、`cursor`、`vscode`、`gemini`、`windsurf`、`zed`。`--client` を省略するとすべて出力します。`vscode` と `copilot-cli` は別のツールで、読むファイルも異なります。VS Code の公式ドキュメントには Agent Host が `.vscode/mcp.json` を読まないと記載されています。Runestone は出力するだけで、クライアントの設定ファイルを自分で編集することはありません。
+クライアントに必要なものを出力します。対応: `claude`、`codex`、`copilot`、`cursor`、`vscode`、`gemini`、`windsurf`、`zed`。`--client` を省略するとすべて出力します。`vscode` と `copilot` は別のツールで、読むファイルも異なります。VS Code の公式ドキュメントには Agent Host が `.vscode/mcp.json` を読まないと記載されています。Runestone は出力するだけで、クライアントの設定ファイルを自分で編集することはありません。
 
 各クライアントの形式は互換ではなく、それがこのコマンドの存在理由です。Codex は JSON ではなく TOML を使います。VS Code のキーは `servers`、Zed は `context_servers` で、それ以外が `mcpServers` です。クライアント自身の登録コマンド（`claude mcp add`、`codex mcp add`）がある場合はそれも出力します。実行するコマンドは間違ったファイルに貼り付けようがないからです。
 

@@ -162,7 +162,7 @@ Add a topic — `service`, `state`, `troubleshoot` or `overview` — for the res
 Or connect Runestone as a read-only MCP server:
 
 ```bash
-runestone mcp config --client claude-code
+runestone mcp config --client claude
 ```
 
 The full explanation, including what an agent will not do on your behalf, is in **[AI agent documentation](docs/AI-AGENTS.md)** ([繁體中文](docs/AI-AGENTS.zh-TW.md) | [日本語](docs/AI-AGENTS.ja-JP.md)).

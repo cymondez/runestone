@@ -162,7 +162,7 @@ runestone docs --ai-context
 あるいは Runestone を読み取り専用の MCP サーバーとして接続します:
 
 ```bash
-runestone mcp config --client claude-code
+runestone mcp config --client claude
 ```
 
 エージェントが代わりに実行しないコマンドを含む完全な説明は **[AI エージェント向けドキュメント](../AI-AGENTS.ja-JP.md)**（[English](../AI-AGENTS.md) | [繁體中文](../AI-AGENTS.zh-TW.md)）にあります。

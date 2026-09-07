@@ -302,11 +302,11 @@ describe('the registration block', () => {
   // work rather than one that errors, which is why each is asserted rather
   // than assumed to follow the others.
   it.each([
-    ['claude-code', 'json', 'mcpServers'],
+    ['claude', 'json', 'mcpServers'],
     ['codex', 'toml', 'mcp_servers'],
     ['cursor', 'json', 'mcpServers'],
     ['vscode', 'json', 'servers'],
-    ['copilot-cli', 'json', 'mcpServers'],
+    ['copilot', 'json', 'mcpServers'],
     ['gemini', 'json', 'mcpServers'],
     ['windsurf', 'json', 'mcpServers'],
     ['zed', 'json', 'context_servers']
@@ -356,7 +356,7 @@ describe('the registration block', () => {
     }
 
     expect((findClient('vscode') as McpClient).typeValue).toBe('stdio');
-    expect((findClient('copilot-cli') as McpClient).typeValue).toBe('local');
+    expect((findClient('copilot') as McpClient).typeValue).toBe('local');
     expect((findClient('zed') as McpClient).typeValue).toBeUndefined();
   });
 
@@ -365,12 +365,12 @@ describe('the registration block', () => {
     // file, different key, different type value. VS Code's own documentation
     // states the Agent Host does not read .vscode/mcp.json.
     const vscode = findClient('vscode') as McpClient;
-    const copilot = findClient('copilot-cli') as McpClient;
+    const copilot = findClient('copilot') as McpClient;
 
     expect(vscode.location).not.toBe(copilot.location);
     expect(vscode.key).not.toBe(copilot.key);
     expect(vscode.typeValue).not.toBe(copilot.typeValue);
-    expect(vscode.note).toContain('copilot-cli');
+    expect(vscode.note).toContain('copilot');
     expect(copilot.note).toContain('not the same as VS Code');
   });
 
@@ -386,7 +386,7 @@ describe('the registration block', () => {
 
   it('offers a registration command wherever the client has one', () => {
     // A command the user runs cannot be pasted into the wrong file.
-    for (const id of ['claude-code', 'codex', 'copilot-cli']) {
+    for (const id of ['claude', 'codex', 'copilot']) {
       const client = findClient(id) as McpClient;
       expect(client.addCommand).toContain('mcp add runestone');
       expect(client.addCommand).toContain('runestone mcp serve');
@@ -394,7 +394,7 @@ describe('the registration block', () => {
   });
 
   it('warns where a client would otherwise look broken', () => {
-    expect((findClient('claude-code') as McpClient).note).toContain('approval');
+    expect((findClient('claude') as McpClient).note).toContain('approval');
     // Pasting JSON into a TOML file fails in a way that gives no clue.
     expect((findClient('codex') as McpClient).note).toContain('TOML');
     expect((findClient('vscode') as McpClient).note).toContain('servers');
@@ -403,9 +403,9 @@ describe('the registration block', () => {
 
   it('covers the mainstream agents rather than only the ones I happened to know', () => {
     expect(MCP_CLIENTS.map((client) => client.id).sort()).toEqual([
-      'claude-code',
+      'claude',
       'codex',
-      'copilot-cli',
+      'copilot',
       'cursor',
       'gemini',
       'vscode',

@@ -88,12 +88,12 @@ and it leaves alone anything you edited afterwards.
 ### Connect it as an MCP server
 
 ```bash
-runestone mcp config --client claude-code
+runestone mcp config --client claude
 ```
 
-Prints what your client needs. Supported: `claude-code`, `codex`, `copilot-cli`,
+Prints what your client needs. Supported: `claude`, `codex`, `copilot`,
 `cursor`, `vscode`, `gemini`, `windsurf` and `zed`; omit `--client` to see them
-all. Note that `vscode` and `copilot-cli` are different tools with different
+all. Note that `vscode` and `copilot` are different tools with different
 files — VS Code's own documentation says the Agent Host does not read
 `.vscode/mcp.json`.
 Runestone prints rather than editing your client's configuration itself.
