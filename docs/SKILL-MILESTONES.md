@@ -22,7 +22,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | A2 | Offline snapshot module | 0 | — | **done** — 44 suites, 624 passed, 5 skipped |
 | A3 | `--ai-context [topic]` and `--offline` | 1 | A1, A2 | **done** — 44 suites, 630 passed, 5 skipped. First user-visible milestone |
 | A4 | Online tier: collision detection | 2 | A3 | **done** — 45 suites, 650 passed, 5 skipped. Phase A complete except the A0 mirrors |
-| B1 | Marker-block ownership engine | 0 | — | not started |
+| B1 | Marker-block ownership engine | 0 | — | **done** — 46 suites, 697 passed, 5 skipped |
 | B2 | `skill status` and `install --dry-run` | 1 | A1, B1 | not started |
 | B3 | `skill install` and `skill remove` | 2 | B2 | not started |
 | B4 | Full target table and wrappers | 2 | B3 | not started |
@@ -279,22 +279,36 @@ The reasoning: it spawns `docker info` *and* a second `docker compose ps`, so in
 
 **Deliverables**
 
-- [ ] `runestone-cli/src/services/skill/version.ts` — the template version constant and the marker strings
-- [ ] `runestone-cli/src/services/skill/marker-block.ts` — `findManagedBlocks`, `identifyBlock` returning absent, matched, stale, conflict or unterminated, plus `insertBlock`, `replaceBlock` and `removeBlock`, all pure
-- [ ] `detectNewline` and `splice` reused from `src/services/dns/json-edit.ts` rather than reimplemented
-- [ ] `nextBackupPath` exported from `src/utils/project-files.ts:129` (module-private today) or moved to a shared utility
-- [ ] `runestone-cli/tests/services/skill/marker-block.test.ts`, with this repository's own 77-line `AGENTS.md` committed as a fixture
+- [x] `runestone-cli/src/services/skill/version.ts` — the template version constant and the marker strings
+- [x] `runestone-cli/src/services/skill/marker-block.ts` — `findManagedBlocks`, `identifyBlock` returning absent, matched, stale, conflict or unterminated, plus `insertBlock`, `replaceBlock` and `removeBlock`, all pure
+- [x] `detectNewline` and `splice` reused from `src/services/dns/json-edit.ts` rather than reimplemented
+- [x] `nextBackupPath` exported from `src/utils/project-files.ts:129` (module-private today) or moved to a shared utility
+- [x] `runestone-cli/tests/services/skill/marker-block.test.ts`, with this repository's own 77-line `AGENTS.md` committed as a fixture
 
 **Gate**
 
-- [ ] **The invariant test**: for any sequence of insert, user edit outside the span, replace and remove, **every byte outside the span is unchanged**, across at least six document shapes — an empty file, no trailing newline, CRLF, tab indentation, a file already containing the user's own hand-written `## Runestone` heading, and a file containing an unrelated HTML comment
-- [ ] Insert then remove against the committed `AGENTS.md` fixture returns all 77 lines byte-identical
-- [ ] Two `begin` markers produce `conflict` and nothing is written
-- [ ] A `begin` with no `end` produces `unterminated` and nothing is written
-- [ ] Repeated insert never produces a second block
-- [ ] No file under `src/services/skill/` imports `fs` in this milestone, asserted by a source scan in the style of the existing `child_process` scan
+- [x] **The invariant test**: for any sequence of insert, user edit outside the span, replace and remove, **every byte outside the span is unchanged**, across at least six document shapes — an empty file, no trailing newline, CRLF, tab indentation, a file already containing the user's own hand-written `## Runestone` heading, and a file containing an unrelated HTML comment
+- [x] Insert then remove against the committed `AGENTS.md` fixture returns all 77 lines byte-identical
+- [x] Two `begin` markers produce `conflict` and nothing is written
+- [x] A `begin` with no `end` produces `unterminated` and nothing is written
+- [x] Repeated insert never produces a second block
+- [x] No file under `src/services/skill/` imports `fs` in this milestone, asserted by a source scan in the style of the existing `child_process` scan
 
-**Rollback.** Single revert; nothing imports the engine. The `nextBackupPath` export is inert on its own.
+**Landed.** `identifyBlock`, `insertBlock`, `replaceBlock` and `removeBlock`, all pure, over 47 tests. `detectNewline` and `splice` come from the DNS engine rather than being reimplemented, and `nextBackupPath` is now exported from `project-files.ts` for B3.
+
+**The guarantee is stated exactly, because the loose version is untestable.** "Nothing outside the block changes" cannot hold: `insertBlock` has to put the block *somewhere*, and a file that ends without a newline cannot be restored to that state without remembering what was there — which is what the marker model exists to avoid. What actually holds, and is written into the source:
+
+> Every byte of the user's content survives insert, replace and remove. The file's trailing newline run is normalised to exactly one newline.
+
+The second clause is a real change and is not hidden: a file ending with no newline gains one, a file ending with three blank lines comes back with none. Nothing else moves.
+
+**The first draft had a genuine off-by-one and the first version of the test could not see it.** `removeBlock` consumed two newlines where `insertBlock` had added one, which merges the user's last two lines. Every shape in the invariant test put the block at the end of the file, where the seam normalisation absorbs exactly that error — so the suite passed with the bug in place. Verified by injecting it and watching 39 of 39 tests stay green.
+
+The fix was a shape with the user's own text *after* our span, asserted with equality. Re-injecting the bug now fails all eight of those cases and nothing else. That is the test that earns its place; the other shapes are cheap insurance around it.
+
+**Two of the failures during this milestone were the test's fault, not the engine's**, and both are the kind that would otherwise have been "fixed" in the wrong place. A line-by-line content comparison reported a spurious CRLF difference — the last content line legitimately regains its carriage return once there is more file after it — so the content claim became a prefix assertion. And the replace test used bodies `generated` and `regenerated`, so its assertion that the old body was gone could never fail; the bodies are now not substrings of one another.
+
+**Rollback.** Single revert. Nothing imports the engine yet; the `nextBackupPath` export is inert on its own.
 
 ## B2 — `skill status` and `skill install --dry-run`
 

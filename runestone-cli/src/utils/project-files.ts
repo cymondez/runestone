@@ -126,7 +126,12 @@ export function buildDnsCustomConf(): string {
   ].join('\n');
 }
 
-function nextBackupPath(filePath: string): string {
+/**
+ * Exported for the skill installer, which needs exactly this rule: never
+ * clobber an existing backup. Reimplementing it there would give the user two
+ * different backup conventions in one tool.
+ */
+export function nextBackupPath(filePath: string): string {
   let candidate = `${filePath}.bak`;
   let counter = 2;
   while (fs.existsSync(candidate)) {
