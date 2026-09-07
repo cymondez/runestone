@@ -153,17 +153,38 @@ Runestone CLI 需支援管理注入到 Runestone 開發環境的 SSH keys。
 
 ### 6.6 文件與 AI 整合輔助
 
+這一節的範圍限定在「讓 AI agent 把一個專案接上 Runestone」。不涵蓋 Runestone 自身的安裝與設定，而且它預設 Runestone 已經設定完成才存在。
+
 `runestone docs` 用於提供文件入口。
 
-`runestone docs --ai-context` 用於輸出專案接入 Runestone 所需的精簡資訊，內容需包含：
+`runestone docs --ai-context [topic]` 輸出 agent 接入專案所需的資訊。主題為 `compose`（預設）、`service`、`state`、`troubleshoot`、`overview`。無參數時等同 `compose`，此為相容性要求。
+
+離線主題內容需包含：
 
 - Runestone Docker network name。
 - Host domain suffix。
 - HTTP / HTTPS entrypoint name。
 - Traefik routing 所需資訊。
+- **第二條接入路徑**：專案不在 Docker 內時改用 `runestone service add`，含實際 validator 強制的欄位規則。
+- 可用 domain 與已被佔用的 route、service 名稱。
+- 會影響專案以外範圍、agent 不得自行執行的指令清單。
 - 不修改 Runestone 自身設定的提醒。
 
-若尚未完成 setup，需提示使用者先執行 `runestone setup`。
+`state` 主題另外查詢 Docker 與 Traefik，回報其他專案已註冊的 router 名稱。其餘主題一律離線，不得 spawn 任何行程。`--offline` 強制純檔案讀取。
+
+若尚未完成 setup，需 exit 1、stdout 全空、localized 訊息走 stderr。此行為為契約：給機器 pipe 的通道在沒有 context 時不得吐出看似 context 的內容。
+
+`runestone skill install | status | remove` 把上述語料安裝到 agent 工具會讀取的位置。安裝目的地採三層解析：中性預設（`.agents/skills/`、`AGENTS.md`）、記錄在案的例外（Claude Code 讀 `.claude/skills/` 與 `CLAUDE.md`）、以及使用者自訂路徑（`--skills-dir`、`--instructions-file`）。
+
+寫入需求：
+
+- 對使用者既有檔案只擁有一個標記區塊，以 splice 方式處理，區塊外位元組不得重新產生。
+- 位元組實際要變更時才備份。
+- 使用者改過的產出物不得覆寫，除非 `--force`。
+- 非 TTY 且未給 `--yes` 時拒絕寫入。
+- 即時狀態不得寫入安裝好的檔案。
+
+`runestone mcp serve` 以 stdio 提供唯讀 MCP server，`runestone mcp config` 印出各 client 的註冊區塊（不代為寫入）。MCP 不提供任何變更狀態的工具。
 
 ## 7. 命令範圍
 
@@ -173,7 +194,7 @@ Runestone CLI 需提供下列命令：
 runestone setup
 runestone doctor
 runestone docs
-runestone docs --ai-context
+runestone docs --ai-context [topic]
 runestone up
 runestone up --force-recreate
 runestone up --no-deps
@@ -190,6 +211,11 @@ runestone certs list --no-header
 runestone certs remove <domain>
 runestone keys ls
 runestone keys add <path>
+runestone skill install [dir]
+runestone skill status [dir]
+runestone skill remove [dir]
+runestone mcp serve
+runestone mcp config
 ```
 
 需支援下列 aliases：
@@ -202,6 +228,8 @@ runestone certs ls
 runestone certs rm <domain>
 runestone certs del <domain>
 runestone keys list
+runestone skill rm <dir>
+runestone skill del <dir>
 ```
 
 ## 8. 設定需求

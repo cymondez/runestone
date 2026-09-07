@@ -23,6 +23,11 @@ content = content
   .replace(/\]\(docs\/DNS\.md\)/g, `](${blobBase}/docs/DNS.md)`)
   .replace(/\]\(docs\/DNS\.zh-TW\.md\)/g, `](${blobBase}/docs/DNS.zh-TW.md)`)
   .replace(/\]\(docs\/DNS\.ja-JP\.md\)/g, `](${blobBase}/docs/DNS.ja-JP.md)`)
+  .replace(/\]\(docs\/DOMAINS\.md\)/g, `](${blobBase}/docs/DOMAINS.md)`)
+  .replace(/\]\(docs\/DOMAINS\.zh-TW\.md\)/g, `](${blobBase}/docs/DOMAINS.zh-TW.md)`)
+  .replace(/\]\(docs\/AI-AGENTS\.md\)/g, `](${blobBase}/docs/AI-AGENTS.md)`)
+  .replace(/\]\(docs\/AI-AGENTS\.zh-TW\.md\)/g, `](${blobBase}/docs/AI-AGENTS.zh-TW.md)`)
+  .replace(/\]\(docs\/AI-AGENTS\.ja-JP\.md\)/g, `](${blobBase}/docs/AI-AGENTS.ja-JP.md)`)
   .replace(/\]\(logos\/runestone_icon_gray_large\.png\)/g, `](${rawBase}/logos/runestone_icon_gray_large.png)`);
 
 fs.writeFileSync(target, content, 'utf8');

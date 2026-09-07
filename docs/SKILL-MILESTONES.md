@@ -28,7 +28,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | B4 | Full target table and wrappers | 2 | B3 | **done, merged into B2 and B3** — the table and renderers landed in B2 because `status` cannot exist without them; enabling every target for writing landed in B3 |
 | C1 | MCP dependency spike | 0 | — | not started |
 | C2 | `runestone mcp serve`, read-only | 3 | A2 | **done** — 49 suites, 768 passed, 5 skipped. Hand-written protocol layer; production dependencies unchanged at 13 |
-| C3 | `mcp config`, documentation, release | 1 | C2 | not started |
+| C3 | `mcp config`, documentation, release | 1 | C2 | **done** — 49 suites, 773 passed, 5 skipped |
 | B5 | User scope | 3 | B4 | **deferred** (spec decision 5) |
 
 A1, A2, B1 and C1 are all risk 0 and independent of one another; they can proceed in parallel. A3 is the first user-visible milestone.
@@ -514,24 +514,36 @@ Verified against the real binary: four requests and one notification in, four fr
 
 **Deliverables**
 
-- [ ] `runestone mcp config [--client <name>]` printing the correct block per client — `mcpServers` for Claude Code and Cursor, `servers` for VS Code (spec 11.4)
-- [ ] `docs/AI-AGENTS.md` plus `.zh-TW.md` and `.ja-JP.md` — the user-facing explanation, including the first-use approval behaviour of a project-scoped `.mcp.json`
-- [ ] Root `README.md` "Project Integration" rewritten so it no longer instructs the user to transcribe a command; `docs/README/README.zh-TW.md` and `README.ja-JP.md` kept line-for-line aligned
-- [ ] `runestone-cli/scripts/sync-readme.js` — rewrite rules for the new documentation links, and the removal of the now-dead `ai-prompt-context.tmp.md` link at `README.md:163`
-- [ ] `runestone-cli/DESIGN.md` — section 6.6 rewritten, section 7's command inventory extended, section 13's acceptance criteria updated
-- [ ] `runestone-cli/CHANGELOG.md` — user-facing entries only
-- [ ] Root `AGENTS.md` — a new `## Skill Feature Rules` section: splice never overwrite, `--project` is a forbidden word and why, the MCP process must not write to stdout, and live state must never be baked into an installed file
+- [x] `runestone mcp config [--client <name>]` printing the correct block per client — `mcpServers` for Claude Code and Cursor, `servers` for VS Code (spec 11.4)
+- [x] `docs/AI-AGENTS.md` plus `.zh-TW.md` and `.ja-JP.md` — the user-facing explanation, including the first-use approval behaviour of a project-scoped `.mcp.json`
+- [x] Root `README.md` "Project Integration" rewritten so it no longer instructs the user to transcribe a command; `docs/README/README.zh-TW.md` and `README.ja-JP.md` kept line-for-line aligned
+- [x] `runestone-cli/scripts/sync-readme.js` — rewrite rules for the new documentation links, and the removal of the now-dead `ai-prompt-context.tmp.md` link at `README.md:163`
+- [x] `runestone-cli/DESIGN.md` — section 6.6 rewritten, section 7's command inventory extended, section 13's acceptance criteria updated
+- [x] `runestone-cli/CHANGELOG.md` — user-facing entries only
+- [x] Root `AGENTS.md` — a new `## Skill Feature Rules` section: splice never overwrite, `--project` is a forbidden word and why, the MCP process must not write to stdout, and live state must never be baked into an installed file
 
 **Gate**
 
-- [ ] `npm pack --dry-run` includes every file under `tool-docs/ai-context/`
-- [ ] A packed tarball installed globally renders every topic — the only proof that the asset path resolves correctly from `dist/`, which no unit test can provide
-- [ ] `mcp config` output parses as JSON, and its `command` and `args` fed into C2's handshake test produce a working session
-- [ ] Every link in the synced npm README resolves
-- [ ] The three language versions of `docs/AI-AGENTS.md` have the same heading count and nesting, the same tables and the same code blocks — checked mechanically. Note the three existing `DNS.*` files are 361, 354 and 354 lines, so the gate is structural parity, not equal line counts
-- [ ] `runestone skill install` documented in all three README languages
+- [x] `npm pack --dry-run` includes every file under `tool-docs/ai-context/`
+- [x] A packed tarball renders every topic — installed into a temporary prefix rather than globally, so the machine's working `runestone` was not overwritten. Same proof, no side effect
+- [x] `mcp config` output parses as JSON, and its `command` and `args` fed into C2's handshake test produce a working session
+- [x] Every link in the synced npm README resolves
+- [x] The three language versions of `docs/AI-AGENTS.md` have the same heading count and nesting, the same tables and the same code blocks — checked mechanically. Note the three existing `DNS.*` files are 361, 354 and 354 lines, so the gate is structural parity, not equal line counts
+- [x] `runestone skill install` documented in all three README languages
 
-**Rollback.** Documentation reverts cleanly. `mcp config` is additive.
+**Landed.** `runestone mcp config`, the three-language user documentation, the README rewrite in all three languages, and the maintainer rules.
+
+**The packaged tarball was actually installed and exercised**, which is the gate no unit test can satisfy: all four offline topics render from the packed layout with no placeholder left unexpanded, proving A1's asset-path depth is right in `dist/` and not only in `src/`. Installed into a temporary prefix rather than globally, so the machine's working `runestone` was left alone.
+
+**`mcp config` prints; it does not write.** Editing another tool's configuration file is the same class of act as editing the Docker daemon's, and this project treats that as the highest risk there is. The shapes genuinely differ and the difference is easy to miss because everything else looks identical: **VS Code uses the key `servers` while Claude Code and Cursor use `mcpServers`**. A single "here is the JSON" answer would have been silently wrong for one of them, so the client table carries the key, the location, the documentation URL and the date it was checked, and a test asserts each row.
+
+**Two pre-existing broken links, found by this milestone's own gate.** `scripts/sync-readme.js` rewrites relative documentation links to absolute URLs for the npm copy, and it had no rule for `docs/DOMAINS.md` or `docs/DOMAINS.zh-TW.md` — so both have been dead in every published README since those documents were written. Fixed alongside the new rules rather than filed away: same file, same cause, two lines.
+
+**A link that would have been broken on arrival.** The localized READMEs live in `docs/README/`, so their sibling-style links to `AI-AGENTS.zh-TW.md` resolved one directory too high. Caught before commit by checking the rendered paths rather than assuming the pattern from the English file transferred.
+
+**Three-language structural parity, checked mechanically:** eight headings with identical nesting, thirteen table rows and twelve code fences in each. Line counts differ — 142, 107, 107 — because English wraps differently, which is why the gate is structure rather than length; the existing `DNS.*` trio differ the same way.
+
+**Rollback.** Documentation reverts cleanly. `mcp config` is additive and nothing depends on it.
 
 ## B5 — User scope (deferred)
 
@@ -558,7 +570,8 @@ Verified against the real binary: four requests and one notification in, four fr
 ## Current state of the repository
 
 - The branch is `feat/skill-support`, cut from `develop` at `ba67a7e`, which is where `main` and `origin/develop` also sit. Nothing unmerged is inherited.
-- `runestone-cli` is at 2.0.0. The agent-facing surface is `docs --ai-context [topic]` over five topics: four offline, plus `state`, which probes Docker and Traefik. Phase A is functionally complete; A0's two Traditional Chinese mirrors are the only open item in it.
+- `runestone-cli` is at 2.0.0 with an unreleased section in the changelog. The agent-facing surface is three commands: `docs --ai-context [topic]` over five topics, `skill install | status | remove` across four targets, and `mcp serve | config`. **Production dependencies are unchanged at 13** — the MCP server is hand-written, which is what the C1 ruling bought.
+- Phases A, B and C are functionally complete. Open: A0's two Traditional Chinese specification mirrors, and B5 (user scope), deferred by spec decision 5.
 - **There is no CI.** Every gate in this document is run by hand.
 - Publishing is manual and the order is fixed: merge to `develop`, merge to `main`, then publish to npm.
 - Three cleanups were found during A0 and deliberately left out of this branch: the three locale tables have no automated key-parity test, `service.validation.urlNoPath` is an orphan key, and `certs list` and `service list` compute column widths with `String.length` instead of the CJK-aware helper that already exists.

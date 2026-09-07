@@ -139,30 +139,33 @@ Routed service を削除し、対応する Traefik の動的設定も削除し�
 runestone service remove <service name>
 ```
 
-## プロジェクト連携
+## プロジェクト統合
 
-AI agent に別のプロジェクトを Runestone へ接続させる場合は、Compose ファイルを編集する前に `runestone docs --ai-context` を呼び出すよう伝えてください。
-このコマンドは、AI agent が必要とするローカルの Runestone network name、host domain、Traefik entrypoint names を出力します。
+Runestone は「このプロジェクトをどう接続するか」を AI コーディングエージェントに自分で説明できます。あなたが毎回説明する必要はありません。
+
+エージェントツールが元々参照する場所にガイダンスを導入します:
+
+```bash
+runestone skill install
+```
+
+プロジェクトが使っているツールを検出し、それらの分だけ書き込みます。まず `--dry-run` で対象となるパスを確認してください。`runestone skill status` は導入済みの内容を表示し、`runestone skill remove` で取り除けます。
+
+あるいはガイダンスを出力して自分で貼り付けます:
 
 ```bash
 runestone docs --ai-context
 ```
 
-プロンプト例:
+他のトピックは引数で指定します — `service`、`state`、`troubleshoot`、`overview`。どのトピックも末尾で他のトピックを一覧するので、引数なしで実行しただけのエージェントも残りを自分で見つけられます。
 
-```text
-Runestone 環境で動作する traefik/whoami 用の compose.yml を作成してください。
-Runestone の設定は `runestone docs --ai-context` を直接呼び出して確認してください。
+あるいは Runestone を読み取り専用の MCP サーバーとして接続します:
+
+```bash
+runestone mcp config --client claude-code
 ```
 
-```text
-compose.override.yml を追加し、`app` service に Runestone 環境向けの Traefik labels と network 設定を追加してください。
-Runestone の設定は `runestone docs --ai-context` を直接呼び出して確認してください。
-```
-
-生成される AI context は [runestone-cli/tool-docs/ai-prompt-context.tmp.md](../../runestone-cli/tool-docs/ai-prompt-context.tmp.md) からレンダリングされます。
-生成された context を AI agent に共有する前に、この template を確認できます。
-
+エージェントが代わりに実行しないコマンドを含む完全な説明は **[AI エージェント向けドキュメント](../AI-AGENTS.ja-JP.md)**（[English](../AI-AGENTS.md) | [繁體中文](../AI-AGENTS.zh-TW.md)）にあります。
 ## バージョンとサポート
 
 | バージョンライン | 状態 | サポート範囲 |

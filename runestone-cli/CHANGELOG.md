@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+**Agent support.** Runestone can now tell an AI coding agent how to connect a project to it, so you no longer have to explain it in every prompt. See [docs/AI-AGENTS.md](../docs/AI-AGENTS.md).
+
+### Added
+
+- `runestone skill install` writes the guidance where your agent tools already look, detecting which tools the project uses. `--dry-run` shows every path it would touch first; `runestone skill status` reports what is installed and whether it is current; `runestone skill remove` takes it back out. It adds a marked section to a file you already have rather than rewriting it, backs a file up before changing it, and leaves alone anything you edited afterwards.
+- `runestone docs --ai-context` takes a topic: `service` for a project that is not in Docker, `state` for live facts about this machine, `troubleshoot` for 404s, 502s and certificate warnings, and `overview` for how to choose between them. Every topic ends with the list of the others.
+- `runestone docs --ai-context` now also reports which hostnames a certificate covers and which service names and routes are already taken, so an agent stops guessing.
+- `runestone docs --ai-context state` additionally reports the router names other projects have registered with Traefik, which is not visible from your own project.
+- `runestone mcp serve` exposes Runestone to MCP-capable agents over stdio, read-only. `runestone mcp config` prints the block to paste into Claude Code, Cursor or VS Code.
+- `runestone docs --offline` skips the Docker and Traefik checks.
+
+### Changed
+
+- `runestone docs --ai-context` with no topic still prints the compose guidance it always did, with the machine's own facts and the topic list appended.
+- The published package no longer contains a dead link to the AI context template, and the links to the DNS and domain documentation now resolve.
+
 ## 2.0.0 - 2026-08-30
 
 **Container DNS.** Runestone domains now resolve correctly from inside containers, not just from your browser. It is off by default, and turning it on edits the Docker daemon's own configuration and requires a Docker restart — read [docs/DNS.md](../docs/DNS.md) before enabling it.

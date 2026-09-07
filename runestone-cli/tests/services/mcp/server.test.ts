@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { PassThrough } from 'stream';
+import { MCP_CLIENTS, McpClient, findClient, renderClientConfig } from '../../../src/services/mcp/config';
 import { ERROR, PROTOCOL_VERSION, handleLine } from '../../../src/services/mcp/jsonrpc';
 import { SERVER_INFO, TOOLS, createHandlers, serveStdio } from '../../../src/services/mcp/server';
 import { listDomainCertificates } from '../../../src/services/cert-manager';
@@ -261,14 +262,29 @@ describe('stdout purity', () => {
     }
   });
 
-  it('touches process.stdout in exactly one place, as the transport default', () => {
-    // Everything else takes the stream as a parameter, which is what makes the
-    // loop testable and what keeps stray writes from having anywhere to go.
+  it('touches process.stdout only where writing to it is the job', () => {
+    // The rule is scoped to the *server*, not to every file with "mcp" in its
+    // path. `mcp config` exists to put a block on stdout so the user can pipe
+    // or copy it, so forbidding stdout there would forbid the feature.
+    //
+    // Within the server, exactly one place may name it: the transport's default
+    // output parameter. Everything else takes the stream as an argument, which
+    // is what makes the loop testable and leaves a stray write nowhere to go.
     const occurrences = mcpSources().flatMap((file) =>
       [...code(file).matchAll(/process\.stdout/g)].map(() => path.basename(file))
     );
 
-    expect(occurrences).toEqual(['server.ts']);
+    expect(occurrences.sort()).toEqual(['mcp.ts', 'server.ts']);
+  });
+
+  it('keeps the serving path itself free of stdout, apart from the frame write', () => {
+    // The assertion that actually protects the protocol stream: `serve` must
+    // reach stdout only through the transport it hands the stream to.
+    const command = code(path.resolve(__dirname, '..', '..', '..', 'src', 'commands', 'mcp.ts'));
+    const serveAction = command.slice(command.indexOf("createCommand('serve')"), command.indexOf("createCommand('config')"));
+
+    expect(serveAction).not.toMatch(/process\.stdout/);
+    expect(serveAction).not.toMatch(/console\s*\./);
   });
 
   it('contains none of the spawn strings, even inside a comment', () => {
@@ -278,5 +294,42 @@ describe('stdout purity', () => {
     for (const file of mcpSources()) {
       expect(fs.readFileSync(file, 'utf8')).not.toMatch(/child_process|spawnSync|execSync/);
     }
+  });
+});
+
+describe('the registration block', () => {
+  it('uses the key each client actually reads', () => {
+    // The trap: everything else about these blocks looks identical, so a single
+    // "here is the JSON" answer would be silently wrong for VS Code.
+    expect(JSON.parse(renderClientConfig(findClient('claude-code') as McpClient))).toHaveProperty('mcpServers');
+    expect(JSON.parse(renderClientConfig(findClient('cursor') as McpClient))).toHaveProperty('mcpServers');
+    expect(JSON.parse(renderClientConfig(findClient('vscode') as McpClient))).toHaveProperty('servers');
+  });
+
+  it('names a command the handshake test actually drives', () => {
+    for (const client of MCP_CLIENTS) {
+      const block = JSON.parse(renderClientConfig(client)) as Record<string, Record<string, unknown>>;
+      const entry = block[client.key].runestone as { type: string; command: string; args: string[] };
+
+      expect(entry.type).toBe('stdio');
+      expect(entry.command).toBe('runestone');
+      expect(entry.args).toEqual(['mcp', 'serve']);
+    }
+  });
+
+  it('carries the provenance of every row', () => {
+    // The install-path landscape moves. A row without a source and a date is a
+    // row nobody can check.
+    for (const client of MCP_CLIENTS) {
+      expect(client.docsUrl).toMatch(/^https:\/\//);
+      expect(client.verifiedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(client.location.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('warns that a project-scoped .mcp.json waits for approval', () => {
+    // Without this the user concludes the install is broken.
+    const claude = findClient('claude-code') as McpClient;
+    expect(claude.note).toContain('approval');
   });
 });
