@@ -19,7 +19,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | --- | --- | --- | --- | --- |
 | A0 | Specification and milestones | 0 | — | **in progress**: both English documents landed; the two Traditional Chinese mirrors are deliberately held until the specification stops moving (see A0) |
 | A1 | Renderer and topic corpus | 0 | A0 | **done** — 43 suites, 606 passed, 5 skipped, no existing test file touched |
-| A2 | Offline snapshot module | 0 | — | not started |
+| A2 | Offline snapshot module | 0 | — | **done** — 44 suites, 624 passed, 5 skipped |
 | A3 | `--ai-context [topic]` and `--offline` | 1 | A1, A2 | not started |
 | A4 | Online tier: collision detection | 2 | A3 | not started |
 | B1 | Marker-block ownership engine | 0 | — | not started |
@@ -144,24 +144,46 @@ Two changes followed. `.gitattributes` pins `runestone-cli/tool-docs/**` and `ru
 
 **Deliverables**
 
-- [ ] `runestone-cli/src/services/agent-context/probe.ts` — the typed present/absent value and the wrapper that converts a throw into an absent value without printing
-- [ ] `runestone-cli/src/services/agent-context/snapshot.ts` — the snapshot type, its dependency interface, a `defaultAgentContextDependencies` constant following `DnsStatusDependencies`, and `schemaVersion: 1`
-- [ ] `runestone-cli/src/services/agent-context/render.ts` — pure block renderers, snapshot to string
-- [ ] `traefikApiBaseUrl` promoted into `src/services/traefik-api.ts`; the duplicate copies at `src/commands/certs.ts:62` and `src/commands/service.ts:81` deleted in favour of it
-- [ ] A file-header comment stating that this module must not acquire `child_process`, and why the acceptance test's rule would otherwise suggest the opposite (spec 6)
-- [ ] `runestone-cli/tests/services/agent-context/snapshot.test.ts` using `tests/helpers/env.ts`'s `testEnv()`
+- [x] `runestone-cli/src/services/agent-context/probe.ts` — the typed present/absent value and the wrapper that converts a throw into an absent value without printing
+- [x] `runestone-cli/src/services/agent-context/snapshot.ts` — the snapshot type, its dependency interface, a `defaultAgentContextDependencies` constant following `DnsStatusDependencies`, and `schemaVersion: 1`
+- [x] `runestone-cli/src/services/agent-context/render.ts` — pure block renderers, snapshot to string
+- [x] `traefikApiBaseUrl` promoted into `src/services/traefik-api.ts`; the duplicate copies at `src/commands/certs.ts:62` and `src/commands/service.ts:81` deleted in favour of it
+- [x] A file-header comment stating that this module must not acquire `child_process`, and why the acceptance test's rule would otherwise suggest the opposite (spec 6)
+- [x] `runestone-cli/tests/services/agent-context/snapshot.test.ts` using `tests/helpers/env.ts`'s `testEnv()`
 
 **Gate**
 
-- [ ] **Zero spawns**: a spy on `spawnCommand` records no calls for the offline tier
-- [ ] **Zero output**: spies on `process.stdout.write` and `process.stderr.write` both record no calls
-- [ ] **JSON contract**: `JSON.parse(JSON.stringify(snapshot))` deep-equals the snapshot, and no string field contains `'✓'`, `'✗'` or an escape character
-- [ ] Every row of spec 6.3's offline conditions has a test: no `certs` directory, unreadable certificate, zero services
-- [ ] An invalid certificate is reported as unusable and does **not** appear among covered domains
-- [ ] `certs remove` and `service add` behave identically after the `traefikApiBaseUrl` extraction — their existing tests pass unmodified
-- [ ] Nothing under `src/` imports this module yet, asserted by a source scan
+- [x] **Zero spawns**: a spy on `spawnCommand` records no calls for the offline tier
+- [x] **Zero output**: spies on `process.stdout.write` and `process.stderr.write` both record no calls
+- [x] **JSON contract**: `JSON.parse(JSON.stringify(snapshot))` deep-equals the snapshot, and no string field contains `'✓'`, `'✗'` or an escape character
+- [x] Every row of spec 6.3's offline conditions has a test: no `certs` directory, unreadable certificate, zero services
+- [x] An invalid certificate is reported as unusable and does **not** appear among covered domains
+- [~] `certs remove` and `service add` behave identically after the `traefikApiBaseUrl` extraction — **production behaviour yes, but two test files had to change.** See the note below; this gate did not hold as written
+- [x] Nothing under `src/` imports this module yet, asserted by a source scan
 
-**Rollback.** Single revert. The `traefikApiBaseUrl` extraction is worth keeping on its own merit but reverts cleanly with the rest.
+**Landed.** Three modules under `src/services/agent-context/`, 18 tests, and nothing in `src/` importing them — so this milestone reverts in one commit and cannot have changed any behaviour.
+
+| Module | What it is |
+| --- | --- |
+| `probe.ts` | A fact that may not be obtainable. "I did not look", "I looked and could not reach it" and "there is nothing there" are three different answers, and the type keeps them apart |
+| `snapshot.ts` | The offline facts, JSON-shaped from the outset, over an injected dependency interface following `DnsStatusDependencies` |
+| `render.ts` | Snapshot to prose, pure, one function per corpus block |
+
+The three-way distinction in `probe.ts` is the load-bearing part. An agent that reads "no collisions found" out of "Traefik could not be reached" will pick a name that is already taken, so an unreachable source must always produce a sentence saying so and naming the command that would fix it. A test asserts each of the three renders differently.
+
+**`certificateCovered` is computed per route rather than inferred**, through the existing `findCoveringCertificate`, and only valid certificates contribute. An expired certificate is still listed — an agent needs to know it exists — but it must not make a hostname look usable, which would send the agent to a domain the browser refuses.
+
+**Certificate names come from the SANs, not from the filename.** `CertificateListItem` has no `domain` field, and the two sources can disagree; the SANs are what a TLS client actually checks. This is the same conclusion the DNS feature reached for its mapping generation.
+
+**The gate that did not hold.** The plan asserted that promoting `traefikApiBaseUrl` out of `certs.ts` and `service.ts` would leave their tests untouched. It did not. Both files mock the whole `traefik-api` module with a factory listing only `readTraefikSnapshot`, so the moment a command imported a second export from that module, the export became `undefined` and two `certs rm` tests failed with an exit code rather than an assertion.
+
+Production behaviour is genuinely unchanged — the helper is the same one-line template it was in both copies. What changed is two mock factories, from replacing the module wholesale to `...jest.requireActual(...)` plus the one function under test. That pattern is already the dominant idiom here and appears twice in `certs.test.ts` itself, three lines above the mock that had to change; the `traefik-api` mocks were the exception. So the change makes those two tests less brittle rather than more permissive, and it is recorded here rather than quietly folded in, because a gate that says "no test changes" and then changes tests is worth reading twice.
+
+The alternative was to leave the duplication in place and let the new module hold a third copy of the same URL template. That was rejected: a third copy is the thing the specification flagged in the first place.
+
+**One item was reworded rather than argued with.** `design-acceptance.test.ts` asserts that no source file matches `/Makefile|make\s+[a-z]/i`, a guard against reintroducing the Makefile tooling this CLI replaced. Two of the new doc comments contained ordinary English — "probes that make a request", "never make a hostname look usable" — and tripped it. The comments were reworded. Broadening the regex to accommodate prose would have weakened a deliberate guard to save two words.
+
+**Rollback.** Single revert. The `traefikApiBaseUrl` extraction and the two mock changes revert with it; the extraction is worth keeping on its own merit but nothing depends on it staying.
 
 ## A3 — `--ai-context [topic]` and `--offline`
 

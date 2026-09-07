@@ -10,6 +10,7 @@ import { envLoader, RunestoneEnv } from '../../src/utils/env-loader';
 import { testEnv } from '../helpers/env';
 
 jest.mock('../../src/services/traefik-api', () => ({
+  ...jest.requireActual('../../src/services/traefik-api'),
   readTraefikSnapshot: jest.fn()
 }));
 

@@ -64,6 +64,14 @@ function normalizeResources(value: unknown): TraefikNamedResource[] {
   }).filter((item) => item.name);
 }
 
+/**
+ * Traefik's own dashboard host, which is where its API lives. Duplicated in
+ * two command files before the agent-context module needed a third copy.
+ */
+export function traefikApiBaseUrl(hostDomain: string): string {
+  return `https://traefik.${hostDomain}`;
+}
+
 export async function readTraefikSnapshot(baseUrl: string): Promise<TraefikSnapshot> {
   const normalized = baseUrl.replace(/\/+$/, '');
   const [routers, services] = await Promise.all([

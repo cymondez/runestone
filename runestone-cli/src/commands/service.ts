@@ -27,7 +27,7 @@ import {
   writeServiceDynamicConfig
 } from '../services/service-manager';
 import { listDomainCertificates } from '../services/cert-manager';
-import { readTraefikSnapshot } from '../services/traefik-api';
+import { readTraefikSnapshot, traefikApiBaseUrl } from '../services/traefik-api';
 import { envLoader, RunestoneEnv } from '../utils/env-loader';
 import { logger } from '../utils/logger';
 import { toolState, RunestoneServiceRecord } from '../utils/tool-state';
@@ -78,13 +78,9 @@ interface RoutePromptResult {
   description?: string;
 }
 
-function traefikApiBaseUrl(config: RunestoneEnv): string {
-  return `https://traefik.${config.HOST_DOMAIN}`;
-}
-
 async function loadTraefikSnapshot(config: RunestoneEnv) {
   try {
-    return await readTraefikSnapshot(traefikApiBaseUrl(config));
+    return await readTraefikSnapshot(traefikApiBaseUrl(config.HOST_DOMAIN));
   } catch {
     throw new Error(t('service.traefik.unavailable'));
   }
