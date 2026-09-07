@@ -27,7 +27,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | B3 | `skill install` and `skill remove` | 2 | B2 | **done** — 48 suites, 743 passed, 5 skipped. Every target enabled, so B4 is closed with it |
 | B4 | Full target table and wrappers | 2 | B3 | **done, merged into B2 and B3** — the table and renderers landed in B2 because `status` cannot exist without them; enabling every target for writing landed in B3 |
 | C1 | MCP dependency spike | 0 | — | not started |
-| C2 | `runestone mcp serve`, read-only | 3 | A2, C1 | not started |
+| C2 | `runestone mcp serve`, read-only | 3 | A2 | **done** — 49 suites, 768 passed, 5 skipped. Hand-written protocol layer; production dependencies unchanged at 13 |
 | C3 | `mcp config`, documentation, release | 1 | C2 | not started |
 | B5 | User scope | 3 | B4 | **deferred** (spec decision 5) |
 
@@ -468,26 +468,43 @@ Verified by hand in a temporary git repository, which is the sequence that matte
 
 **Deliverables**
 
-- [ ] `runestone-cli/src/services/mcp/{server,tools,log}.ts`, with `log.ts` writing only to stderr and gated on `DEBUG`
-- [ ] `runestone-cli/src/commands/mcp.ts` — a thin shell; `mcp` parent with a `serve` subcommand, following the `dns` shape
-- [ ] The three tools, all annotated read-only, all composed from existing validators and the A2 snapshot
-- [ ] `src/cli.ts` registration; i18n strings in all three locales
-- [ ] `tests/services/mcp/{tools,server}.test.ts`, and a process-level handshake test in `tests/integration/cli.test.ts`
+- [x] `runestone-cli/src/services/mcp/{server,tools,log}.ts`, with `log.ts` writing only to stderr and gated on `DEBUG`
+- [x] `runestone-cli/src/commands/mcp.ts` — a thin shell; `mcp` parent with a `serve` subcommand, following the `dns` shape
+- [x] The three tools, all annotated read-only, all composed from existing validators and the A2 snapshot
+- [x] `src/cli.ts` registration; i18n strings in all three locales
+- [x] `tests/services/mcp/{tools,server}.test.ts`, and a process-level handshake test in `tests/integration/cli.test.ts`
 
 **Gate**
 
-- [ ] An in-memory `tools/list` returns exactly three tools with the expected input schemas
-- [ ] `process.stdout.write` records **zero** calls across a full in-memory session
-- [ ] **The process-level handshake**: a real `initialize`, `notifications/initialized` and `tools/list` on stdin produce exit 0, `stderr === ''`, and stdout containing only JSON-RPC frames with the expected ids
-- [ ] `mcp serve` with stdin at immediate EOF exits 0 and does not hang the suite
-- [ ] A source scan proves `src/commands/mcp.ts` and `src/services/mcp/**` contain no `console.log`, no `process.stdout.write`, no import of the logger or of `@clack/prompts`, and none of the three spawn strings **even in comments**
-- [ ] Every tool returns a successful result with Docker stopped and Traefik unreachable
-- [ ] An unconfigured Runestone yields `configured: false` inside a **successful** result whose text names `runestone setup`
-- [ ] `mcp` and `mcp serve` added to both command lists in `cli.test.ts`; `design-acceptance.test.ts` green
+- [x] An in-memory `tools/list` returns exactly three tools with the expected input schemas
+- [~] ~~`process.stdout.write` records zero calls~~ — **restated.** The transport's job is to write frames to stdout, so "zero writes" was the wrong rule. What is asserted instead: no console call and no logger or prompt import in any MCP source, comments excluded; and `process.stdout` appearing in exactly one place, as the transport's default parameter
+- [x] **The process-level handshake**: a real `initialize`, `notifications/initialized` and `tools/list` on stdin produce exit 0, `stderr === ''`, and stdout containing only JSON-RPC frames with the expected ids
+- [x] `mcp serve` with stdin at immediate EOF exits 0 and does not hang the suite
+- [x] A source scan proves `src/commands/mcp.ts` and `src/services/mcp/**` contain no `console.log`, no `process.stdout.write`, no import of the logger or of `@clack/prompts`, and none of the three spawn strings **even in comments**
+- [x] Every tool returns a successful result with Docker stopped and Traefik unreachable
+- [x] An unconfigured Runestone yields `configured: false` inside a **successful** result whose text names `runestone setup`
+- [x] `mcp` and `mcp serve` added to both command lists in `cli.test.ts`; `design-acceptance.test.ts` green
 
-The handshake test is the most valuable item here: it is the only one that catches a stray stdout write added months later by someone reusing a service that has since grown one.
+**Landed.** A hand-written JSON-RPC layer, the three read-only tools, the stdio loop, and `runestone mcp serve`. **Production dependencies are unchanged at 13**, which is the whole point of the ruling that produced it.
 
-**Rollback.** Single revert. Nothing else calls into the MCP layer, and no existing command changes.
+Verified against the real binary: four requests and one notification in, four frames out, `stderr` empty, `-32601` for an unknown method, and `check_name` correctly finding the wildcard certificate that covers a candidate route on this machine.
+
+**C1 was reverted, which is what it was built for.** Its gate passed technically — no `paths` mapping needed, `engines` unchanged, no new vulnerabilities — but the measured cost was 107 production dependencies and about 15 MB against a baseline of 13. Bundling was measured too and worked (364 KB, clean handshake), but it moves dependency security from npm to us and adds a bundler to a `tsc`-only build. The owner ruled for the hand-written server.
+
+**What the SDK was actually buying, stated plainly, because we now own it:** protocol conformance. Five methods is a small surface, but MCP is revising quickly, and a break presents to the user as "my agent cannot see Runestone" with nothing in the output to explain it. `PROTOCOL_VERSION` in `jsonrpc.ts` is the thing to bump, and the process-level handshake test is the thing that catches a break.
+
+**Two protocol details worth naming**, because they are the ones a hand-written server gets wrong:
+
+- A notification carries no id and must never be answered. Replying to `notifications/initialized` leaves an unmatched response that some clients treat as a protocol error. Asserted for known and unknown notifications alike.
+- A parse failure has no recoverable id, so the response carries `null`, not a guess.
+
+**A condition the model can correct is a successful result, not a JSON-RPC error.** An unknown topic, an invalid name, an unconfigured Runestone: all come back with `isError` and the message that carries the fix, because a JSON-RPC error routes to the client's error path where the model never reads it. This is the same-prompt correction rule from `AGENTS.md`, applied to a machine reader.
+
+**A gate item was restated rather than ticked.** The plan said `process.stdout.write` must record zero calls. That is the wrong rule: writing frames to stdout is the transport's entire job. The first version of the purity scan failed on three places — two comments *explaining* the rule, and the transport's own default output parameter. What is asserted now is what was actually meant: no console call and no logger or prompt import in any MCP source with comments stripped, and `process.stdout` in exactly one place, as that parameter default.
+
+**A control that proved nothing, caught in passing.** The first negative control for the purity scan injected a `console.log` via a string replace that silently did not match, so it "passed" while testing nothing. Redone with an assertion that the injection applied; the scan then failed as it should and went green on restore. Second occurrence of that failure mode on this branch.
+
+**Rollback.** Single revert. Nothing else imports `src/services/mcp/`, and no existing command changes.
 
 ## C3 — `mcp config`, documentation, release
 

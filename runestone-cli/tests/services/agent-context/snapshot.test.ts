@@ -375,7 +375,12 @@ describe('who is allowed to reach the snapshot module', () => {
       // Renders the corpus for installation. It uses the offline builder only:
       // an installed file outlives the moment it was written, so a live fact
       // baked into one would be a lie within minutes.
-      path.join('src', 'commands', 'skill.ts')
+      path.join('src', 'commands', 'skill.ts'),
+      // The MCP tools answer questions about right now, so unlike the
+      // installer they may — and for collision checking must — use the live
+      // builder. The answer is consumed immediately and never written down.
+      path.join('src', 'services', 'mcp', 'server.ts'),
+      path.join('src', 'services', 'mcp', 'tools.ts')
     ];
 
     const srcDir = path.resolve(__dirname, '..', '..', '..', 'src');

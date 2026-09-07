@@ -71,7 +71,9 @@ describe('runestone CLI integration', () => {
       ['skill'],
       ['skill', 'install'],
       ['skill', 'status'],
-      ['skill', 'remove']
+      ['skill', 'remove'],
+      ['mcp'],
+      ['mcp', 'serve']
     ];
 
     for (const command of commands) {
@@ -100,9 +102,11 @@ describe('runestone CLI integration', () => {
       ['keys'],
       ['keys', 'ls'],
       ['keys', 'add'],
-      // The parent carries no options of its own, deliberately: every flag
+      // Both parents carry no options of their own, deliberately: every flag
       // lives on a subcommand so this assertion keeps holding.
-      ['skill']
+      ['skill'],
+      ['mcp'],
+      ['mcp', 'serve']
     ];
 
     for (const command of commands) {
@@ -408,6 +412,64 @@ describe('runestone CLI integration', () => {
 
     const ja = runCli(['skill', '--help'], { RUNESTONE_LANG: 'ja-JP' });
     expect(ja.stdout).toContain('agent ガイダンス');
+  });
+
+  it('speaks the protocol over a real process, and writes nothing else to stdout', () => {
+    // The most valuable test in this branch. Everything else about the MCP
+    // server is asserted in-process, which cannot notice a stray write added
+    // months from now by someone reusing a service that has since grown one.
+    // This drives the real binary and reads the real streams.
+    const handshake = [
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } }
+      }),
+      JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+      JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+      ''
+    ].join('\n');
+
+    const result = spawnSync(node, [path.join(root, 'bin', 'runestone'), 'mcp', 'serve'], {
+      cwd: root,
+      encoding: 'utf8',
+      input: handshake,
+      env: { ...process.env, RUNESTONE_LANG: 'en', FORCE_COLOR: '0' }
+    });
+
+    expect(result.status).toBe(0);
+    // Any diagnostic on stderr would be harmless to the protocol but would mean
+    // something is logging where it was told not to.
+    expect(result.stderr).toBe('');
+
+    const frames = result.stdout.trim().split(/\r?\n/).filter(Boolean);
+    // Two requests, one notification. A notification must never be answered.
+    expect(frames).toHaveLength(2);
+
+    const messages = frames.map((frame) => JSON.parse(frame));
+    expect(messages.every((message) => message.jsonrpc === '2.0')).toBe(true);
+    expect(messages.map((message) => message.id)).toEqual([1, 2]);
+    expect(messages[0].result.protocolVersion).toBe('2025-06-18');
+    expect(messages[1].result.tools.map((tool: { name: string }) => tool.name)).toEqual([
+      'runestone_context',
+      'runestone_status',
+      'runestone_check_name'
+    ]);
+  });
+
+  it('exits cleanly on an immediate end of input rather than hanging', () => {
+    const result = spawnSync(node, [path.join(root, 'bin', 'runestone'), 'mcp', 'serve'], {
+      cwd: root,
+      encoding: 'utf8',
+      input: '',
+      timeout: 15000,
+      env: { ...process.env, RUNESTONE_LANG: 'en', FORCE_COLOR: '0' }
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('');
   });
 
   it('localizes command descriptions for zh-TW and ja-JP', () => {
