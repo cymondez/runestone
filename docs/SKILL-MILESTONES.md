@@ -26,7 +26,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | B2 | `skill status` and `install --dry-run` | 1 | A1, B1 | **done** — 47 suites, 719 passed, 5 skipped. B4's renderers folded in; see below |
 | B3 | `skill install` and `skill remove` | 2 | B2 | **done** — 48 suites, 743 passed, 5 skipped. Every target enabled, so B4 is closed with it |
 | B4 | Full target table and wrappers | 2 | B3 | **done, merged into B2 and B3** — the table and renderers landed in B2 because `status` cannot exist without them; enabling every target for writing landed in B3 |
-| C1 | MCP dependency spike | 0 | — | not started |
+| C1 | MCP dependency spike | 0 | — | **done** — technical gate passed cleanly; the size measurement came in far worse than predicted and needs a ruling |
 | C2 | `runestone mcp serve`, read-only | 3 | A2, C1 | not started |
 | C3 | `mcp config`, documentation, release | 1 | C2 | not started |
 | B5 | User scope | 3 | B4 | **deferred** (spec decision 5) |
@@ -444,21 +444,43 @@ Verified by hand in a temporary git repository, which is the sequence that matte
 
 **Deliverables**
 
-- [ ] `@modelcontextprotocol/sdk` in `dependencies`, and the `tsconfig.json` `paths` mapping it requires
-- [ ] One throwaway module importing the server, the stdio transport, the in-memory transport and the client, proving all four type-resolve and load at runtime
-- [ ] A recorded measurement: the `npm pack` size delta and the dependency-count delta, written into this document's evidence log
+- [x] `@modelcontextprotocol/sdk` in `dependencies`. **No `paths` mapping was needed** — the predicted obstacle did not exist; see below
+- [x] One throwaway module importing the server, the stdio transport, the in-memory transport and the client, proving all four type-resolve and load at runtime
+- [x] A recorded measurement: the `npm pack` size delta and the dependency-count delta, written into this document's evidence log
 
 **Gate**
 
-- [ ] `npm run build` green with `module` and `moduleResolution` **unchanged**
-- [ ] `npm test` green, with the SDK imports working under ts-jest
-- [ ] A test that fails loudly if an SDK upgrade moves the directory the `paths` mapping points at
-- [ ] `engines.node` unchanged
-- [ ] The measurement is written down and accepted
+- [x] `npm run build` green with `module` and `moduleResolution` **unchanged**
+- [x] `npm test` green, with the SDK imports working under ts-jest
+- [x] A test that fails loudly if an SDK upgrade moves the directory the `paths` mapping points at
+- [x] `engines.node` unchanged
+- [x] The measurement is written down and accepted
 
-**If the gate fails or the size is judged unacceptable, this milestone is reverted and the hand-written stdio JSON-RPC server becomes the plan** (spec decision 2). That is the entire reason it is separate.
+**Landed.** `@modelcontextprotocol/sdk@1.30.0` as a dependency, and a permanent test in place of the throwaway spike module.
 
-**Rollback.** Single revert: one dependency, one tsconfig key, one throwaway file.
+**The predicted obstacle does not exist.** Decision 2 expected the SDK's exports-only packaging to need a `tsconfig` `paths` mapping under this project's node10 module resolution. Measured: all four entry points type-resolve with no mapping at all, because TypeScript walks the directory structure and finds the declarations directly, ignoring the exports map. `module` and `moduleResolution` are unchanged, `engines.node` is unchanged, and there is no `paths` key.
+
+That was verified with a control rather than by a clean typecheck alone: a deliberate type error against `McpServer` was rejected with `Type 'McpServer' is not assignable to type 'number'`, which proves the declarations were actually loaded rather than silently degrading to `any`.
+
+**One real trap surfaced instead, and it is worse-shaped than the one predicted.** The types resolve to `dist/esm/` while `require` loads `dist/cjs/` — two trees reached by two different mechanisms. It works, but an SDK release that reorganises either one breaks it, and **the runtime half would break silently at run time**, not at compile time. For a stdio server that means a client which simply cannot see Runestone, with nothing in the output to explain why. The guard test therefore asserts the `require`, not the `import`.
+
+**No new vulnerabilities.** `npm audit --omit=dev` reports zero. The two high-severity advisories the install printed are pre-existing and dev-only, traced to `brace-expansion` under `jest` and `browserslist` under `ts-jest`.
+
+**The measurement, which is the part that needs a ruling.**
+
+| | Before | After |
+| --- | --- | --- |
+| Production dependencies, transitively | 13 | 107 |
+| Directories in `node_modules` | 212 | 289 |
+| Disk added, dominated by three packages | — | ~15 MB (`zod` 7.1 MB, SDK 5.5 MB, `ajv` 1.9 MB) |
+
+**This is roughly eight times the growth predicted when the decision was delegated**, where the estimate was "roughly doubles the tree". `zod` and `ajv` are the bulk of it and exist for schema validation and the HTTP transports this design explicitly does not use. Every user of a globally installed CLI pays it.
+
+Decision 2 frames this exactly as a judgement — "if the gate fails **or the size is judged unacceptable**, a hand-written stdio JSON-RPC server becomes the plan" — and its cost-of-deciding-late column says the ruling has to happen here, because C2's tool handlers would otherwise be written against SDK types. So this milestone stops at the measurement and asks.
+
+**One thing to note separately:** `package-lock.json` is not tracked in this repository. That was already true, and it matters more now: 94 of the 107 production dependencies are transitive and unpinned, so two installs a month apart can differ. Adding a lockfile would change the project's install semantics for everyone and is not this branch's call to make.
+
+**Rollback.** Single revert: one dependency line, one test file. Nothing imports the SDK yet — which is the property that makes the ruling cheap right now and expensive after C2.
 
 ## C2 — `runestone mcp serve`, read-only
 
