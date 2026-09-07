@@ -104,16 +104,47 @@ describe('runestone skill', () => {
       expect(treeHash(root)).toBe(before);
     });
 
-    it('refuses to write without --dry-run, rather than pretending the flag is a choice', async () => {
-      // Naming a flag for the only behaviour there is would claim the user has
-      // an option they do not. This build plans and declines.
+    it('refuses to write when there is no terminal to confirm at', async () => {
+      // jest gives the process a non-TTY stdin, which is the CI case. The rule
+      // is the one `dns enable` already follows: neither hang on a prompt
+      // nobody can answer, nor silently proceed.
+      //
+      // This test replaced one that asserted the same exit code for a reason
+      // that stopped being true when writing was enabled — it was passing on
+      // the TTY check while claiming to test a build that could not write.
       fs.mkdirSync(path.join(root, '.agents'), { recursive: true });
       const before = treeHash(root);
 
       await run('install', root);
 
       expect(process.exitCode).toBe(1);
+      expect(output()).toContain('--yes');
       expect(treeHash(root)).toBe(before);
+    });
+
+    it('writes when --yes accepts the plan', async () => {
+      fs.mkdirSync(path.join(root, '.agents'), { recursive: true });
+
+      await run('install', '--yes', root);
+
+      expect(process.exitCode).toBeUndefined();
+      expect(fs.existsSync(path.join(root, '.agents', 'skills', 'runestone', 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(root, 'AGENTS.md'))).toBe(true);
+    });
+
+    it('prints the same plan in a dry run as the real run acts on', async () => {
+      // The plan is a value and --dry-run prints it, so there is no second
+      // implementation to drift. This asserts that line for line.
+      fs.mkdirSync(path.join(root, '.agents'), { recursive: true });
+
+      await run('install', '--dry-run', root);
+      const dryRunPlan = logs.filter((line) => line.includes(root));
+
+      logs = [];
+      await run('install', '--yes', root);
+      const realPlan = logs.filter((line) => line.includes(root) && !line.startsWith('[ok]'));
+
+      expect(realPlan).toEqual(dryRunPlan);
     });
   });
 

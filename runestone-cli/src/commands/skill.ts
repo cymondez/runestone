@@ -1,8 +1,11 @@
 import { Command } from 'commander';
+import * as fs from 'fs';
+import * as p from '@clack/prompts';
 import { dim, green, red, yellow } from 'kleur';
 import { contextBlocks } from '../services/agent-context/render';
 import { buildOfflineSnapshot } from '../services/agent-context/snapshot';
-import { Plan, PlannedFile, planInstall } from '../services/skill/plan';
+import { ApplyResult, applyInstall, applyRemove, findOrphans } from '../services/skill/apply';
+import { Plan, PlannedFile, planInstall, planRemove } from '../services/skill/plan';
 import {
   ScopeError,
   UnknownTargetError,
@@ -15,6 +18,7 @@ import {
 import {
   NEUTRAL_INSTRUCTION_FILE,
   NEUTRAL_SKILLS_DIR,
+  TARGETS,
   RenderContext,
   RenderedFile,
   TargetDefinition,
@@ -32,6 +36,7 @@ import { planDependencies } from '../services/skill/fs-deps';
 
 interface SharedOptions {
   target?: string[];
+  yes?: boolean;
   skillsDir?: string;
   instructionsFile?: string;
   user?: boolean;
@@ -166,10 +171,60 @@ function reportOverride(): void {
   }
 }
 
+/**
+ * Ask which runtimes to install for, when the directory gives no clue.
+ *
+ * `required` keeps an empty selection on the same prompt with the reason shown
+ * in place, which is what the interaction rules in `AGENTS.md` ask for: an
+ * error the user can fix belongs in the prompt they are already looking at,
+ * not in a warning followed by a different question.
+ */
+async function promptForTargets(root: string): Promise<TargetDefinition[] | undefined> {
+  const selected = await p.multiselect({
+    message: t('skill.prompt.targets', { root }),
+    options: TARGETS.map((target) => ({
+      value: target.id,
+      label: target.title,
+      hint: target.docsUrl
+    })),
+    required: true
+  });
+
+  if (p.isCancel(selected)) {
+    return undefined;
+  }
+
+  return resolveRequestedTargets(selected as string[]);
+}
+
+/**
+ * Refuse rather than hang or silently proceed when there is nobody to ask.
+ * Mirrors the one existing precedent, in `dns enable`.
+ */
+function needsConsentAndCannotAsk(options: SharedOptions): boolean {
+  return !options.yes && !options.dryRun && !process.stdin.isTTY;
+}
+
+function reportApplied(result: ApplyResult): void {
+  for (const file of result.written) {
+    logger.success(file.backupPath ? `${file.absolutePath}  ${dim(`(backup: ${file.backupPath})`)}` : file.absolutePath);
+  }
+  for (const file of result.skipped) {
+    if (file.action === 'skip-modified') {
+      logger.warn(t('skill.applied.skipped', { path: file.absolutePath }));
+    }
+  }
+  for (const directory of result.removedDirectories) {
+    logger.info(t('skill.applied.removedDirectory', { path: directory }));
+  }
+}
+
 /** Resolve scope, targets and files, or report why it cannot be done. */
-function prepare(dir: string | undefined, options: SharedOptions):
-  | { root: string; targets: TargetDefinition[]; files: RenderedFile[] }
-  | undefined {
+async function prepare(
+  dir: string | undefined,
+  options: SharedOptions,
+  interactive = false
+): Promise<{ root: string; targets: TargetDefinition[]; files: RenderedFile[] } | undefined> {
   let resolved;
   try {
     resolved = resolveScope(dir, Boolean(options.user));
@@ -195,6 +250,7 @@ function prepare(dir: string | undefined, options: SharedOptions):
   }
 
   const { supported, unsupported } = targetsForScope(requested, resolved.scope);
+  // eslint-disable-next-line prefer-const
   if (unsupported.length > 0) {
     logger.error(
       t('skill.error.userScopeUnsupported', { targets: unsupported.map((target) => target.id).join(', ') })
@@ -203,9 +259,20 @@ function prepare(dir: string | undefined, options: SharedOptions):
     return undefined;
   }
   if (supported.length === 0) {
-    logger.error(t('skill.error.noTargets', { root: resolved.root }));
-    process.exitCode = 1;
-    return undefined;
+    // Nothing detected. Ask, if there is somebody to ask; otherwise name the
+    // two flags that settle it.
+    if (interactive && resolved.scope === 'directory' && process.stdin.isTTY && !options.yes) {
+      const chosen = await promptForTargets(resolved.root);
+      if (!chosen) {
+        logger.warn(t('skill.cancelled'));
+        return undefined;
+      }
+      supported.push(...chosen);
+    } else {
+      logger.error(t('skill.error.noTargets', { root: resolved.root }));
+      process.exitCode = 1;
+      return undefined;
+    }
   }
 
   const context = renderContext();
@@ -223,10 +290,10 @@ function createStatusCommand(): Command {
     .argument('[dir]', 'directory to inspect')
     .option('--user', t('skill.option.user'))
     .option('--no-header', t('options.noHeader.description'))
-    .action((dir: string | undefined, options: SharedOptions) => {
+    .action(async (dir: string | undefined, options: SharedOptions) => {
       reportOverride();
 
-      const prepared = prepare(dir, options);
+      const prepared = await prepare(dir, options, true);
       if (!prepared) {
         return;
       }
@@ -288,10 +355,11 @@ function createInstallCommand(): Command {
     .option('--user', t('skill.option.user'))
     .option('--dry-run', t('skill.option.dryRun'))
     .option('--force', t('options.force.description'))
-    .action((dir: string | undefined, options: SharedOptions) => {
+    .option('-y, --yes', t('options.yes.description'))
+    .action(async (dir: string | undefined, options: SharedOptions) => {
       reportOverride();
 
-      const prepared = prepare(dir, options);
+      const prepared = await prepare(dir, options, true);
       if (!prepared) {
         return;
       }
@@ -306,18 +374,149 @@ function createInstallCommand(): Command {
         planDependencies()
       );
 
+      // Anything Runestone generated before and no longer produces is removed
+      // in the same pass, so an upgrade does not leave files an agent will
+      // still read.
+      const expected = plan.files.map((file) => file.absolutePath);
+      const orphans = findOrphans(prepared.root, expected, skillDirectoriesOf(prepared.targets, options));
+
       printPlan(plan);
+      if (orphans.length > 0) {
+        logger.info(t('skill.orphans', { count: String(orphans.length) }));
+        for (const orphan of orphans) {
+          console.log(`  ${red(orphan)}`);
+        }
+      }
 
       if (plan.blockers.length > 0) {
         process.exitCode = 1;
         return;
       }
+      if (options.dryRun) {
+        return;
+      }
 
-      if (!options.dryRun) {
-        // Naming a flag for the only behaviour there is would claim the user
-        // has a choice they do not. This build plans and refuses to write.
-        logger.warn(t('skill.install.notYet'));
+      const changing = plan.files.filter((file) => file.action !== 'unchanged' && file.action !== 'skip-modified');
+      if (changing.length === 0 && orphans.length === 0) {
+        return;
+      }
+
+      if (needsConsentAndCannotAsk(options)) {
+        logger.error(t('skill.nonInteractive'));
         process.exitCode = 1;
+        return;
+      }
+
+      if (!options.yes) {
+        const confirmed = await p.confirm({
+          message: t('skill.prompt.confirm', { count: String(changing.length + orphans.length) })
+        });
+        if (p.isCancel(confirmed) || !confirmed) {
+          logger.warn(t('skill.cancelled'));
+          return;
+        }
+      }
+
+      const result = applyInstall(plan);
+      for (const orphan of orphans) {
+        fs.rmSync(orphan, { force: true });
+      }
+
+      logger.success(t('skill.applied.title', { count: String(result.written.length + orphans.length) }));
+      reportApplied(result);
+    });
+}
+
+/** Skill roots a set of targets writes into, honouring a path override. */
+function skillDirectoriesOf(targets: TargetDefinition[], options: SharedOptions): string[] {
+  const directories = new Set<string>();
+  for (const target of targets) {
+    for (const file of target.render({ topics: {}, hostDomain: '' })) {
+      const match = /^(.*)\/runestone\/(?:SKILL\.md|references\/)/.exec(file.relativePath);
+      if (match) {
+        directories.add(options.skillsDir ? options.skillsDir.replace(/\\/g, '/') : match[1]);
+      }
+    }
+  }
+
+  return [...directories];
+}
+
+function createRemoveCommand(): Command {
+  return createCommand('remove')
+    .alias('rm')
+    .alias('del')
+    .description(t('commands.skill.remove.description'))
+    .argument('[dir]', 'directory to remove from')
+    .option('--target <name>', t('skill.option.target'), collect, [])
+    .option('--skills-dir <path>', t('skill.option.skillsDir'))
+    .option('--instructions-file <path>', t('skill.option.instructionsFile'))
+    .option('--user', t('skill.option.user'))
+    .option('--dry-run', t('skill.option.dryRun'))
+    .option('--force', t('options.force.description'))
+    .option('-y, --yes', t('options.yes.description'))
+    .action(async (dir: string | undefined, options: SharedOptions) => {
+      reportOverride();
+
+      const prepared = await prepare(dir, options);
+      if (!prepared) {
+        return;
+      }
+
+      const plan = planRemove(
+        {
+          root: prepared.root,
+          targetIds: prepared.targets.map((target) => target.id),
+          files: prepared.files,
+          force: Boolean(options.force)
+        },
+        planDependencies()
+      );
+
+      const expected = plan.files.map((file) => file.absolutePath);
+      const orphans = findOrphans(prepared.root, expected, skillDirectoriesOf(prepared.targets, options));
+
+      printPlan(plan);
+      if (plan.blockers.length > 0) {
+        process.exitCode = 1;
+        return;
+      }
+
+      const removing = plan.files.filter((file) => file.action === 'delete');
+      if (removing.length === 0 && orphans.length === 0) {
+        logger.info(t('skill.removed.nothing'));
+        return;
+      }
+      if (options.dryRun) {
+        return;
+      }
+
+      if (needsConsentAndCannotAsk(options)) {
+        logger.error(t('skill.nonInteractive'));
+        process.exitCode = 1;
+        return;
+      }
+
+      if (!options.yes) {
+        const confirmed = await p.confirm({
+          message: t('skill.prompt.confirm', { count: String(removing.length + orphans.length) })
+        });
+        if (p.isCancel(confirmed) || !confirmed) {
+          logger.warn(t('skill.cancelled'));
+          return;
+        }
+      }
+
+      const result = applyRemove(plan);
+      for (const orphan of orphans) {
+        fs.rmSync(orphan, { force: true });
+      }
+
+      logger.success(t('skill.removed.title', { count: String(result.written.length + orphans.length) }));
+      reportApplied(result);
+
+      for (const file of plan.files.filter((file) => file.action === 'skip-modified')) {
+        logger.warn(t('skill.kept', { path: file.absolutePath }));
       }
     });
 }
@@ -328,5 +527,6 @@ export function createSkillCommand(): Command {
   return createCommand('skill')
     .description(t('commands.skill.description'))
     .addCommand(createInstallCommand())
-    .addCommand(createStatusCommand());
+    .addCommand(createStatusCommand())
+    .addCommand(createRemoveCommand());
 }

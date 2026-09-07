@@ -70,7 +70,8 @@ describe('runestone CLI integration', () => {
       ['keys', 'add'],
       ['skill'],
       ['skill', 'install'],
-      ['skill', 'status']
+      ['skill', 'status'],
+      ['skill', 'remove']
     ];
 
     for (const command of commands) {

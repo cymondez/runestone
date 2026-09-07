@@ -24,8 +24,8 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | A4 | Online tier: collision detection | 2 | A3 | **done** — 45 suites, 650 passed, 5 skipped. Phase A complete except the A0 mirrors |
 | B1 | Marker-block ownership engine | 0 | — | **done** — 46 suites, 697 passed, 5 skipped |
 | B2 | `skill status` and `install --dry-run` | 1 | A1, B1 | **done** — 47 suites, 719 passed, 5 skipped. B4's renderers folded in; see below |
-| B3 | `skill install` and `skill remove` | 2 | B2 | not started |
-| B4 | Full target table and wrappers | 2 | B3 | **merged into B2 and B3** — the table and renderers landed in B2 because `status` cannot exist without them; enabling every target for writing lands in B3 |
+| B3 | `skill install` and `skill remove` | 2 | B2 | **done** — 48 suites, 743 passed, 5 skipped. Every target enabled, so B4 is closed with it |
+| B4 | Full target table and wrappers | 2 | B3 | **done, merged into B2 and B3** — the table and renderers landed in B2 because `status` cannot exist without them; enabling every target for writing landed in B3 |
 | C1 | MCP dependency spike | 0 | — | not started |
 | C2 | `runestone mcp serve`, read-only | 3 | A2, C1 | not started |
 | C3 | `mcp config`, documentation, release | 1 | C2 | not started |
@@ -369,27 +369,46 @@ Verified by hand in a temporary git repository: a dry run against a directory co
 
 **Deliverables**
 
-- [ ] `runestone-cli/src/services/skill/apply.ts` — `applyInstall` and `applyRemove`, with atomic writes through a same-directory temporary file and a rename
-- [ ] Confirmation enumerating every absolute path, with `-y/--yes`, `--force`, and the non-TTY refusal mirroring `src/commands/dns-enable.ts:537`
-- [ ] `skill remove` with aliases `rm` and `del`
-- [ ] The neutral target only: `.agents/skills/runestone/` and an `AGENTS.md` block
-- [ ] `tests/services/skill/apply.test.ts`
+- [x] `runestone-cli/src/services/skill/apply.ts` — `applyInstall` and `applyRemove`, with atomic writes through a same-directory temporary file and a rename
+- [x] Confirmation enumerating every absolute path, with `-y/--yes`, `--force`, and the non-TTY refusal mirroring `src/commands/dns-enable.ts:537`
+- [x] `skill remove` with aliases `rm` and `del`
+- [x] ~~The neutral target only~~ — **every target is enabled**, which closes B4 here rather than in a separate milestone
+- [x] `tests/services/skill/apply.test.ts`
 
 **Gate**
 
-- [ ] Install into a fixture git repository: `git status` lists **exactly** the planned paths and nothing more
-- [ ] Re-install with no version change writes nothing and creates **no** backup file
-- [ ] Install over the committed 77-line `AGENTS.md` leaves every line outside the block byte-identical; `remove` returns the file to byte-identical
-- [ ] An orphan file carrying an older template version is removed
-- [ ] A file modified by the user at the current version is skipped without `--force`, and backed up then rewritten with it
-- [ ] A conflicted instruction file causes a refusal that writes nothing and prints the offsets and the manual removal steps
-- [ ] `remove` deletes only marker-carrying files; an unmarked file keeps the directory and is named in the output
-- [ ] The dry-run output matches the real run's plan **line for line**
-- [ ] Non-TTY without `--yes` refuses; with `--yes` it proceeds
-- [ ] Configuration drift is detected: install, change `PREFIX` in `.env`, and `skill status` reports the installed files as out of date
-- [ ] `skills-ref validate` passes on the generated skill directory
+- [x] Install into a fixture git repository: `git status` lists **exactly** the planned paths and nothing more
+- [x] Re-install with no version change writes nothing and creates **no** backup file
+- [x] Install over the committed 77-line `AGENTS.md` leaves every line outside the block byte-identical; `remove` returns the file to byte-identical
+- [x] An orphan file carrying an older template version is removed
+- [x] A file modified by the user at the current version is skipped without `--force`, and backed up then rewritten with it
+- [x] A conflicted instruction file causes a refusal that writes nothing and prints the offsets and the manual removal steps
+- [x] `remove` deletes only marker-carrying files; an unmarked file keeps the directory and is named in the output
+- [x] The dry-run output matches the real run's plan **line for line**
+- [x] Non-TTY without `--yes` refuses; with `--yes` it proceeds
+- [x] Configuration drift is detected: install, change `PREFIX` in `.env`, and `skill status` reports the installed files as out of date
+- [~] `skills-ref validate` — **substituted.** The published validator needs a network fetch, so the specification's constraints are asserted directly and offline: `name` matching its directory and the character rules, `description` within 1024, `metadata` values all strings, `allowed-tools` absent, under 500 lines. Same rules, and a failure names the field
 
-**Rollback.** Single revert. Any already-installed artefacts are removable with the reverted version's `skill remove`, and each carries a marker, so a hand removal is also possible.
+**Landed.** `apply.ts`, the `remove` command, confirmation with `--yes`, the non-TTY refusal, and every target enabled. 48 suites, 743 passed.
+
+Verified by hand in a temporary git repository, which is the sequence that matters:
+
+| Step | Result |
+| --- | --- |
+| `install --yes` into a directory with a hand-written `AGENTS.md` | seven files written, one backup taken |
+| `install --yes` again | "everything is already up to date"; **no second backup** |
+| `status` | all seven reported current |
+| `remove --yes` | `AGENTS.md` **byte-identical** to before, empty skill directories cleaned |
+
+**A real over-reach found by running it.** The first version of the directory cleanup climbed as far as empty directories allowed, so `remove` deleted `.agents/` — a directory the *user* created, and the exact one target detection looks for. Nothing was lost, but a later `skill install` would then have detected nothing and refused, for a reason the user could not connect to anything they did. Cleanup now stops at the skill's own directory: everything above it belongs to the runtime or the user, even when emptying our files leaves it bare. Asserted, along with detection still working after a removal.
+
+**A stale test that had started passing for the wrong reason.** B2 had a test named "refuses to write without `--dry-run`", asserting exit 1 because that build could not write at all. B3 enabled writing, and the test kept passing — on the non-TTY check, since jest gives the process a non-TTY stdin. It was reporting a guarantee it was no longer testing. It is now the non-TTY refusal test it had quietly become, with two new tests beside it: one that proves `--yes` actually writes, and one asserting the dry-run output matches the real run's plan line for line.
+
+**`skills-ref validate` was substituted, not skipped.** The published validator needs a network fetch, which does not belong in this suite. The specification's constraints are asserted directly instead — `name` matching its parent directory and the character rules, `description` within 1024 characters, every `metadata` value a string, `allowed-tools` absent, the file under 500 lines — across all four targets. Same rules, offline, and a failure names the field rather than exiting non-zero.
+
+**`allowed-tools` is deliberately absent.** The specification defines it, and restricting an agent's tool access from inside a file installed into someone else's project is presumptuous and would break their workflow with no visible cause. A test asserts it stays absent.
+
+**Rollback.** Single revert. Anything already installed is removable by the reverted version's `skill remove`, and every generated file carries a marker, so a removal by hand is possible too.
 
 ## B4 — Full target table and wrappers
 
