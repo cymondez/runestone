@@ -18,7 +18,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | # | Milestone | Risk | Blocked by | Status |
 | --- | --- | --- | --- | --- |
 | A0 | Specification and milestones | 0 | — | **in progress**: both English documents landed; the two Traditional Chinese mirrors are deliberately held until the specification stops moving (see A0) |
-| A1 | Renderer and topic corpus | 0 | A0 | not started |
+| A1 | Renderer and topic corpus | 0 | A0 | **done** — 43 suites, 606 passed, 5 skipped, no existing test file touched |
 | A2 | Offline snapshot module | 0 | — | not started |
 | A3 | `--ai-context [topic]` and `--offline` | 1 | A1, A2 | not started |
 | A4 | Online tier: collision detection | 2 | A3 | not started |
@@ -94,27 +94,47 @@ Two reuse extractions were also identified and are scheduled rather than discove
 
 **Deliverables**
 
-- [ ] `runestone-cli/tool-docs/ai-context/compose.md` — the current `ai-prompt-context.tmp.md` content, with `${X}` changed to `{{X}}` and nothing else touched
-- [ ] `runestone-cli/tool-docs/ai-context/{overview,service,state,troubleshoot}.md` — new content per spec 5.1, with every rule derived from the validators per spec 5.2
-- [ ] `runestone-cli/tool-docs/ai-prompt-context.tmp.md` deleted
-- [ ] `runestone-cli/src/utils/tool-docs.ts` **deleted**, replaced by `src/utils/tool-docs/{index,manifest,render,assets}.ts` (spec 13 — leaving both would keep the old renderer silently live)
-- [ ] `renderAiPromptContext(config)` keeps its signature and export as a thin wrapper, so `src/commands/docs.ts` is untouched in this milestone
-- [ ] `{{VAR}}` and `{{BLOCK:NAME}}` substitution with a function replacer; unknown tokens throw (spec 5.3)
-- [ ] `runestone-cli/tests/utils/tool-docs.test.ts` and a committed fixture holding today's exact output
+- [x] `runestone-cli/tool-docs/ai-context/compose.md` — the current `ai-prompt-context.tmp.md` content, with `${X}` changed to `{{X}}` and nothing else touched
+- [x] `runestone-cli/tool-docs/ai-context/{overview,service,troubleshoot}.md` — new content per spec 5.1, with every rule derived from the validators per spec 5.2
+- [ ] ~~`state.md`~~ — **moved to A4 on 2026-09-07.** It is composed entirely of fact blocks, and the renderers for those arrive with the snapshot module. Shipping the asset before its blocks exist would mean a topic that throws when rendered
+- [x] `runestone-cli/tool-docs/ai-prompt-context.tmp.md` deleted
+- [x] `runestone-cli/src/utils/tool-docs.ts` **deleted**, replaced by `src/utils/tool-docs/{index,manifest,render,assets}.ts` (spec 13 — leaving both would keep the old renderer silently live)
+- [x] `renderAiPromptContext(config)` keeps its signature and export as a thin wrapper, so `src/commands/docs.ts` is untouched in this milestone
+- [x] `{{VAR}}` and `{{BLOCK:NAME}}` substitution with a function replacer; unknown tokens throw (spec 5.3)
+- [x] `runestone-cli/tests/utils/tool-docs.test.ts` (25 tests) and a committed fixture holding today's exact output
 
 **Gate**
 
-- [ ] Compose-topic output is **byte-identical** to the pre-A1 output, asserted against the committed fixture
-- [ ] `npm test` green with **zero test files modified** — the golden test at `tests/integration/cli.test.ts:158-196` passes untouched
-- [ ] A value containing `$&`, `$1` and `$$` is substituted literally (the defect at the old `tool-docs.ts:9`)
-- [ ] An unknown `{{TOKEN}}` throws and names the token
-- [ ] Manifest and topic files are in bijection, asserted in both directions
-- [ ] `src/utils/tool-docs.ts` no longer exists
-- [ ] The `service` topic's field rules match `normalizeRouteDomain` and `normalizeServiceUrl`, asserted by a test that feeds the documented examples through the real validators
+- [x] Compose-topic output is **byte-identical** to the pre-A1 output, asserted against the committed fixture
+- [x] `npm test` green with **zero test files modified** — 43 suites, 606 passed, 5 skipped; `git diff --name-only` over `tests/` lists only the new file and its fixture
+- [x] A value containing `$&`, `$1` and `$$` is substituted literally (the defect at the old `tool-docs.ts:9`)
+- [x] An unknown `{{TOKEN}}` throws and names the token
+- [x] Manifest and topic files are in bijection, asserted in both directions
+- [x] `src/utils/tool-docs.ts` no longer exists
+- [x] The `service` topic's field rules match `normalizeRouteDomain` and `normalizeServiceUrl`, asserted by a test that feeds the documented examples through the real validators
 
 The last gate item is the one that matters most in this milestone: it makes the corpus's claims executable rather than aspirational, so spec 5.2 cannot rot.
 
-**Rollback.** Single revert. Nothing outside `tool-docs/` and `src/utils/tool-docs/` changes.
+**Landed.** Four topic assets and a four-file renderer. `src/commands/docs.ts` is untouched, so a bare `runestone docs --ai-context` still prints the compose brief and the golden integration test passes unmodified.
+
+| Module | What it is |
+| --- | --- |
+| `render.ts` | Pure substitution: scalars, blocks, function replacers, hard failure on anything left unexpanded |
+| `manifest.ts` | The topic list as data, carrying the `summary` and `brief` lengths that the index and the instruction-file block need |
+| `assets.ts` | The only filesystem read, and the one place the asset path depth is written down |
+| `index.ts` | `renderAiContext`, the compatibility wrapper, and the manifest-derived topic index block |
+
+**Two things the tests caught that would otherwise have shipped.**
+
+The first was a stale build artifact. `tsc` does not remove outputs for sources that no longer exist, so `dist/utils/tool-docs.js` — the old single-file renderer, still pointing at the deleted template — sat beside the new `dist/utils/tool-docs/` directory and shadowed it, because Node resolves the file before the directory. This is exactly the hazard spec 13 names, and it appeared in `dist/` rather than in `src/`. It is worse than a local annoyance: `prepack` runs `build`, and `build` did not clean, so publishing from a tree with a stale `dist/` would have shipped a renderer reading a file that is not in the tarball. `build` now runs a `clean` step first, implemented with `fs.rmSync` so it needs no new dependency and behaves the same on both platforms.
+
+The second was a defect in this milestone's own central claim. "Byte-identical" turned out to be imprecise in a way that mattered. Git stores this repository's markdown as LF, but `core.autocrlf` is `true` here, so the working-tree template was CRLF and the pre-A1 runtime output was 1986 bytes; the new assets were written LF and produced 1927. That is a 59-byte delta on a 59-line file, which is entirely line endings. The content is genuinely unchanged — diffing the git-stored template with its delimiters rewritten against the new asset comes out identical, and the remaining 8-byte size difference is eight placeholders gaining two characters each. **But the fixture test could not have detected the difference**, because it compares a rendered asset against a fixture generated from the same source, and would pass with both sides CRLF just as happily.
+
+Two changes followed. `.gitattributes` pins `runestone-cli/tool-docs/**` and `runestone-cli/tests/fixtures/**` to LF, scoped to those paths so no existing file changes behaviour — without it the corpus's bytes depend on who ran `npm publish`, which is not a property an artifact read by agents should have. And a separate test asserts that no rendered topic contains a carriage return; it was verified by injecting CRLF into an asset and confirming that this specific test fails, then restoring the asset and confirming it passes.
+
+**One deliverable moved.** `state.md` is deferred to A4, where its fact blocks are built. Shipping the asset in A1 would have meant a topic that throws on render, because `substitute` treats an unregistered block as a hard error rather than passing it through.
+
+**Rollback.** Single revert. Nothing outside `tool-docs/`, `src/utils/tool-docs/`, the new test and fixture, the `clean` script and the two `.gitattributes` lines changes.
 
 ## A2 — Offline snapshot module
 
@@ -180,7 +200,7 @@ The last gate item is the one that matters most in this milestone: it makes the 
 
 - [ ] `composeService.ps(composePath, timeoutMs = 30000)` — an additive second parameter; `src/services/docker-compose.ts:244` currently hard-codes `30000` into a `runCompose` call that already accepts a timeout
 - [ ] The online tier in `snapshot.ts`: container state at an 8000 ms budget, the Traefik snapshot via the promoted `traefikApiBaseUrl`, and the DNS report **with injected dependencies, never the defaults** (spec 6.1)
-- [ ] The `state` topic's blocks, including the prose for each unreachable source
+- [ ] `runestone-cli/tool-docs/ai-context/state.md` — the asset itself, moved here from A1, plus its fact blocks and the prose for each unreachable source
 - [ ] Per-topic default tier, and `--offline` forcing the offline tier
 
 **Gate**
