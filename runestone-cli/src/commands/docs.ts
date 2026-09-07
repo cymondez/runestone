@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import * as p from '@clack/prompts';
 import { openUrl } from '../services/browser-opener';
 import { contextBlocks } from '../services/agent-context/render';
-import { buildOfflineSnapshot } from '../services/agent-context/snapshot';
+import { buildLiveSnapshot, buildOfflineSnapshot } from '../services/agent-context/snapshot';
 import { envLoader } from '../utils/env-loader';
 import { DEFAULT_TOPIC, findTopic, renderAiContext, topicIds } from '../utils/tool-docs';
 import { logger } from '../utils/logger';
@@ -74,10 +74,14 @@ export function createDocsCommand(): Command {
         return;
       }
 
-      // Offline only for now: every shipped topic is offline, so `--offline` is
-      // accepted and already correct. The online tier arrives with the topic
-      // that needs it, and this is the seam it plugs into.
-      const snapshot = buildOfflineSnapshot(config);
+      // The tier is a property of the topic, not of the invocation. Only the
+      // topic whose whole purpose is live facts pays for Docker and Traefik;
+      // the rest stay offline so that the path an agent calls on every task
+      // never waits on a cold daemon. `--offline` forces file-only, which is
+      // what makes the online topic deterministic for a test or an air-gapped
+      // machine.
+      const wantsLive = findTopic(topic)?.tier === 'online' && !options.offline;
+      const snapshot = wantsLive ? await buildLiveSnapshot(config) : buildOfflineSnapshot(config);
 
       // `process.exitCode` rather than `process.exit()` so buffered stdout
       // flushes — the output is meant to be piped.

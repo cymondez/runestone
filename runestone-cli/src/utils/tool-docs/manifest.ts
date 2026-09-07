@@ -54,6 +54,13 @@ export const TOPICS: readonly TopicDefinition[] = [
     tier: 'offline'
   },
   {
+    id: 'state',
+    title: 'Live state of this machine',
+    summary: 'Read the machine now: usable hostnames, names already taken by any project, whether Runestone is up.',
+    brief: 'Before choosing a hostname or a service name, run `runestone docs --ai-context state` — it reports what is already registered, including by other projects.',
+    tier: 'online'
+  },
+  {
     id: 'overview',
     title: 'Overview',
     summary: 'What Runestone is, how to choose between the two integration paths, and which commands not to run.',

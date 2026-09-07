@@ -21,7 +21,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | A1 | Renderer and topic corpus | 0 | A0 | **done** — 43 suites, 606 passed, 5 skipped, no existing test file touched |
 | A2 | Offline snapshot module | 0 | — | **done** — 44 suites, 624 passed, 5 skipped |
 | A3 | `--ai-context [topic]` and `--offline` | 1 | A1, A2 | **done** — 44 suites, 630 passed, 5 skipped. First user-visible milestone |
-| A4 | Online tier: collision detection | 2 | A3 | not started |
+| A4 | Online tier: collision detection | 2 | A3 | **done** — 45 suites, 650 passed, 5 skipped. Phase A complete except the A0 mirrors |
 | B1 | Marker-block ownership engine | 0 | — | not started |
 | B2 | `skill status` and `install --dry-run` | 1 | A1, B1 | not started |
 | B3 | `skill install` and `skill remove` | 2 | B2 | not started |
@@ -238,21 +238,38 @@ The general lesson, recorded because it will recur: **a milestone property does 
 
 **Deliverables**
 
-- [ ] `composeService.ps(composePath, timeoutMs = 30000)` — an additive second parameter; `src/services/docker-compose.ts:244` currently hard-codes `30000` into a `runCompose` call that already accepts a timeout
-- [ ] The online tier in `snapshot.ts`: container state at an 8000 ms budget, the Traefik snapshot via the promoted `traefikApiBaseUrl`, and the DNS report **with injected dependencies, never the defaults** (spec 6.1)
-- [ ] `runestone-cli/tool-docs/ai-context/state.md` — the asset itself, moved here from A1, plus its fact blocks and the prose for each unreachable source
-- [ ] Per-topic default tier, and `--offline` forcing the offline tier
+- [x] `composeService.ps(composePath, timeoutMs = 30000)` — an additive second parameter; `src/services/docker-compose.ts:244` currently hard-codes `30000` into a `runCompose` call that already accepts a timeout
+- [x] The online tier in `snapshot.ts`: container state at an 8000 ms budget and the Traefik snapshot via the promoted `traefikApiBaseUrl`
+- [ ] ~~the DNS report with injected dependencies~~ — **dropped on 2026-09-07, spec 6.1 deviation.** See below
+- [x] `runestone-cli/tool-docs/ai-context/state.md` — the asset itself, moved here from A1, plus its fact blocks and the prose for each unreachable source
+- [x] Per-topic default tier, and `--offline` forcing the offline tier
 
 **Gate**
 
-- [ ] With `spawnCommand` throwing and the Traefik read rejecting: `state` still exits 0 with `stderr === ''`, and the text names each unreachable source together with the command that would fix it
-- [ ] `compose`, `service`, `overview` and `troubleshoot` make **zero** probes even without `--offline`
-- [ ] `state --offline` makes zero probes
-- [ ] The 8000 ms budget is asserted at the call site by inspecting the argument, not by measuring wall-clock time
-- [ ] `buildDnsStatusReport` is never called with its default dependencies from this module, asserted by a source scan
-- [ ] Verified by hand with Runestone running and with Runestone stopped
+- [x] With `spawnCommand` throwing and the Traefik read rejecting: `state` still exits 0 with `stderr === ''`, and the text names each unreachable source together with the command that would fix it
+- [x] `compose`, `service`, `overview` and `troubleshoot` make **zero** probes even without `--offline`
+- [x] `state --offline` makes zero probes
+- [x] The 8000 ms budget is asserted at the call site by inspecting the argument, not by measuring wall-clock time
+- [x] `buildDnsStatusReport` is not called from this module **at all**, asserted by a source scan — a stronger guarantee than the one planned, because the call was dropped rather than injected
+- [x] Verified by hand with Runestone running and with Runestone stopped
 
-**Rollback.** Single revert. The offline tier is unaffected because the tier split is a parameter, not a rewrite.
+**Landed.** Two online probes and the `state` topic. Verified on a real machine with Runestone running: the topic reported both containers as up, and reported seven Traefik router IDs — four of them, including `open-webui@docker` and `traefik-manager@docker`, registered by projects that have nothing to do with this branch.
+
+That last point is the whole justification for the tier. A router or service ID is global to Traefik, so a name that is free in this project's own service list can already be taken by a project the agent cannot see, and only Traefik knows. Everything else in the snapshot can be read from a file.
+
+**Neither probe can fail the call.** Both degrade to a value the renderer turns into prose, because the command asserts an empty stderr and an agent piping stdout still needs a usable answer when Docker is stopped. The distinction the type keeps — unavailable versus skipped — is what lets the renderer say "Traefik could not be reached, treat the name as unverified rather than free" instead of silently implying nothing is registered.
+
+**Spec 6.1 deviation: `buildDnsStatusReport` is not used.** The specification listed it in the online tier. It is dropped, and the source scan now asserts it is absent rather than merely injected, which is the stronger guarantee.
+
+The reasoning: it spawns `docker info` *and* a second `docker compose ps`, so including it would have made the topic cost three spawns rather than two. The only fact it adds over the offline `isDnsEnabled` is whether the daemon entry is actually in effect — the "configured on but not applied" case. That case has a dedicated command, `runestone dns status`, and the `troubleshoot` topic already sends the agent there. Paying a third spawn on a path an agent calls repeatedly, to partially duplicate a command that answers it properly, is a bad trade. If the discrepancy turns out to matter in practice, the honest fix is a line in `troubleshoot` telling the agent to run `dns status`, which is already there.
+
+**`composeService.ps` gained an optional timeout**, defaulting to the 30000 it previously hard-coded, so every existing caller is unchanged. Thirty seconds is right for `status`, where a human is watching and a cold daemon is worth waiting for, and wrong for this; the snapshot passes 8000. The acceptance test's arity assertion is on `restart`, not on `ps`, so the added parameter is safe.
+
+**A JSON-shape trap caught by the round-trip test.** `TraefikNamedResource.rule` is optional, and an absent key disappears through `JSON.stringify`, which would have made the published schema's shape depend on whether a particular router happened to have a rule. It is normalised to null.
+
+**Where the online topic is tested.** Not in the integration suite: its output depends on whether Docker happens to be running on the machine the suite runs on, which is exactly the sort of assertion that passes for months and then fails for an unrelated reason. It is asserted in `tests/commands/docs.test.ts` with injected probes, at the real command entry point, including both failure paths and the timeout argument. The integration suite covers `state` only in the unconfigured case, where the answer does not depend on Docker.
+
+**Rollback.** Single revert. The `ps` timeout parameter reverts with it and is harmless either way; the offline tier is untouched because the tier split is a parameter rather than a rewrite.
 
 ## B1 — Marker-block ownership engine
 
@@ -475,7 +492,7 @@ The handshake test is the most valuable item here: it is the only one that catch
 ## Current state of the repository
 
 - The branch is `feat/skill-support`, cut from `develop` at `ba67a7e`, which is where `main` and `origin/develop` also sit. Nothing unmerged is inherited.
-- `runestone-cli` is at 2.0.0. The agent-facing surface is `docs --ai-context [topic]` over four topics, carrying offline machine facts. Phase A is three milestones in; A4 adds the online tier and the `state` topic.
+- `runestone-cli` is at 2.0.0. The agent-facing surface is `docs --ai-context [topic]` over five topics: four offline, plus `state`, which probes Docker and Traefik. Phase A is functionally complete; A0's two Traditional Chinese mirrors are the only open item in it.
 - **There is no CI.** Every gate in this document is run by hand.
 - Publishing is manual and the order is fixed: merge to `develop`, merge to `main`, then publish to npm.
 - Three cleanups were found during A0 and deliberately left out of this branch: the three locale tables have no automated key-parity test, `service.validation.urlNoPath` is an orphan key, and `certs list` and `service list` compute column widths with `String.length` instead of the CJK-aware helper that already exists.

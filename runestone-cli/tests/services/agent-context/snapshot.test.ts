@@ -5,6 +5,8 @@ import { ServiceListItem } from '../../../src/services/service-manager';
 import {
   AgentContextDependencies,
   AgentContextSnapshot,
+  CONTAINER_PROBE_TIMEOUT_MS,
+  buildLiveSnapshot,
   buildOfflineSnapshot
 } from '../../../src/services/agent-context/snapshot';
 import {
@@ -14,6 +16,7 @@ import {
   renderUsedNames,
   renderWarnings
 } from '../../../src/services/agent-context/render';
+import { composeService } from '../../../src/services/docker-compose';
 import * as spawnModule from '../../../src/utils/spawn';
 import { testEnv } from '../../helpers/env';
 
@@ -212,6 +215,125 @@ describe('the offline snapshot', () => {
     expect(snapshot.probeMode).toBe('offline');
     expect(renderUsedNames(snapshot)).toContain('were not checked');
     expect(renderRuntime(snapshot)).toContain('was not checked');
+  });
+});
+
+describe('the live snapshot', () => {
+  const containers = [{ Id: '1', Name: 'runestone', State: 'running', Status: 'Up 1 hour', Service: 'runestone' }];
+  const traefik = {
+    routers: [{ name: 'mine@file', rule: 'Host(`api.example.test`)' }, { name: 'other@docker' }],
+    services: [{ name: 'mine@file' }]
+  };
+
+  function liveDeps(overrides: Partial<AgentContextDependencies> = {}): Partial<AgentContextDependencies> {
+    return {
+      ...deps([certificate()], [service()]),
+      listContainers: () => containers,
+      readTraefik: async () => traefik,
+      ...overrides
+    };
+  }
+
+  it('reports names registered by other projects, which is why this tier exists', async () => {
+    // A router ID is global to Traefik, so a name free in this project's own
+    // service list can already be taken by a project the agent cannot see.
+    const snapshot = await buildLiveSnapshot(config(), liveDeps());
+
+    expect(snapshot.probeMode).toBe('live');
+    expect(snapshot.traefik.ok).toBe(true);
+    expect(renderUsedNames(snapshot)).toContain('other@docker');
+  });
+
+  it('normalises an absent Traefik rule to null so the shape survives JSON', async () => {
+    // TraefikNamedResource.rule is optional, and an absent key vanishes
+    // through JSON.stringify, which would make the published shape unstable.
+    const snapshot = await buildLiveSnapshot(config(), liveDeps());
+
+    expect(snapshot.traefik.ok).toBe(true);
+    if (snapshot.traefik.ok) {
+      expect(snapshot.traefik.value.routers[1].rule).toBeNull();
+    }
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+  });
+
+  it('still succeeds, and says why, when Docker cannot be reached', async () => {
+    const snapshot = await buildLiveSnapshot(
+      config(),
+      liveDeps({
+        listContainers: () => {
+          throw new Error('Cannot connect to the Docker daemon');
+        }
+      })
+    );
+
+    expect(snapshot.containers.ok).toBe(false);
+    expect(snapshot.warnings.join(' ')).toContain('Cannot connect to the Docker daemon');
+    // The distinction that matters: unavailable, not skipped, so the renderer
+    // says "could not be reached" rather than "was not checked".
+    expect(renderRuntime(snapshot)).toContain('Docker could not be reached');
+    expect(renderRuntime(snapshot)).toContain('runestone up');
+  });
+
+  it('still succeeds, and refuses to imply a name is free, when Traefik cannot be reached', async () => {
+    const snapshot = await buildLiveSnapshot(
+      config(),
+      liveDeps({
+        readTraefik: async () => {
+          throw new Error('socket hang up');
+        }
+      })
+    );
+
+    expect(snapshot.traefik.ok).toBe(false);
+    expect(snapshot.warnings.join(' ')).toContain('could not be checked');
+    const text = renderUsedNames(snapshot);
+    expect(text).toContain('unknown');
+    expect(text).toContain('unverified rather than free');
+  });
+
+  it('survives both probes failing at once', async () => {
+    const snapshot = await buildLiveSnapshot(
+      config(),
+      liveDeps({
+        listContainers: () => {
+          throw new Error('docker down');
+        },
+        readTraefik: async () => {
+          throw new Error('traefik down');
+        }
+      })
+    );
+
+    expect(snapshot.probeMode).toBe('live');
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+    expect(snapshot.warnings.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('bounds the container probe well below the thirty seconds ps defaults to', () => {
+    // Asserted at the call site by inspecting the argument, not by measuring
+    // wall-clock time, which would make the test slow and flaky.
+    const psSpy = jest.spyOn(composeService, 'ps').mockReturnValue(containers);
+
+    return buildLiveSnapshot(config(), { ...deps([], []), readTraefik: async () => traefik }).then(() => {
+      expect(psSpy).toHaveBeenCalledWith(expect.any(String), CONTAINER_PROBE_TIMEOUT_MS);
+      expect(CONTAINER_PROBE_TIMEOUT_MS).toBeLessThan(30000);
+      psSpy.mockRestore();
+    });
+  });
+
+  it('does not reach for the DNS status report, which is not offline and is not needed', () => {
+    // Spec 6.1 listed buildDnsStatusReport in the online tier. It is not used:
+    // it spawns `docker info` AND a second `docker compose ps`, and the only
+    // fact it adds over .env is whether the daemon entry is actually in
+    // effect — which `runestone dns status` exists to answer and which the
+    // troubleshoot topic already points the agent at. A third spawn for that
+    // is a bad trade on a path an agent calls repeatedly.
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', '..', '..', 'src', 'services', 'agent-context', 'snapshot.ts'),
+      'utf8'
+    );
+
+    expect(source).not.toContain('buildDnsStatusReport');
   });
 });
 

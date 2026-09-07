@@ -15,10 +15,12 @@
  */
 
 import { CertificateListItem, listDomainCertificates } from '../cert-manager';
+import { DockerContainer, composeService } from '../docker-compose';
 import { isDnsEnabled } from '../dns/settings';
 import { ServiceListItem, findCoveringCertificate, listServices } from '../service-manager';
+import { TraefikSnapshot, readTraefikSnapshot, traefikApiBaseUrl } from '../traefik-api';
 import { RunestoneEnv } from '../../utils/env-loader';
-import { Probe, probe, skipped } from './probe';
+import { Probe, probe, probeAsync, skipped } from './probe';
 
 export type ProbeMode = 'offline' | 'live';
 
@@ -105,12 +107,27 @@ export interface AgentContextDependencies {
   listCertificates: (runestoneDir: string) => CertificateListItem[];
   listServices: (config: RunestoneEnv) => ServiceListItem[];
   now: () => Date;
+  /** Online. Spawns `docker compose ps`. */
+  listContainers: (composePath: string) => DockerContainer[];
+  /** Online. Issues an HTTPS request to Traefik's API. */
+  readTraefik: (baseUrl: string) => Promise<TraefikSnapshot>;
 }
+
+/**
+ * Eight seconds, not the thirty `composeService.ps` defaults to. An agent may
+ * call this on every task, and a caller that blocks for half a minute on a
+ * stopped daemon is worse than one that reports the fact and moves on — the
+ * renderer turns a failed probe into a sentence naming the command that fixes
+ * it, so timing out is an answer rather than an error.
+ */
+export const CONTAINER_PROBE_TIMEOUT_MS = 8000;
 
 export const defaultAgentContextDependencies: AgentContextDependencies = {
   listCertificates: (runestoneDir) => listDomainCertificates(runestoneDir),
   listServices: (config) => listServices(config),
-  now: () => new Date()
+  now: () => new Date(),
+  listContainers: (composePath) => composeService.ps(composePath, CONTAINER_PROBE_TIMEOUT_MS),
+  readTraefik: (baseUrl) => readTraefikSnapshot(baseUrl)
 };
 
 function environmentOf(config: RunestoneEnv): SnapshotEnvironment {
@@ -246,4 +263,70 @@ export function buildOfflineSnapshot(
     traefik: skipped(),
     warnings
   };
+}
+
+function containersOf(containers: DockerContainer[]): SnapshotContainer[] {
+  return containers.map((container) => ({
+    name: container.Name,
+    service: container.Service,
+    state: container.State,
+    status: container.Status
+  }));
+}
+
+/**
+ * `TraefikNamedResource.rule` is optional, and an absent key vanishes through
+ * `JSON.stringify`. Normalising it to null keeps the shape stable for the
+ * schema a future `--json` publishes.
+ */
+function traefikOf(snapshot: TraefikSnapshot): SnapshotTraefik {
+  return {
+    routers: snapshot.routers.map((router) => ({
+      name: router.name,
+      provider: router.name.includes('@') ? router.name.split('@')[1] : '',
+      rule: router.rule ?? null
+    })),
+    services: snapshot.services.map((service) => ({
+      name: service.name,
+      provider: service.name.includes('@') ? service.name.split('@')[1] : ''
+    }))
+  };
+}
+
+/**
+ * The offline snapshot plus the two facts that cannot be read from a file:
+ * whether Runestone is running, and what names other projects have already
+ * registered with Traefik.
+ *
+ * The second one is the reason this tier exists. A router or service ID is
+ * global to Traefik, so a name that looks free in this project's own service
+ * list may already be taken by a project the agent cannot see. Only Traefik
+ * knows.
+ *
+ * Neither probe can fail the call. Both degrade to a value the renderer turns
+ * into prose, because `docs --ai-context` asserts an empty stderr and an agent
+ * piping stdout must still get a usable answer when Docker is stopped.
+ */
+export async function buildLiveSnapshot(
+  config: RunestoneEnv,
+  deps: Partial<AgentContextDependencies> = {}
+): Promise<AgentContextSnapshot> {
+  const merged = { ...defaultAgentContextDependencies, ...deps };
+  const offline = buildOfflineSnapshot(config, merged);
+
+  const containers = probe(() => containersOf(merged.listContainers(config.COMPOSE_FILE_PATH)));
+  const traefik = await probeAsync(async () => traefikOf(await merged.readTraefik(traefikApiBaseUrl(config.HOST_DOMAIN))));
+
+  const warnings = [...offline.warnings];
+  if (!containers.ok && containers.reason === 'unavailable') {
+    warnings.push(`Docker could not be reached: ${containers.message ?? 'unknown error'}.`);
+  }
+  if (!traefik.ok && traefik.reason === 'unavailable') {
+    warnings.push(
+      `Traefik could not be reached: ${traefik.message ?? 'unknown error'}. ` +
+        'Names registered by other projects could not be checked.'
+    );
+  }
+
+  return { ...offline, probeMode: 'live', containers, traefik, warnings };
 }

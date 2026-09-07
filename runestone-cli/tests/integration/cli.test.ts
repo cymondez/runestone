@@ -237,6 +237,10 @@ describe('runestone CLI integration', () => {
       // Every shipped topic is offline, so each must succeed with no Docker on
       // this machine and must not write to stderr — that empty stderr is what
       // makes stdout safe to pipe straight into a prompt.
+      // `state` is excluded here on purpose: it is the one online topic, so
+      // its output depends on whether Docker happens to be running on the
+      // machine the suite runs on. Its behaviour is asserted with injected
+      // probes in tests/commands/docs.test.ts instead.
       for (const topic of ['compose', 'service', 'troubleshoot', 'overview']) {
         const result = runCli(['docs', '--ai-context', topic], {
           HOME: homeDir,
@@ -315,7 +319,11 @@ describe('runestone CLI integration', () => {
     try {
       fs.mkdirSync(homeDir, { recursive: true });
 
-      for (const topic of ['compose', 'service', 'troubleshoot', 'overview']) {
+      // `state` is excluded here on purpose: it is the one online topic, so
+      // its output depends on whether Docker happens to be running on the
+      // machine the suite runs on. Its behaviour is asserted with injected
+      // probes in tests/commands/docs.test.ts instead.
+      for (const topic of ['compose', 'service', 'troubleshoot', 'overview', 'state']) {
         const result = runCli(['docs', '--ai-context', topic], {
           HOME: homeDir,
           USERPROFILE: homeDir,
