@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { PassThrough } from 'stream';
-import { MCP_CLIENTS, McpClient, findClient, renderClientConfig } from '../../../src/services/mcp/config';
+import { MCP_CLIENTS, McpClient, clientIds, findClient, renderClientConfig } from '../../../src/services/mcp/config';
 import { ERROR, PROTOCOL_VERSION, handleLine } from '../../../src/services/mcp/jsonrpc';
 import { SERVER_INFO, TOOLS, createHandlers, serveStdio } from '../../../src/services/mcp/server';
 import { listDomainCertificates } from '../../../src/services/cert-manager';
@@ -358,6 +358,21 @@ describe('the registration block', () => {
     expect((findClient('vscode') as McpClient).typeValue).toBe('stdio');
     expect((findClient('copilot') as McpClient).typeValue).toBe('local');
     expect((findClient('zed') as McpClient).typeValue).toBeUndefined();
+  });
+
+  it('does not share an id with the skill target for a different Copilot', () => {
+    // `skill --target copilot-vscode` is GitHub Copilot in VS Code, writing
+    // .github/skills. `mcp --client copilot` is the Copilot CLI, writing its
+    // own configuration file. They were briefly both `copilot`, which read as
+    // though installing one would configure the other.
+    const skillTargets = (
+      require('../../../src/services/skill/targets') as { TARGETS: ReadonlyArray<{ id: string }> }
+    ).TARGETS.map((target) => target.id);
+
+    expect(skillTargets).toContain('copilot-vscode');
+    expect(skillTargets).not.toContain('copilot');
+    expect(clientIds()).toContain('copilot');
+    expect(clientIds()).not.toContain('copilot-vscode');
   });
 
   it('keeps VS Code and Copilot CLI apart, because they are different tools', () => {

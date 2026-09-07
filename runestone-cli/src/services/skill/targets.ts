@@ -235,7 +235,11 @@ export const TARGETS: readonly TargetDefinition[] = [
     render: (context) => [cursorRule(context, SKILL_TEMPLATE_VERSION)]
   },
   {
-    id: 'copilot',
+    // `copilot-vscode`, not `copilot`, because `mcp --client copilot` is the
+    // Copilot *CLI* — a different product with its own configuration file. The
+    // two were briefly both called `copilot`, which read as though installing
+    // one would configure the other.
+    id: 'copilot-vscode',
     title: 'GitHub Copilot in VS Code',
     docsUrl: 'https://code.visualstudio.com/docs/agent-customization/agent-skills',
     verifiedOn: '2026-09-07',

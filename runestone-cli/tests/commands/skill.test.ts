@@ -153,7 +153,7 @@ describe('runestone skill', () => {
       ['.agents', 'agents'],
       ['.claude', 'claude'],
       ['.cursor', 'cursor'],
-      ['.vscode', 'copilot']
+      ['.vscode', 'copilot-vscode']
     ])('selects only the runtime whose directory is present: %s', async (marker, expected) => {
       // Detection is what stops a Cursor-only repository acquiring a stray
       // .claude/ directory it never asked for.
@@ -162,7 +162,7 @@ describe('runestone skill', () => {
       await run('install', '--dry-run', root);
 
       const text = output();
-      const others = { agents: '.agents/skills', claude: '.claude/skills', cursor: '.cursor/rules', copilot: '.github/skills' };
+      const others = { agents: '.agents/skills', claude: '.claude/skills', cursor: '.cursor/rules', 'copilot-vscode': '.github/skills' };
       expect(text).toContain(path.join(...others[expected as keyof typeof others].split('/')));
 
       for (const [id, dir] of Object.entries(others)) {
