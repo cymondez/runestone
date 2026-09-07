@@ -100,6 +100,20 @@ you to run; it never changes anything. Its most useful tool is
 `runestone_check_name`, which says whether a name and a hostname are free before
 your agent writes them into a file.
 
+**You do not start or stop it yourself.** Unlike `runestone up`, this is not a
+background service. Your client launches it when a session begins and closes it
+when the session ends, so there is nothing to shut down and nothing left running
+afterwards.
+
+If you run it in a terminal to look at it, it will sit there waiting for input.
+That looks like a hang and is not: it is a server with nobody talking to it.
+Press Ctrl+D to close its input and it exits cleanly, or Ctrl+C to stop it
+outright. Running it by hand is only useful for a quick check:
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | runestone mcp serve
+```
+
 Note for Claude Code: a project-scoped `.mcp.json` asks for your approval the
 first time it is used in an interactive session. If nothing seems to happen at
 first, that prompt is what you are waiting for.

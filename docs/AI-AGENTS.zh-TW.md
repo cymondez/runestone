@@ -78,6 +78,14 @@ runestone mcp config --client claude-code
 
 這個 server 是唯讀的。它回答問題、回傳該由你執行的確切指令，不會改動任何東西。最有用的工具是 `runestone_check_name`，在你的 agent 把名稱寫進檔案之前，先告訴它那個名稱與 hostname 有沒有被佔用。
 
+**你不會自己啟動它，也不用停它。** 它跟 `runestone up` 不同，不是常駐服務。你的 client 會在 session 開始時把它叫起來、在 session 結束時關掉，所以沒有東西需要你去停，事後也不會有殘留的行程。
+
+如果你在終端機裡跑它想看看，它會停在那裡等輸入。那看起來像當掉，其實不是：它是一個沒有人在跟它講話的 server。按 Ctrl+D 關掉它的輸入，它會乾淨地結束；或按 Ctrl+C 直接停掉。手動跑只有在快速確認時才有意義：
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | runestone mcp serve
+```
+
 Claude Code 使用者注意：專案層級的 `.mcp.json` 在互動式 session 裡第一次被使用時會請你核准。如果一開始看起來沒反應，你在等的就是那個提示。
 
 ## agent 不會做的事
