@@ -236,10 +236,22 @@ describe('the block renderers', () => {
   });
 });
 
-describe('the snapshot module is not wired up yet', () => {
-  it('is imported by nothing under src/', () => {
-    // A2 is a risk-0 milestone: the module exists and no command path reaches
-    // it, so it reverts with a single commit and cannot change any behaviour.
+describe('who is allowed to reach the snapshot module', () => {
+  it('is imported only from the command paths that are meant to have it', () => {
+    // A2 asserted that nothing imported this module, which was true of that
+    // milestone and is deliberately false from A3 onward. A milestone property
+    // does not belong in a permanent test, so the assertion became this one:
+    // an allowlist.
+    //
+    // It earns its place because the module is cheap to import and tempting to
+    // reuse. Reaching it from `up` or `setup` would put certificate and service
+    // reads on a path run several times a day, and — once the online tier
+    // exists — a Docker probe with it. Adding a consumer should be a decision,
+    // which means seeing this list change in a diff.
+    const allowed = [
+      path.join('src', 'commands', 'docs.ts')
+    ];
+
     const srcDir = path.resolve(__dirname, '..', '..', '..', 'src');
 
     const walk = (dir: string): string[] =>
@@ -253,8 +265,10 @@ describe('the snapshot module is not wired up yet', () => {
       .filter((file) => !file.includes(`${path.sep}agent-context${path.sep}`))
       // Match an import specifier, not any mention of the name — a comment
       // elsewhere that refers to this module is not a dependency on it.
-      .filter((file) => /(?:from|require\()\s*'[^']*agent-context[^']*'/.test(fs.readFileSync(file, 'utf8')));
+      .filter((file) => /(?:from|require\()\s*'[^']*agent-context[^']*'/.test(fs.readFileSync(file, 'utf8')))
+      .map((file) => path.relative(path.resolve(srcDir, '..'), file))
+      .sort();
 
-    expect(importers).toEqual([]);
+    expect(importers).toEqual(allowed.sort());
   });
 });

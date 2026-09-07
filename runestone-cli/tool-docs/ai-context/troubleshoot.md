@@ -60,4 +60,10 @@ Report:
 - What you checked and what the read-only commands showed.
 - The change, or the command you are asking the user to run and why it needs them.
 
-{{BLOCK:TOPIC_INDEX}}
+Container DNS on this machine:
+{{BLOCK:DNS_STATE}}
+
+Is Runestone running:
+{{BLOCK:RUNTIME}}
+
+{{BLOCK:FOOTER}}

@@ -34,17 +34,26 @@ function scalarsOf(config: RunestoneEnv): Record<string, string> {
 }
 
 /**
- * The topic index, derived from the manifest so it cannot drift from the list
- * of topics that actually exist. Registered here because it needs no machine
- * state at all — unlike the blocks that carry facts, which arrive with the
- * snapshot module.
+ * The footer every topic ends with, derived from the manifest so it cannot
+ * advertise a topic that does not exist. This is how a bare
+ * `runestone docs --ai-context` teaches an agent that the other topics are
+ * there: discovery without changing what the default invocation means, which
+ * compatibility pins to the compose topic (spec 7.2).
+ *
+ * It lives here rather than beside the fact blocks because it needs only the
+ * manifest, and because the fact blocks live in a module that imports this one
+ * — putting it there would close an import cycle.
  */
-function renderTopicIndex(): string {
-  return TOPICS.map((topic) => `- \`runestone docs --ai-context ${topic.id}\` — ${topic.summary}`).join('\n');
+function renderFooter(): string {
+  return [
+    'More Runestone context, each a separate command:',
+    ...TOPICS.map((topic) => `- \`runestone docs --ai-context ${topic.id}\` — ${topic.summary}`)
+  ].join('\n');
 }
 
+/** Blocks that need no machine state, so every render can supply them. */
 export function manifestBlocks(): BlockRenderers {
-  return { TOPIC_INDEX: renderTopicIndex };
+  return { FOOTER: renderFooter };
 }
 
 export class UnknownTopicError extends Error {}
@@ -61,6 +70,10 @@ export function renderAiContext(
   return substitute(readTopicAsset(topicId), scalarsOf(config), { ...manifestBlocks(), ...blocks });
 }
 
-export function renderAiPromptContext(config: RunestoneEnv): string {
-  return renderAiContext(DEFAULT_TOPIC, config);
+/**
+ * Retained for one release as the compose topic under its old name. The added
+ * optional argument keeps every existing call site valid.
+ */
+export function renderAiPromptContext(config: RunestoneEnv, blocks: BlockRenderers = {}): string {
+  return renderAiContext(DEFAULT_TOPIC, config, blocks);
 }

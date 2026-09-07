@@ -31,18 +31,43 @@ function config() {
   });
 }
 
+/**
+ * The fact blocks, stubbed. This suite is about the renderer and the corpus, so
+ * it must not depend on the snapshot module; a distinctive value also makes it
+ * obvious in a failure whether a block expanded at all.
+ */
+function stubBlocks() {
+  return {
+    DOMAINS: () => '- STUB_DOMAINS',
+    USED_NAMES: () => '- STUB_USED_NAMES',
+    RUNTIME: () => '- STUB_RUNTIME',
+    WARNINGS: () => '- STUB_WARNINGS',
+    DNS_STATE: () => '- STUB_DNS_STATE'
+  };
+}
+
 describe('tool-docs renderer', () => {
-  it('renders the compose topic byte-identically to the pre-refactor output', () => {
+  it('keeps the pre-refactor output as a contiguous prefix of the compose topic', () => {
     // The fixture was produced from tool-docs/ai-prompt-context.tmp.md by the
     // renderer this module replaced, using the same values as the golden
-    // integration test. If this fails, the corpus changed the one topic that
-    // is not allowed to change without a deliberate compatibility decision.
+    // integration test.
+    //
+    // A3 appends live facts and the topic footer to this topic, which is a
+    // deliberate compatibility decision: the golden integration test asserts
+    // with `toContain`, so adding text at the end satisfies every existing
+    // assertion while changing what an agent receives for the better. A prefix
+    // check is therefore the strongest claim still available, and it is the one
+    // that matters — it proves nothing in the original brief was reordered,
+    // reworded or dropped.
     const expected = fs.readFileSync(
       path.join(packageRoot, 'tests', 'fixtures', 'tool-docs', 'compose-topic.expected.md'),
       'utf8'
     );
 
-    expect(renderAiContext('compose', config())).toBe(expected);
+    const rendered = renderAiContext('compose', config(), stubBlocks());
+
+    expect(rendered.startsWith(expected)).toBe(true);
+    expect(rendered.length).toBeGreaterThan(expected.length);
   });
 
   it('renders the corpus with LF endings, whoever checked it out', () => {
@@ -56,12 +81,12 @@ describe('tool-docs renderer', () => {
     const cr = String.fromCharCode(13);
 
     for (const topic of TOPICS) {
-      expect(renderAiContext(topic.id, config())).not.toContain(cr);
+      expect(renderAiContext(topic.id, config(), stubBlocks())).not.toContain(cr);
     }
   });
 
   it('keeps renderAiPromptContext meaning the compose topic', () => {
-    expect(renderAiPromptContext(config())).toBe(renderAiContext(DEFAULT_TOPIC, config()));
+    expect(renderAiPromptContext(config(), stubBlocks())).toBe(renderAiContext(DEFAULT_TOPIC, config(), stubBlocks()));
     expect(DEFAULT_TOPIC).toBe('compose');
   });
 
@@ -100,7 +125,7 @@ describe('tool-docs renderer', () => {
 
   it('leaves no unexpanded placeholder in any shipped topic', () => {
     for (const topic of TOPICS) {
-      const rendered = renderAiContext(topic.id, config());
+      const rendered = renderAiContext(topic.id, config(), stubBlocks());
       expect(rendered).not.toContain('{{');
       expect(rendered).not.toContain('${RUNESTONE_');
       expect(rendered.trim().length).toBeGreaterThan(0);
@@ -108,7 +133,7 @@ describe('tool-docs renderer', () => {
   });
 
   it('rejects an unknown topic', () => {
-    expect(() => renderAiContext('nope', config())).toThrow(UnknownTopicError);
+    expect(() => renderAiContext('nope', config(), stubBlocks())).toThrow(UnknownTopicError);
   });
 
   it('keeps the manifest and the asset directory in bijection', () => {
@@ -126,7 +151,7 @@ describe('tool-docs renderer', () => {
   });
 
   it('generates the topic index from the manifest', () => {
-    const rendered = renderAiContext('overview', config());
+    const rendered = renderAiContext('overview', config(), stubBlocks());
     for (const topic of TOPICS) {
       expect(rendered).toContain(`runestone docs --ai-context ${topic.id}`);
       expect(rendered).toContain(topic.summary);

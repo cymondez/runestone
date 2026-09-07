@@ -20,7 +20,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | A0 | Specification and milestones | 0 | — | **in progress**: both English documents landed; the two Traditional Chinese mirrors are deliberately held until the specification stops moving (see A0) |
 | A1 | Renderer and topic corpus | 0 | A0 | **done** — 43 suites, 606 passed, 5 skipped, no existing test file touched |
 | A2 | Offline snapshot module | 0 | — | **done** — 44 suites, 624 passed, 5 skipped |
-| A3 | `--ai-context [topic]` and `--offline` | 1 | A1, A2 | not started |
+| A3 | `--ai-context [topic]` and `--offline` | 1 | A1, A2 | **done** — 44 suites, 630 passed, 5 skipped. First user-visible milestone |
 | A4 | Online tier: collision detection | 2 | A3 | not started |
 | B1 | Marker-block ownership engine | 0 | — | not started |
 | B2 | `skill status` and `install --dry-run` | 1 | A1, B1 | not started |
@@ -193,24 +193,42 @@ The alternative was to leave the duplication in place and let the new module hol
 
 **Deliverables**
 
-- [ ] `src/commands/docs.ts` — `--ai-context [topic]` as an optional-value option, `--offline`, topic resolution, and an unknown-topic path that sets `process.exitCode = 1`, writes nothing to stdout, and lists the valid topics on stderr
-- [ ] The generated topic footer (spec 5.1), so a bare invocation advertises `state` on the first call
-- [ ] `src/i18n/index.ts` — the reworded `options.aiContext.description`, plus `options.offline.description` and `docs.aiContext.unknownTopic`, in **all three** locale tables
-- [ ] `tests/integration/cli.test.ts` — a table-driven test across every topic, and an unknown-topic test
+- [x] `src/commands/docs.ts` — `--ai-context [topic]` as an optional-value option, `--offline`, topic resolution, and an unknown-topic path that sets `process.exitCode = 1`, writes nothing to stdout, and lists the valid topics on stderr
+- [x] The generated topic footer (spec 5.1), so a bare invocation advertises `state` on the first call
+- [x] `src/i18n/index.ts` — the reworded `options.aiContext.description`, plus `options.offline.description` and `docs.aiContext.unknownTopic`, in **all three** locale tables
+- [x] `tests/integration/cli.test.ts` — a table-driven test across every topic, and an unknown-topic test
 
 **Gate**
 
-- [ ] `tests/integration/cli.test.ts:158-196` passes with **zero edits**
-- [ ] `tests/integration/cli.test.ts:198-218` passes with **zero edits**
-- [ ] Line 192's `not.toContain('${RUNESTONE_')` is strengthened to also forbid `{{` — this is a strengthening, not a change to what it asserts
-- [ ] Every topic: exit 0, `stderr === ''`, non-empty stdout, no `{{` remaining
-- [ ] Unconfigured plus every topic: exit 1 and `stdout === ''`
-- [ ] `docs --help` still contains `Options:` and `--ai-context`
-- [ ] `docs --env` and `docs --project` are still rejected
-- [ ] All three locales produce the unknown-topic error, with no key falling back to English
-- [ ] `docs --ai-context` still makes zero spawns on every offline topic
+- [x] `tests/integration/cli.test.ts:158-196` passes with **zero edits**
+- [x] `tests/integration/cli.test.ts:198-218` passes with **zero edits**
+- [x] Line 192's `not.toContain('${RUNESTONE_')` is strengthened to also forbid `{{` — this is a strengthening, not a change to what it asserts
+- [x] Every topic: exit 0, `stderr === ''`, non-empty stdout, no `{{` remaining
+- [x] Unconfigured plus every topic: exit 1 and `stdout === ''`
+- [x] `docs --help` still contains `Options:` and `--ai-context`
+- [x] `docs --env` and `docs --project` are still rejected
+- [x] All three locales produce the unknown-topic error, with no key falling back to English
+- [x] `docs --ai-context` still makes zero spawns on every offline topic
 
-**Rollback.** Single revert. The option reverts to a boolean and the command to its previous body.
+**Landed.** `runestone docs --ai-context` now takes an optional topic, and every topic carries the machine's real facts. This closes the first item of the repository `TODO`: the covered domains and the names already in use come from `listDomainCertificates` and `listServices`, both pure file reads, so they land on the path an agent already calls rather than behind a new flag.
+
+Verified on this machine: a bare invocation reports the three real wildcard certificates by their SANs, states that no routed service is registered, and ends with the footer listing the other topics.
+
+**Both golden tests pass with their assertions untouched**, because they use `toContain` rather than equality and the new content is appended. One assertion was *strengthened* rather than changed: `not.toContain('${RUNESTONE_')` had become vacuous once the corpus moved to `{{...}}`, so `not.toContain('{{')` was added beside it. Deleting the old line would have been the tempting move and would have quietly dropped a check.
+
+**The footer is derived from the manifest, and that turned out to matter immediately.** The first draft hard-coded a pointer to `runestone docs --ai-context state` as the place to find live facts. That topic does not exist until A4, so every topic would have shipped advertising a command that exits 1 — an agent following it would be worse off than one told nothing. The footer and the collision-checking guidance now both read the manifest, and the guidance names the online topic only when one is defined, falling back to `runestone service list` and the Traefik dashboard when it is not.
+
+**Two test changes worth reading.**
+
+The A1 fixture assertion moved from equality to a contiguous-prefix check. That is a real weakening and it is the strongest claim still available, since A3 appends by design; what it still proves is that nothing in the original brief was reordered, reworded or dropped.
+
+The A2 test asserting that nothing imported the snapshot module had to go, because A3 is what imports it. Rather than delete it, it became an allowlist: the snapshot module may be reached only from `src/commands/docs.ts`. It earns its place because the module is cheap to import and tempting to reuse — reaching it from `up` or `setup` would put certificate and service reads, and later a Docker probe, on a path run several times a day. Adding a consumer should be visible in a diff. Verified by adding an import to `up.ts` and confirming the test names the file.
+
+The general lesson, recorded because it will recur: **a milestone property does not belong in a permanent test.** "Nothing imports this yet" was true of A2 and is deliberately false afterwards.
+
+**`--offline` is accepted and already correct**, since every shipped topic is offline. It is wired now rather than in A4 so that the flag and the tier split arrive together in the interface, and A4 only has to add a second tier behind an existing seam.
+
+**Rollback.** Single revert. `docs.ts` returns to a boolean flag, the assets keep their blocks but nothing renders them, and the two i18n keys become unused.
 
 ## A4 — Online tier: collision detection
 
@@ -457,7 +475,7 @@ The handshake test is the most valuable item here: it is the only one that catch
 ## Current state of the repository
 
 - The branch is `feat/skill-support`, cut from `develop` at `ba67a7e`, which is where `main` and `origin/develop` also sit. Nothing unmerged is inherited.
-- `runestone-cli` is at 2.0.0. The agent-facing surface is one command, `docs --ai-context`, rendering one 59-line template through a 22-line substituter.
+- `runestone-cli` is at 2.0.0. The agent-facing surface is `docs --ai-context [topic]` over four topics, carrying offline machine facts. Phase A is three milestones in; A4 adds the online tier and the `state` topic.
 - **There is no CI.** Every gate in this document is run by hand.
 - Publishing is manual and the order is fixed: merge to `develop`, merge to `main`, then publish to npm.
 - Three cleanups were found during A0 and deliberately left out of this branch: the three locale tables have no automated key-parity test, `service.validation.urlNoPath` is an orphan key, and `certs list` and `service list` compute column widths with `String.length` instead of the CJK-aware helper that already exists.

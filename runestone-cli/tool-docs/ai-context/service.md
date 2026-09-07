@@ -56,4 +56,10 @@ Report:
 - Whether a certificate already covered the domain.
 - Anything you had to assume.
 
-{{BLOCK:TOPIC_INDEX}}
+Hostnames available on this machine:
+{{BLOCK:DOMAINS}}
+
+Names already taken:
+{{BLOCK:USED_NAMES}}
+
+{{BLOCK:FOOTER}}

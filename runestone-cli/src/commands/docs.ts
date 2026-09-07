@@ -1,22 +1,36 @@
 import { Command } from 'commander';
 import * as p from '@clack/prompts';
 import { openUrl } from '../services/browser-opener';
+import { contextBlocks } from '../services/agent-context/render';
+import { buildOfflineSnapshot } from '../services/agent-context/snapshot';
 import { envLoader } from '../utils/env-loader';
-import { renderAiPromptContext } from '../utils/tool-docs';
+import { DEFAULT_TOPIC, findTopic, renderAiContext, topicIds } from '../utils/tool-docs';
 import { logger } from '../utils/logger';
 import { t, formatMessage, resolveLocale } from '../i18n';
 import { createCommand } from '../utils/command';
 
 interface DocsOptions {
-  aiContext?: boolean;
+  /**
+   * `true` when the flag is given with no value, which is what it has always
+   * meant and must keep meaning: a bare `--ai-context` is the compose topic.
+   * The README ships example prompts containing that exact invocation.
+   */
+  aiContext?: boolean | string;
+  offline?: boolean;
 }
 
 const README_URL = 'https://github.com/cymondez/runestone#readme';
 
+function resolveTopic(value: boolean | string): string | undefined {
+  const id = typeof value === 'string' ? value.trim() : DEFAULT_TOPIC;
+  return findTopic(id) ? id : undefined;
+}
+
 export function createDocsCommand(): Command {
   const command = createCommand('docs')
     .description(t('commands.docs.description'))
-    .option('--ai-context', t('options.aiContext.description'))
+    .option('--ai-context [topic]', t('options.aiContext.description'))
+    .option('--offline', t('options.offline.description'))
     .action(async (options: DocsOptions) => {
       if (!options.aiContext) {
         const locale = resolveLocale();
@@ -44,6 +58,15 @@ export function createDocsCommand(): Command {
         return;
       }
 
+      const topic = resolveTopic(options.aiContext);
+      if (!topic) {
+        // Nothing on stdout. Exit 1 with an empty stdout is the contract that
+        // says "this output is unusable, do not paste it into a prompt".
+        logger.error(t('docs.aiContext.unknownTopic', { topics: topicIds().join(', ') }));
+        process.exitCode = 1;
+        return;
+      }
+
       const config = envLoader.load();
       if (!envLoader.hasRequiredVars(config)) {
         logger.error(t('docs.aiContext.notConfigured'));
@@ -51,7 +74,14 @@ export function createDocsCommand(): Command {
         return;
       }
 
-      process.stdout.write(renderAiPromptContext(config));
+      // Offline only for now: every shipped topic is offline, so `--offline` is
+      // accepted and already correct. The online tier arrives with the topic
+      // that needs it, and this is the seam it plugs into.
+      const snapshot = buildOfflineSnapshot(config);
+
+      // `process.exitCode` rather than `process.exit()` so buffered stdout
+      // flushes — the output is meant to be piped.
+      process.stdout.write(renderAiContext(topic, config, contextBlocks(snapshot)));
     });
 
   return command;

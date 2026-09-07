@@ -66,6 +66,10 @@ Project-integration writes, fine to run as part of the task you were given:
 - A hostname with no certificate covering it still routes, but the browser warns. Coverage is by wildcard and one level deep only.
 - Do not assume the service name, the port, the hostname, or whether `COMPOSE_PROJECT_NAME` is set. Read them from this project, and ask when a value is not discoverable.
 
+## Anything to flag on this machine
+
+{{BLOCK:WARNINGS}}
+
 ## Topics
 
-{{BLOCK:TOPIC_INDEX}}
+{{BLOCK:FOOTER}}

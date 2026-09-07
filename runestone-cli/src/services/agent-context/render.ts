@@ -12,6 +12,7 @@
  * "no collisions found" out of "I could not check for collisions".
  */
 
+import { BlockRenderers, TOPICS } from '../../utils/tool-docs';
 import { AgentContextSnapshot } from './snapshot';
 
 function bullets(lines: string[]): string {
@@ -81,9 +82,11 @@ export function renderUsedNames(snapshot: AgentContextSnapshot): string {
         'Treat a name as unverified rather than free. `runestone status` shows whether Runestone is running.'
     );
   } else {
+    const live = liveFactsTopic();
     lines.push(
-      'Names registered by other projects were not checked. Run ' +
-        '`runestone docs --ai-context state` to include them.'
+      live
+        ? `Names registered by other projects were not checked. Run \`runestone docs --ai-context ${live}\` to include them.`
+        : 'Names registered by other projects were not checked. Verify against `runestone service list` and the Traefik dashboard before committing to a name.'
     );
   }
 
@@ -129,4 +132,29 @@ export function renderDnsState(snapshot: AgentContextSnapshot): string {
           'Enabling it restarts the Docker daemon and stops every container on the machine, so do not run ' +
           '`runestone dns enable` yourself; tell the user it exists.'
       ]);
+}
+
+/**
+ * The topic carrying live facts, if this release defines one. Derived rather
+ * than named, so guidance can never point at a topic the manifest does not
+ * define — an agent following a command that errors is worse off than an agent
+ * simply told the facts were not checked.
+ */
+function liveFactsTopic(): string | undefined {
+  return TOPICS.find((topic) => topic.tier === 'online')?.id;
+}
+
+/**
+ * Wires the snapshot to the block names the corpus uses. Lives here rather
+ * than in the renderer because the renderer must not know what a certificate
+ * is; it substitutes text and nothing else.
+ */
+export function contextBlocks(snapshot: AgentContextSnapshot): BlockRenderers {
+  return {
+    DOMAINS: () => renderDomains(snapshot),
+    USED_NAMES: () => renderUsedNames(snapshot),
+    RUNTIME: () => renderRuntime(snapshot),
+    WARNINGS: () => renderWarnings(snapshot),
+    DNS_STATE: () => renderDnsState(snapshot)
+  };
 }

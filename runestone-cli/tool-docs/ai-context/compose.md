@@ -57,3 +57,11 @@ Final answer should report:
 - Hostname.
 - Expected URL.
 - Assumptions.
+
+Hostnames available on this machine:
+{{BLOCK:DOMAINS}}
+
+Names already taken — a router or service ID collision is global to Traefik, not scoped per project:
+{{BLOCK:USED_NAMES}}
+
+{{BLOCK:FOOTER}}

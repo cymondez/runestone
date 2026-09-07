@@ -190,6 +190,10 @@ describe('runestone CLI integration', () => {
       expect(result.stdout).toContain('traefik.http.routers.<router-id>.rule=Host(`<host-prefix>.example.test`)');
       expect(result.stdout).toContain('traefik.docker.network=mylab-network');
       expect(result.stdout).not.toContain('${RUNESTONE_');
+      // The corpus moved to {{...}} because the old delimiter collides with the
+      // Compose interpolation the brief has to emit verbatim. Without this line
+      // the assertion above no longer proves anything.
+      expect(result.stdout).not.toContain('{{');
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -212,6 +216,166 @@ describe('runestone CLI integration', () => {
       expect(result.stdout).toBe('');
       expect(result.stderr).toContain('Runestone is not configured yet');
       expect(result.stderr).toContain('runestone setup');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('prints every agent context topic offline, with a clean stderr', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-cli-docs-topics-'));
+    const homeDir = path.join(tempDir, 'home');
+    const projectDir = path.join(homeDir, '.runestone');
+
+    try {
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDir, '.env'),
+        ['HOST_DOMAIN=example.test', 'PREFIX=mylab', 'WEB_ENTRYPOINT_NAME=plain', 'WEB_SECURE_ENTRYPOINT_NAME=secure'].join('\n'),
+        'utf8'
+      );
+
+      // Every shipped topic is offline, so each must succeed with no Docker on
+      // this machine and must not write to stderr — that empty stderr is what
+      // makes stdout safe to pipe straight into a prompt.
+      for (const topic of ['compose', 'service', 'troubleshoot', 'overview']) {
+        const result = runCli(['docs', '--ai-context', topic], {
+          HOME: homeDir,
+          USERPROFILE: homeDir,
+          RUNESTONE_TOOL_STATE_PATH: path.join(tempDir, 'runestone.config.json')
+        });
+
+        expect(result.status).toBe(0);
+        expect(result.stderr).toBe('');
+        expect(result.stdout.length).toBeGreaterThan(0);
+        expect(result.stdout).not.toContain('{{');
+        // The footer is what makes the other topics discoverable from a bare
+        // invocation, so it has to be on every one of them.
+        expect(result.stdout).toContain('More Runestone context');
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports the second integration path, which the old context omitted', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-cli-docs-service-'));
+    const homeDir = path.join(tempDir, 'home');
+    const projectDir = path.join(homeDir, '.runestone');
+
+    try {
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(path.join(projectDir, '.env'), 'HOST_DOMAIN=example.test\nPREFIX=mylab\n', 'utf8');
+
+      const result = runCli(['docs', '--ai-context', 'service'], {
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        RUNESTONE_TOOL_STATE_PATH: path.join(tempDir, 'runestone.config.json')
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('runestone service add');
+      // The mirror image of the label-path mistake: localhost inside the
+      // Runestone container is that container.
+      expect(result.stdout).toContain('host.docker.internal');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an unknown topic and names the valid ones', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-cli-docs-badtopic-'));
+    const homeDir = path.join(tempDir, 'home');
+    const projectDir = path.join(homeDir, '.runestone');
+
+    try {
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(path.join(projectDir, '.env'), 'HOST_DOMAIN=example.test\nPREFIX=mylab\n', 'utf8');
+
+      const result = runCli(['docs', '--ai-context', 'nope'], {
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        RUNESTONE_TOOL_STATE_PATH: path.join(tempDir, 'runestone.config.json')
+      });
+
+      expect(result.status).toBe(1);
+      // Empty stdout is the contract: exit 1 means this output is unusable, so
+      // an agent piping stdout must never receive a partial document.
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain('Unknown topic');
+      expect(result.stderr).toContain('compose');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('requires setup before printing any topic, not just the default', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-cli-docs-unconfigured-topics-'));
+    const homeDir = path.join(tempDir, 'home');
+
+    try {
+      fs.mkdirSync(homeDir, { recursive: true });
+
+      for (const topic of ['compose', 'service', 'troubleshoot', 'overview']) {
+        const result = runCli(['docs', '--ai-context', topic], {
+          HOME: homeDir,
+          USERPROFILE: homeDir,
+          RUNESTONE_TOOL_STATE_PATH: path.join(tempDir, 'runestone.config.json')
+        });
+
+        expect(result.status).toBe(1);
+        expect(result.stdout).toBe('');
+        expect(result.stderr).toContain('runestone setup');
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts --offline on the context path', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-cli-docs-offline-'));
+    const homeDir = path.join(tempDir, 'home');
+    const projectDir = path.join(homeDir, '.runestone');
+
+    try {
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(path.join(projectDir, '.env'), 'HOST_DOMAIN=example.test\nPREFIX=mylab\n', 'utf8');
+
+      const result = runCli(['docs', '--ai-context', '--offline'], {
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        RUNESTONE_TOOL_STATE_PATH: path.join(tempDir, 'runestone.config.json')
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toContain('# Runestone AI Compose Context');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('localizes the unknown-topic error in all three languages', () => {
+    // MessageKey is derived from the `en` table alone, so a missing zh-TW or
+    // ja-JP entry compiles and silently falls back to English at runtime.
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-cli-docs-locale-'));
+    const homeDir = path.join(tempDir, 'home');
+    const projectDir = path.join(homeDir, '.runestone');
+
+    try {
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(path.join(projectDir, '.env'), 'HOST_DOMAIN=example.test\nPREFIX=mylab\n', 'utf8');
+
+      const env = {
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        RUNESTONE_TOOL_STATE_PATH: path.join(tempDir, 'runestone.config.json')
+      };
+
+      const zh = runCli(['docs', '--ai-context', 'nope'], { ...env, RUNESTONE_LANG: 'zh-TW' });
+      expect(zh.stderr).toContain('未知的主題');
+
+      const ja = runCli(['docs', '--ai-context', 'nope'], { ...env, RUNESTONE_LANG: 'ja-JP' });
+      expect(ja.stderr).toContain('不明なトピック');
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
