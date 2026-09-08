@@ -452,7 +452,8 @@ describe('runestone CLI integration', () => {
     expect(messages.map((message) => message.id)).toEqual([1, 2]);
     expect(messages[0].result.protocolVersion).toBe('2025-06-18');
     expect(messages[1].result.tools.map((tool: { name: string }) => tool.name)).toEqual([
-      'runestone_context',
+      'runestone_integration_guide',
+      'runestone_troubleshoot',
       'runestone_status',
       'runestone_check_name'
     ]);

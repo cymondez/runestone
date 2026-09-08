@@ -122,11 +122,13 @@ Costs we refuse to pay: we do not overwrite a file we did not generate, we do no
 | `state` | Covered domains, certificate validity, registered services and routes, names taken by other projects, container state | **Online** |
 | `troubleshoot` | Symptom to cause: 404, 502, TLS warning, and "works in the browser, fails from another container" | Offline |
 | `overview` | What Runestone is, how to choose between the two paths, the topic index, and the guardrail list | Offline |
-| `all` | `overview`, `compose`, `service`, `state`, `troubleshoot`, in that order, separated by `---` | Online |
+| `all` | `overview`, `compose`, `service`, `state`, `troubleshoot`, in that order, separated by `---`. **A CLI value only**, with no MCP equivalent — see 11.2 | Online |
 
 `certs`, `dns` and `commands` are deliberately **not** separate topics. Certificate rules only mean something at the moment of choosing a hostname, so they belong in `service` and `compose`. DNS only matters as the cause of a symptom, so it belongs in `troubleshoot`. The command inventory *is* `overview`. Every additional topic costs the agent a round trip.
 
 **The guardrail list is required even though this feature does not teach installation** — precisely because it does not. It must name, with the reason attached, the commands whose effects reach beyond the project: `dns enable` and `dns disable` (restart the Docker daemon, terminating every container on the machine), `certs install` (needs elevation, modifies the system trust store), `down` (removes the environment), `setup` (rewrites configuration), and `up` and `stop` (change what is running).
+
+`all` concatenates in the order above, which is deliberately not the manifest's own order: `overview` comes first because it explains how to choose between the two integration paths, and reading the specifics before that choice is backwards.
 
 **Discovery is solved by a footer, not by changing a default.** Every topic ends with the same generated block listing the other topic names and the literal command lines. A bare `runestone docs --ai-context` therefore teaches the agent that `state` exists on the very first call.
 
@@ -403,19 +405,38 @@ Three smaller reasons: stdio has no lifecycle for Runestone to own, because the 
 
 ### 11.2 Tools
 
-Three, all read-only, all annotated `readOnlyHint: true`.
+Four, all read-only, all annotated `readOnlyHint: true`. **None takes a topic.**
 
 | Tool | Input | Returns |
 | --- | --- | --- |
-| `runestone_context` | `topic` (default `overview`), `offline` | The rendered topic; the structured snapshot when the topic is `state` or `all` |
+| `runestone_integration_guide` | `offline` | How to connect this project: both paths, how to choose between them, the field rules, and the commands the agent must not run |
+| `runestone_troubleshoot` | `offline` | Symptom to cause: 404, 502, TLS warning, and "works in the browser, fails from another container" |
 | `runestone_status` | `offline` | The snapshot, plus a short text summary |
 | `runestone_check_name` | `serviceName`, `route`, `offline` | Whether each is available, why not, the covering certificate if any, and the `certs create` command if not |
 
-`runestone_context` defaults to `overview` rather than `compose`: the CLI default is pinned by compatibility, the MCP default is new and free, and an agent arriving through MCP wants the index.
+**There is no `topic` parameter, and its removal is a correction rather than a simplification.** The first version of this surface mirrored the CLI's topic split onto MCP, without asking whether the constraint that produced that split still applied. It does not.
+
+The split exists because a CLI invocation is a process and its output goes into a prompt whose context is scarce, so fetching one topic beats fetching five. On MCP neither holds: the client keeps the connection open, so a second call is nearly free, and **tool selection already exists** — the model chooses a tool from `tools/list` by its description. A `topic` enum makes it choose twice, and the inner choice has to be made *before* it has seen anything that would inform it.
+
+Worse, one enum was doing three unrelated jobs:
+
+| Former topic | Actual intent | Why it did not belong |
+| --- | --- | --- |
+| `overview`, `compose`, `service` | "How do I connect this project?" | One intent split three ways. `overview`'s whole job is to say "choose between these two paths", so splitting it demanded a guess before supplying the basis for the guess |
+| `troubleshoot` | "It is broken, why?" | A different intent, and therefore a different tool |
+| `state` | "What is true right now?" | Already `runestone_status`: the same snapshot, only rendered as prose instead of returned as data |
+
+Measured, so the size objection is answered rather than waved away: `overview` is 4.3 KB, `compose` 3.3 KB and `service` 5.0 KB, so the merged guide is about 12 KB. The shape it replaces cost 4.3 KB for the index, then a guess, then 3.3 or 5.0 KB — and a wrong guess cost both. One call of 12 KB is the cheaper path as well as the simpler one.
+
+Going from three tools to four is a real cost, and section 11.2 elsewhere argues that every extra tool degrades tool selection. It is accepted here because four well-named tools are easier for a model to choose between than three where one carries a six-value enum.
+
+**`all` is a CLI value and has no MCP equivalent** (section 5.1). It exists so a human can paste everything at once, where a second invocation costs a process and possibly another human action. On MCP that need does not arise, and a 20 KB dump works against the reason the corpus is split at all.
+
+**The corpus is shared; only the access shape differs.** Both surfaces render the same topic assets through the same renderer. What changed is how a caller asks for them, because the two callers select differently.
 
 `runestone_check_name` is the tool that prevents wrong edits, and it is composed entirely of existing validators — `validateServiceName`, `normalizeRouteDomain`, `serviceExists`, `assertNoTraefikNameConflict`, `assertNoTraefikHostConflict`, `findCoveringCertificate`. Their exceptions become an unavailable verdict with a reason; nothing throws.
 
-Separate list-certificates and list-services tools are deliberately omitted: they are already fields of `runestone_status`, and every extra tool degrades tool selection.
+Separate list-certificates and list-services tools are deliberately omitted: they are already fields of `runestone_status`.
 
 ### 11.3 Read-only, as a design constraint
 
@@ -556,5 +577,6 @@ Sequenced in `SKILL-MILESTONES.md`, which records progress and gates. Phases A, 
 | C2 | `runestone mcp serve`, read-only | 3 |
 | C3 | `mcp config`, documentation, release | 1 |
 | B5 | User scope | 3 |
+| C4 | MCP tool surface: drop the topic enum | 3 |
 
 A3 is the first user-visible milestone.

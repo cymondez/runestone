@@ -122,11 +122,13 @@ Runestone 有兩種結構上完全不同的方式可以把流量導到一個專�
 | `state` | 被覆蓋的 domain、憑證有效性、已註冊的 service 與 route、其他專案佔用的名稱、容器狀態 | **線上** |
 | `troubleshoot` | 症狀對因：404、502、TLS 警告、以及「瀏覽器通但另一個容器不通」 | 離線 |
 | `overview` | Runestone 是什麼、兩條路怎麼選、主題索引、護欄清單 | 離線 |
-| `all` | `overview`、`compose`、`service`、`state`、`troubleshoot`，依此順序，以 `---` 分隔 | 線上 |
+| `all` | `overview`、`compose`、`service`、`state`、`troubleshoot`，依此順序，以 `---` 分隔。**只是 CLI 的值**，沒有 MCP 對應 —— 見 11.2 | 線上 |
 
 `certs`、`dns`、`commands` 刻意**不**拆成獨立主題。憑證規則只有在選 hostname 的當下才有意義，所以它屬於 `service` 與 `compose`。DNS 只有作為某個症狀的成因時才重要，所以它屬於 `troubleshoot`。指令清單**就是** `overview`。每多一個主題，就多一次 agent 的來回。
 
 **護欄清單是必要的，即使這個功能不教安裝** —— 正因為它不教。它必須點名那些效果會超出專案範圍的指令並附上理由：`dns enable` 與 `dns disable`（重啟 Docker daemon，終止機器上每一個容器）、`certs install`（需要提權、修改系統信任存放區）、`down`（移除環境）、`setup`（重寫設定）、以及 `up` 與 `stop`（改變執行中的東西）。
+
+`all` 依上表順序串接，而那刻意不是 manifest 自己的順序：`overview` 排最前，因為它說明兩條接入路徑該怎麼選，而在得到那個判斷依據之前先讀細節是顛倒的。
 
 **可發現性靠 footer 解決，不靠改預設。** 每個主題結尾都是同一段產生的區塊，列出其他主題名稱與字面指令列。因此無參數的 `runestone docs --ai-context` 會在第一次呼叫時就教會 agent `state` 的存在。
 
@@ -403,19 +405,38 @@ parent 自己沒有 option，因為 `tests/integration/cli.test.ts:106` 斷言�
 
 ### 11.2 工具
 
-三個，全部唯讀，全部標註 `readOnlyHint: true`。
+四個，全部唯讀，全部標註 `readOnlyHint: true`。**沒有一個接受 topic。**
 
 | 工具 | 輸入 | 回傳 |
 | --- | --- | --- |
-| `runestone_context` | `topic`（預設 `overview`）、`offline` | 渲染後的主題；主題是 `state` 或 `all` 時另附結構化 snapshot |
+| `runestone_integration_guide` | `offline` | 這個專案怎麼接：兩條路徑、哪一條適用、欄位規則，以及 agent 不得執行的指令 |
+| `runestone_troubleshoot` | `offline` | 症狀對因：404、502、TLS 警告，以及「瀏覽器通但另一個容器不通」 |
 | `runestone_status` | `offline` | snapshot，加一段簡短文字摘要 |
 | `runestone_check_name` | `serviceName`、`route`、`offline` | 各自是否可用、不可用的原因、有無覆蓋憑證、沒有的話該跑哪一條 `certs create` |
 
-`runestone_context` 預設 `overview` 而不是 `compose`：CLI 的預設被相容性釘住，MCP 的預設是新的、免費的，而經由 MCP 抵達的 agent 要的是索引。
+**沒有 `topic` 參數，而移除它是一次修正而不是一次簡化。** 這個介面的第一版把 CLI 的主題拆分照搬過來，沒有先問產生那個拆分的約束是否仍然成立。它不成立。
+
+拆分之所以存在，是因為 CLI 呼叫是一個行程、而它的輸出要進稀缺的 prompt context，所以拿一個主題勝過拿五個。在 MCP 上兩者都不成立：client 保持連線，所以第二次呼叫幾乎免費，而且**選擇機制本來就存在** —— 模型從 `tools/list` 依 description 挑工具。`topic` enum 讓它選兩次，而內層那次必須在它看到任何能提供判斷依據的東西之前做出。
+
+更糟的是，一個 enum 同時在做三件不相關的事：
+
+| 原本的主題 | 實際意圖 | 為什麼它不該在那裡 |
+| --- | --- | --- |
+| `overview`、`compose`、`service` | 「這個專案怎麼接？」 | 同一個意圖被拆成三份。`overview` 的全部工作就是說「從這兩條路選一條」，拆開它等於要求先猜、再提供猜的依據 |
+| `troubleshoot` | 「壞了，為什麼？」 | 不同的意圖，因此該是不同的工具 |
+| `state` | 「現在什麼是真的？」 | 已經是 `runestone_status`：同一份 snapshot，只是渲染成散文而不是回傳成資料 |
+
+體積這個反對意見是量測過的，不是被揮手帶過：`overview` 4.3 KB、`compose` 3.3 KB、`service` 5.0 KB，所以合併後的指南約 12 KB。它取代的形狀是 4.3 KB 的索引、然後一次猜、然後 3.3 或 5.0 KB —— 而猜錯就兩份都付。一次 12 KB 既是比較便宜的路，也是比較簡單的路。
+
+從三個工具變成四個是真的代價，而 §11.2 別處正是主張每多一個工具就讓工具選擇變差一分。這裡接受它：四個命名清楚的工具，對模型來說比三個裡有一個帶六個值 enum 的更好選。
+
+**`all` 是 CLI 的值，沒有 MCP 對應**（§5.1）。它存在是為了讓人一次貼走全部，而在 CLI 上第二次呼叫要付一個行程、可能還要人再動一次手。在 MCP 上那個需求不會出現，而一次倒 20 KB 正好違背語料被拆分的理由。
+
+**語料是共用的；不同的只有取用形狀。** 兩個介面都透過同一個 renderer 渲染同一批主題資產。改變的是呼叫者怎麼要求它們，因為兩個呼叫者的選擇方式本來就不同。
 
 `runestone_check_name` 是真正防止錯誤編輯的那一個，而且它完全由既有 validator 組成 —— `validateServiceName`、`normalizeRouteDomain`、`serviceExists`、`assertNoTraefikNameConflict`、`assertNoTraefikHostConflict`、`findCoveringCertificate`。它們的例外變成「不可用」的判定加上理由；不會有任何東西 throw。
 
-刻意不提供獨立的「列憑證」與「列 service」工具：它們已經是 `runestone_status` 的欄位，而每多一個工具就讓工具選擇變差一分。
+刻意不提供獨立的「列憑證」與「列 service」工具：它們已經是 `runestone_status` 的欄位。
 
 ### 11.3 唯讀，作為設計約束
 
@@ -556,5 +577,6 @@ stdout 只承載 protocol frame，別無其他。
 | C2 | `runestone mcp serve`，唯讀 | 3 |
 | C3 | `mcp config`、文件、發版 | 1 |
 | B5 | 使用者範圍 | 3 |
+| C4 | MCP 工具介面：拿掉 topic enum | 3 |
 
 A3 是第一個使用者可見的里程碑。

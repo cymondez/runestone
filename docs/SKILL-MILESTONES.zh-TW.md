@@ -30,6 +30,7 @@
 | C2 | `runestone mcp serve`，唯讀 | 3 | A2 | **完成** —— 49 suites、768 通過、5 skipped。手寫協定層；production 依賴維持 13 不變 |
 | C3 | `mcp config`、文件、發版 | 1 | C2 | **完成** —— 49 suites、773 通過、5 skipped |
 | B5 | 使用者範圍 | 3 | B4 | **完成** —— 49 suites、788 通過、5 skipped。於 Windows 驗證；gate 的 Linux 那一半未達成 |
+| C4 | MCP 工具介面：拿掉 topic enum | 3 | C2 | **完成** —— 49 suites、792 通過、5 skipped。移除一個已出貨的參數；為什麼它是錯的見下 |
 
 A1、A2、B1、C1 都是風險 0 且彼此獨立，可以並行。A3 是第一個使用者可見的里程碑。
 
@@ -592,6 +593,51 @@ Gate 項目也跟著移動:規格的 `SKILL.md` 約束在 B3 以離線方式斷�
 憑「它應該一樣」去打勾一條 gate,是這份文件明文禁止的,而且禁得對。因為一條 gate 對這個功能從來就不成立而撤回它,是另一回事,而這段註記就是那個成立理由。
 
 **回收。** 單一 revert。中性退路與別名列示本身有它們的價值,但會跟其餘部分一起乾淨地 revert。
+
+## C4 —— MCP 工具介面：拿掉 topic enum
+
+**目標。** 從 MCP 介面移除 `topic` 參數，因為產生它的那個約束在那裡不成立。
+
+**風險等級 3** —— 它改動一個已經出貨的介面。
+
+**交付項目**
+
+- [x] 規格 11.2 改寫：四個工具、沒有 topic，含理由與量測
+- [x] 規格 5.1：`all` 標記為 CLI 專屬、沒有 MCP 對應，並寫明它的順序
+- [x] `runestone_integration_guide` 與 `runestone_troubleshoot` 取代 `runestone_context`
+- [x] CLI 實作 `--ai-context all` —— 它被規格寫著卻不存在
+- [x] manifest 加上 `ALL_TOPIC` 與 `ALL_TOPIC_ORDER`，讓順序只寫一次
+- [x] `runestone docs --help` 列出每一個主題並附在地化說明
+- [x] 測試、三語使用者文件、changelog
+
+**Gate**
+
+- [x] 沒有任何工具接受 `topic`，也沒有任何工具的 input schema 含 `enum`
+- [x] 每一個語料主題都恰好抵達一個工具，對 manifest 斷言
+- [x] 指南在一次呼叫裡包含兩條接入路徑與護欄清單
+- [x] 指南與疑難排解樹即使沒給 `offline` 也**零**探測
+- [x] `--ai-context all` exit 0 並渲染每一個主題，`overview` 開頭
+- [x] `--ai-context all --offline` 渲染全部五個且不探測
+- [x] `docs --help` 在三個 locale 都列出每一個主題
+- [x] 行程層 handshake 以四個新名稱仍然通過
+
+**已落地。** 四個工具，沒有一個帶 topic。49 suites、792 個測試。
+
+**這個里程碑存在，是因為擁有者問了「MCP 為什麼需要 topic？」而誠實的答案是它不需要。** 第一版把 CLI 的形狀照搬到 MCP，沒有先問產生那個形狀的約束是否仍然成立。它不成立：CLI 呼叫是一個行程、輸出要進稀缺的 prompt context，所以拿一個主題勝過拿五個 —— 但在 MCP 上連線是開著的，第二次呼叫幾乎免費，而且**選擇機制本來就存在**。topic enum 讓模型選兩次，而內層那次必須在它看到任何能提供判斷依據的東西**之前**做出。
+
+而且一個 enum 同時在做三件不相關的事：`overview`／`compose`／`service` 是同一個意圖被拆成三份、`troubleshoot` 是不同意圖、而 `state` 與 `runestone_status` 重複。
+
+體積這個反對意見是量測而不是辯論：`overview` 4.3 KB、`compose` 3.3 KB、`service` 5.0 KB，所以合併後的指南約 12 KB —— 而它取代的形狀是 4.3 KB 的索引、然後一次猜、然後 3.3 或 5.0 KB，猜錯就兩份都付。一次 12 KB 既比較便宜也比較簡單。
+
+三個工具變成四個，而規格 11.2 別處正是反對這件事的。接受：四個命名清楚的工具，對模型來說比三個裡有一個帶六個值 enum 的更好選。
+
+**`--ai-context all` 根本不存在，而我跟擁有者說它存在。** 被問到有哪些主題時，我照規格回答而不是照程式碼 —— 規格列了 `all`，而 `resolveTopic` 只查 manifest，所以它 exit 1。MCP 那側有。已在 CLI 實作，並照規格 5.1 陳述的順序，那個順序刻意不是 manifest 的順序：`overview` 開頭，因為在得到判斷依據之前先讀細節是顛倒的。MCP 的 `all` 隨 enum 一起消失，所以兩個介面不再需要就它達成一致。
+
+**一個靠讀程式碼而不是靠測試抓到的分層 bug。** `all` 含線上主題，但 `findTopic('all')` 回傳 undefined，所以第一版實作會安靜地落到離線層，把 state 主題渲染成「沒去查」。`all` 現在明確是線上的。
+
+**help 的主題列示就是最初的那個請求，而且它是從 manifest 推導的。** 那個選項描述寫著「可指定主題」卻從來沒說有哪些，所以唯一的查法是猜錯一次 —— 而這個里程碑正是這樣開始的。列示由 manifest 產生、標籤在地化，並標出預設與那兩個會查 Docker 的，所以新主題不需要有人記得去加就會出現。
+
+**回收。** 單一 revert。`runestone_context` 回來、CLI 失去 `all`、help 失去主題列示。
 
 ## 證據紀錄
 

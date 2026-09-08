@@ -30,6 +30,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | C2 | `runestone mcp serve`, read-only | 3 | A2 | **done** — 49 suites, 768 passed, 5 skipped. Hand-written protocol layer; production dependencies unchanged at 13 |
 | C3 | `mcp config`, documentation, release | 1 | C2 | **done** — 49 suites, 773 passed, 5 skipped |
 | B5 | User scope | 3 | B4 | **done** — 49 suites, 788 passed, 5 skipped. Verified on Windows; the Linux half of the gate is not met |
+| C4 | MCP tool surface: drop the topic enum | 3 | C2 | **done** — 49 suites, 792 passed, 5 skipped. Removes a shipped parameter; see below for why it was wrong |
 
 A1, A2, B1 and C1 are all risk 0 and independent of one another; they can proceed in parallel. A3 is the first user-visible milestone.
 
@@ -592,6 +593,51 @@ Ticking a gate on the strength of "it should behave the same" is forbidden by th
 - [x] A full install, status and remove cycle under `RUNESTONE_SKILL_HOME`, with the real `~/.claude`, `~/.codex` and `~/.agents` **provably untouched** by a hash taken before and after
 - [x] Verified by hand on Windows. **The Linux half was withdrawn as unjustified, not skipped** — see below
 - [x] An existing `~/.codex/AGENTS.md` with the user's own content survives insert, replace and remove byte-identically outside the span
+
+## C4 — MCP tool surface: drop the topic enum
+
+**Goal.** Remove the `topic` parameter from the MCP surface, because the constraint that produced it does not apply there.
+
+**Risk level 3** — it changes a shipped interface.
+
+**Deliverables**
+
+- [x] Specification 11.2 rewritten: four tools, no topic, with the reasoning and the measurement
+- [x] Specification 5.1: `all` marked as a CLI value with no MCP equivalent, and its ordering stated
+- [x] `runestone_integration_guide` and `runestone_troubleshoot` replace `runestone_context`
+- [x] `--ai-context all` implemented on the CLI, where it did not exist despite being specified
+- [x] `ALL_TOPIC` and `ALL_TOPIC_ORDER` in the manifest, so the order is stated once
+- [x] `runestone docs --help` lists every topic with a localized description
+- [x] Tests, the three-language user documentation, and the changelog
+
+**Gate**
+
+- [x] No tool takes a `topic`, and no tool's input schema contains an `enum`
+- [x] Every corpus topic reaches exactly one tool, asserted against the manifest
+- [x] The guide contains both integration paths and the guardrail list in one call
+- [x] The guide and the troubleshooting tree make **zero** probes even without `offline`
+- [x] `--ai-context all` exits 0 and renders every topic, `overview` first
+- [x] `--ai-context all --offline` renders all five without probing
+- [x] `docs --help` names every topic in all three locales
+- [x] The process-level handshake still passes, with the four new names
+
+**Landed.** Four tools, none with a topic. 49 suites, 792 tests.
+
+**This milestone exists because the owner asked "why does MCP need topics?" and the honest answer was that it does not.** The first version mirrored the CLI's shape onto MCP without asking whether the constraint that produced it still held. It does not: a CLI invocation is a process and its output goes into scarce prompt context, so fetching one topic beats fetching five — but on MCP the connection stays open, a second call is nearly free, and **tool selection already exists**. A topic enum made the model choose twice, and the inner choice had to be made before it had seen anything that would inform it.
+
+One enum was also doing three unrelated jobs: `overview`/`compose`/`service` were one intent split three ways, `troubleshoot` was a different intent, and `state` duplicated `runestone_status`.
+
+The size objection was measured rather than argued: `overview` 4.3 KB, `compose` 3.3 KB, `service` 5.0 KB, so the merged guide is about 12 KB — against 4.3 KB for the index, then a guess, then 3.3 or 5.0 KB, with a wrong guess costing both. One call of 12 KB is the cheaper path as well as the simpler one.
+
+Three tools became four, which section 11.2 elsewhere argues against. Accepted: four well-named tools are easier for a model to choose between than three where one carries a six-value enum.
+
+**`--ai-context all` did not exist, and I had told the owner it did.** Asked to list the topics, I answered from the specification rather than from the code — and the specification listed `all` while `resolveTopic` only consulted the manifest, so it exited 1. The MCP side had it. Implemented on the CLI, in the order specification 5.1 states, which is deliberately not the manifest's: `overview` first, because reading the specifics before the choice they inform is backwards. The MCP `all` is gone with the enum, so the two surfaces no longer need to agree on it.
+
+**A tier bug caught by reading the code rather than the tests.** `all` includes the online topic, but `findTopic('all')` returns undefined, so the first implementation silently fell through to the offline tier and rendered the state topic as "not checked". `all` is now explicitly online.
+
+**The help listing is the original request, and it is manifest-derived.** The option description said "optionally name a topic" and never said which, so the only way to find out was to guess wrong — which is exactly how this milestone started. The listing is generated from the manifest with localized labels, marking the default and the two that query Docker, so a new topic appears without anyone remembering to add it.
+
+**Rollback.** Single revert. `runestone_context` returns, the CLI loses `all`, and the help loses its topic listing.
 
 ## Evidence log
 

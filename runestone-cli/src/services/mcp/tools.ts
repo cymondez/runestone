@@ -1,5 +1,5 @@
 /**
- * The three read-only tools, as plain functions over the snapshot.
+ * The four read-only tools, as plain functions over the snapshot.
  *
  * No SDK types appear here. That is deliberate: the transport is a thin shell
  * and the answers are ordinary values, so these are testable without a client
@@ -15,7 +15,7 @@
  * blocking gate.
  *
  * Little is lost by it: `checkName` does the part that is actually hard, and
- * the context tool hands back the exact command for the human to run in their
+ * the guide hands back the exact command for the human to run in their
  * own terminal, where the prompt rules and the disclosure both still apply.
  */
 
@@ -58,22 +58,41 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export const CONTEXT_TOPICS = [...topicIds(), 'all'];
+/**
+ * The topics each tool answers with.
+ *
+ * There is no `topic` parameter, and its removal was a correction rather than
+ * a simplification (spec 11.2). The CLI splits by topic because an invocation
+ * is a process and prompt context is scarce. On MCP neither holds: the
+ * connection stays open, so a second call is nearly free, and tool selection
+ * already exists — the model picks a tool from `tools/list` by its
+ * description. An inner enum made it choose twice, and the inner choice had to
+ * be made before it had seen anything that would inform it.
+ *
+ * `overview` leads the guide because its whole job is to say "choose between
+ * these two paths"; splitting it off demanded a guess before supplying the
+ * basis for the guess.
+ */
+const GUIDE_TOPICS: readonly string[] = ['overview', 'compose', 'service'];
+const TROUBLESHOOT_TOPICS: readonly string[] = ['troubleshoot'];
 
-/** The MCP face of `docs --ai-context`. */
-export function renderContextTopic(
-  topic: string,
-  config: RunestoneEnv,
-  snapshot: AgentContextSnapshot
-): string {
+function renderTopics(ids: readonly string[], config: RunestoneEnv, snapshot: AgentContextSnapshot): string {
   const blocks = contextBlocks(snapshot);
-
-  if (topic === 'all') {
-    return TOPICS.map((entry) => renderAiContext(entry.id, config, blocks)).join('\n\n---\n\n');
-  }
-
-  return renderAiContext(topic, config, blocks);
+  return ids.map((id) => renderAiContext(id, config, blocks)).join('\n\n---\n\n');
 }
+
+/** How to connect this project: both paths, how to choose, and the guardrails. */
+export function renderIntegrationGuide(config: RunestoneEnv, snapshot: AgentContextSnapshot): string {
+  return renderTopics(GUIDE_TOPICS, config, snapshot);
+}
+
+/** Symptom to cause, for after something has already failed. */
+export function renderTroubleshooting(config: RunestoneEnv, snapshot: AgentContextSnapshot): string {
+  return renderTopics(TROUBLESHOOT_TOPICS, config, snapshot);
+}
+
+/** Exported so a test can assert every topic reaches exactly one tool. */
+export const TOOL_TOPIC_COVERAGE: readonly string[] = [...GUIDE_TOPICS, ...TROUBLESHOOT_TOPICS, 'state'];
 
 /**
  * Whether a service name and a route are free, and why not when they are not.

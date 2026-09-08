@@ -71,8 +71,26 @@ export const TOPICS: readonly TopicDefinition[] = [
 
 export const DEFAULT_TOPIC = 'compose';
 
+/** Renders every topic in one go. Not a manifest entry: it has no asset. */
+export const ALL_TOPIC = 'all';
+
+/**
+ * The order `all` concatenates in, from specification 5.1.
+ *
+ * Deliberately not the manifest's own order: `overview` comes first because it
+ * explains how to choose between the two integration paths, and reading the
+ * specifics before that choice is backwards. A test asserts this list is a
+ * permutation of the manifest, so a new topic cannot be silently omitted.
+ */
+export const ALL_TOPIC_ORDER: readonly string[] = ['overview', 'compose', 'service', 'state', 'troubleshoot'];
+
 export function topicIds(): string[] {
   return TOPICS.map((topic) => topic.id);
+}
+
+/** Everything `--ai-context` accepts, `all` included. */
+export function selectableTopicIds(): string[] {
+  return [...topicIds(), ALL_TOPIC];
 }
 
 export function findTopic(id: string): TopicDefinition | undefined {

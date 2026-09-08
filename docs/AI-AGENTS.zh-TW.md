@@ -78,7 +78,16 @@ runestone mcp config --client claude
 
 各家的形狀不能互換，這正是這個指令存在的理由。Codex 用的是 TOML 不是 JSON。VS Code 的 key 是 `servers`、Zed 是 `context_servers`，其餘才是 `mcpServers`。如果某個 client 有自己的註冊指令（`claude mcp add`、`codex mcp add`），也會一併印出來 —— 因為你執行的指令不會被貼錯檔案。
 
-這個 server 是唯讀的。它回答問題、回傳該由你執行的確切指令，不會改動任何東西。最有用的工具是 `runestone_check_name`，在你的 agent 把名稱寫進檔案之前，先告訴它那個名稱與 hostname 有沒有被佔用。
+這個 server 是唯讀的。它回答問題、回傳該由你執行的確切指令，不會改動任何東西。四個工具：
+
+| 工具 | 回答什麼 |
+| --- | --- |
+| `runestone_integration_guide` | 這個專案怎麼接：兩條路徑、哪一條適用、欄位規則 |
+| `runestone_troubleshoot` | 路由為什麼不通 |
+| `runestone_status` | 這台機器的事實，結構化資料 |
+| `runestone_check_name` | 名稱與 hostname 有沒有被佔用 —— 在 agent 把它們寫進檔案之前 |
+
+沒有主題要選。agent 選的是工具，而那本來就是它在做的選擇；不是先選工具、再在工具裡選一次主題。
 
 **你不會自己啟動它，也不用停它。** 它跟 `runestone up` 不同，不是常駐服務。你的 client 會在 session 開始時把它叫起來、在 session 結束時關掉，所以沒有東西需要你去停，事後也不會有殘留的行程。
 

@@ -20,7 +20,7 @@ import {
   ToolResult,
   handleLine
 } from './jsonrpc';
-import { CONTEXT_TOPICS, checkName, renderContextTopic } from './tools';
+import { checkName, renderIntegrationGuide, renderTroubleshooting } from './tools';
 import { debug } from './log';
 
 const OFFLINE_PROPERTY = {
@@ -30,21 +30,27 @@ const OFFLINE_PROPERTY = {
 
 export const TOOLS: ToolDefinition[] = [
   {
-    name: 'runestone_context',
+    name: 'runestone_integration_guide',
     description:
-      'Guidance for connecting a project to Runestone: which of the two integration paths applies, the exact field ' +
-      'rules, and how to diagnose a route that does not work. Start here.',
+      'How to connect this project to Runestone: the two integration paths, which one applies, the exact field ' +
+      'rules, and the commands you must leave to the user. Start here before editing any configuration.',
     inputSchema: {
       $schema: 'http://json-schema.org/draft-07/schema#',
       type: 'object',
-      properties: {
-        topic: {
-          type: 'string',
-          enum: CONTEXT_TOPICS,
-          description: 'Which topic to return. Defaults to overview.'
-        },
-        offline: OFFLINE_PROPERTY
-      },
+      properties: { offline: OFFLINE_PROPERTY },
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false }
+  },
+  {
+    name: 'runestone_troubleshoot',
+    description:
+      'Why a Runestone route is not working: 404, 502, a certificate warning, or a URL that works in the browser ' +
+      'but not from another container. Use this after something has already failed.',
+    inputSchema: {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      properties: { offline: OFFLINE_PROPERTY },
       additionalProperties: false
     },
     annotations: { readOnlyHint: true, openWorldHint: false }
@@ -52,8 +58,8 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: 'runestone_status',
     description:
-      'The machine facts as structured data: covered domains, certificates, routed services, container state, and the ' +
-      'router names other projects have registered.',
+      'The machine facts as structured data: covered domains, certificates, routed services, container state, and ' +
+      'the router names other projects have registered.',
     inputSchema: {
       $schema: 'http://json-schema.org/draft-07/schema#',
       type: 'object',
@@ -65,8 +71,9 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: 'runestone_check_name',
     description:
-      'Whether a service name and a route are free, and why not when they are not. A Traefik router ID is global, so a ' +
-      'name free in this project may already be taken by another one. Call this before writing any configuration.',
+      'Whether a service name and a route are free, and why not when they are not. A Traefik router ID is global, ' +
+      'so a name free in this project may already be taken by another one. Call this before writing any ' +
+      'configuration.',
     inputSchema: {
       $schema: 'http://json-schema.org/draft-07/schema#',
       type: 'object',
@@ -128,23 +135,18 @@ export function createHandlers(deps: Partial<ServerDependencies> = {}): ServerHa
       }
 
       const offline = args.offline === true;
-      const wantsLive = !offline && (name !== 'runestone_context' || args.topic === 'state' || args.topic === 'all');
+      // Only the tools that report facts about right now pay for a probe. The
+      // guide and the troubleshooting tree are static prose plus offline
+      // scalars, and they are the hot path.
+      const wantsLive = !offline && (name === 'runestone_status' || name === 'runestone_check_name');
       const snapshot = wantsLive ? await buildLiveSnapshot(config) : buildOfflineSnapshot(config);
 
       switch (name) {
-        case 'runestone_context': {
-          const topic = typeof args.topic === 'string' ? args.topic : 'overview';
-          if (topic !== 'all' && !findTopic(topic)) {
-            // Correctable by the model, so it is a result rather than an error:
-            // the message naming the valid topics has to reach the model.
-            return text(`Unknown topic '${topic}'. Available topics: ${CONTEXT_TOPICS.join(', ')}.`, true);
-          }
+        case 'runestone_integration_guide':
+          return text(renderIntegrationGuide(config, snapshot));
 
-          const body = renderContextTopic(topic, config, snapshot);
-          return topic === 'state' || topic === 'all'
-            ? { ...text(body), structuredContent: snapshot }
-            : text(body);
-        }
+        case 'runestone_troubleshoot':
+          return text(renderTroubleshooting(config, snapshot));
 
         case 'runestone_status':
           return {

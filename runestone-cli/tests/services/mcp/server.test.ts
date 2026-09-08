@@ -1,9 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as spawnModule from '../../../src/utils/spawn';
 import { PassThrough } from 'stream';
 import { MCP_CLIENTS, McpClient, clientIds, findClient, renderClientConfig } from '../../../src/services/mcp/config';
 import { ERROR, PROTOCOL_VERSION, handleLine } from '../../../src/services/mcp/jsonrpc';
 import { SERVER_INFO, TOOLS, createHandlers, serveStdio } from '../../../src/services/mcp/server';
+import { TOOL_TOPIC_COVERAGE } from '../../../src/services/mcp/tools';
+import { topicIds } from '../../../src/utils/tool-docs';
 import { listDomainCertificates } from '../../../src/services/cert-manager';
 import { RunestoneEnv } from '../../../src/utils/env-loader';
 import { testEnv } from '../../helpers/env';
@@ -97,12 +100,13 @@ describe('the protocol layer', () => {
 });
 
 describe('the tools', () => {
-  it('lists exactly three, all annotated read-only', async () => {
+  it('lists exactly four, all annotated read-only', async () => {
     const response = await handleLine('{"jsonrpc":"2.0","id":1,"method":"tools/list"}', info, handlers());
     const tools = (response as { result: { tools: typeof TOOLS } }).result.tools;
 
     expect(tools.map((tool) => tool.name)).toEqual([
-      'runestone_context',
+      'runestone_integration_guide',
+      'runestone_troubleshoot',
       'runestone_status',
       'runestone_check_name'
     ]);
@@ -113,29 +117,74 @@ describe('the tools', () => {
     }
   });
 
+  it('takes no topic parameter on any tool', async () => {
+    // The correction this milestone exists for. A topic enum made the model
+    // choose twice — once for the tool, once inside it — and the inner choice
+    // had to be made before it had seen anything that would inform it. Tool
+    // selection already exists on this surface.
+    const response = await handleLine('{"jsonrpc":"2.0","id":1,"method":"tools/list"}', info, handlers());
+    const tools = (response as { result: { tools: typeof TOOLS } }).result.tools;
+
+    for (const tool of tools) {
+      const properties = tool.inputSchema.properties as Record<string, unknown>;
+      expect(Object.keys(properties)).not.toContain('topic');
+      expect(JSON.stringify(tool.inputSchema)).not.toContain('enum');
+    }
+  });
+
+  it('routes every corpus topic to exactly one tool', async () => {
+    // Without this, adding a topic to the manifest would silently reach no
+    // tool at all — the failure mode the topic enum used to make impossible.
+    expect([...TOOL_TOPIC_COVERAGE].sort()).toEqual([...topicIds()].sort());
+  });
+
+  it('serves the guide with both integration paths in one call', async () => {
+    // The whole point of merging overview, compose and service: the agent
+    // cannot choose between the two paths until it knows both exist.
+    const result = await call('runestone_integration_guide', { offline: true });
+
+    expect(result.content[0].text).toContain('Traefik labels');
+    expect(result.content[0].text).toContain('runestone service add');
+    expect(result.content[0].text).toContain('must not run');
+  });
+
+  it('keeps troubleshooting separate, because it is a different intent', async () => {
+    const result = await call('runestone_troubleshoot', { offline: true });
+    const text = result.content[0].text;
+
+    expect(text).toContain('502');
+    // The guide is about connecting; this is about something already broken.
+    expect(text).not.toContain('# Runestone AI Compose Context');
+  });
+
+  it('does not probe for the guide or the troubleshooting tree', async () => {
+    // They are static prose plus offline scalars, and they are the hot path.
+    // Only the two tools that report right-now facts pay for a probe.
+    const spawnSpy = jest.spyOn(spawnModule, 'spawnCommand');
+
+    await call('runestone_integration_guide', {});
+    await call('runestone_troubleshoot', {});
+
+    expect(spawnSpy).not.toHaveBeenCalled();
+    spawnSpy.mockRestore();
+  });
+
   it('treats an unconfigured Runestone as a successful result, not an error', async () => {
     // The opposite of the CLI contract, deliberately. A failed tool call gives
     // the model an error to route around; a successful one that says what to do
     // gives it something actionable.
-    const result = await call('runestone_context', {}, false);
+    const result = await call('runestone_integration_guide', {}, false);
 
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toContain('runestone setup');
     expect(result.structuredContent).toEqual({ configured: false });
   });
 
-  it('reports an unknown topic as a correctable result rather than a JSON-RPC error', async () => {
-    const result = await call('runestone_context', { topic: 'nope', offline: true });
-
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Available topics');
-  });
-
   it('reports an unknown tool the same way', async () => {
     const result = await call('runestone_nope', {});
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('runestone_context');
+    expect(result.content[0].text).toContain('runestone_integration_guide');
   });
 
   it('requires at least one argument for check_name', async () => {
@@ -224,7 +273,7 @@ describe('the stdio loop', () => {
     input.end();
     await done;
 
-    expect(chunks.join('')).toContain('runestone_context');
+    expect(chunks.join('')).toContain('runestone_integration_guide');
   });
 });
 

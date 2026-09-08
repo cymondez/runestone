@@ -105,9 +105,17 @@ registration command — `claude mcp add`, `codex mcp add` — that is printed t
 because a command you run cannot be pasted into the wrong file.
 
 The server is read-only. It answers questions and returns the exact command for
-you to run; it never changes anything. Its most useful tool is
-`runestone_check_name`, which says whether a name and a hostname are free before
-your agent writes them into a file.
+you to run; it never changes anything. Four tools:
+
+| Tool | What it answers |
+| --- | --- |
+| `runestone_integration_guide` | How to connect this project: both paths, which one applies, the field rules |
+| `runestone_troubleshoot` | Why a route is not working |
+| `runestone_status` | The machine facts, as structured data |
+| `runestone_check_name` | Whether a name and a hostname are free — before your agent writes them into a file |
+
+There is no topic to choose. The agent picks a tool, which is a choice it is
+already making, rather than picking a tool and then a topic inside it.
 
 **You do not start or stop it yourself.** Unlike `runestone up`, this is not a
 background service. Your client launches it when a session begins and closes it

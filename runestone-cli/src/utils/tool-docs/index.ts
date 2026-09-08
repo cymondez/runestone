@@ -14,7 +14,7 @@ import { BlockRenderers, substitute } from './render';
 
 export { TemplateError } from './render';
 export type { BlockRenderers } from './render';
-export { DEFAULT_TOPIC, TOPICS, findTopic, topicIds } from './manifest';
+export { ALL_TOPIC, ALL_TOPIC_ORDER, DEFAULT_TOPIC, TOPICS, findTopic, selectableTopicIds, topicIds } from './manifest';
 export type { TopicDefinition, TopicTier } from './manifest';
 
 /**
