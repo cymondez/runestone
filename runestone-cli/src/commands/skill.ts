@@ -18,7 +18,9 @@ import {
 import {
   NEUTRAL_INSTRUCTION_FILE,
   NEUTRAL_SKILLS_DIR,
+  NEUTRAL_TARGET_ID,
   TARGETS,
+  acceptedTargetIds,
   RenderContext,
   RenderedFile,
   TargetDefinition,
@@ -242,7 +244,7 @@ async function prepare(
     requested = chosenTargets(resolved.root, options);
   } catch (error) {
     if (error instanceof UnknownTargetError) {
-      logger.error(t('skill.error.unknownTarget', { target: error.message, targets: targetIds().join(', ') }));
+      logger.error(t('skill.error.unknownTarget', { target: error.message, targets: acceptedTargetIds().join(', ') }));
       process.exitCode = 1;
       return undefined;
     }
@@ -269,9 +271,20 @@ async function prepare(
       }
       supported.push(...chosen);
     } else {
-      logger.error(t('skill.error.noTargets', { root: resolved.root }));
-      process.exitCode = 1;
-      return undefined;
+      // Nobody to ask: --dry-run, --user, --yes, or a non-interactive shell.
+      // Specification 8.2 makes the neutral location the answer here rather
+      // than an error, and it is the right one — a project with none of these
+      // directories yet is the ordinary case, so failing here would break the
+      // documented headline command for most first-time users.
+      const neutral = findTarget(NEUTRAL_TARGET_ID);
+      if (!neutral) {
+        logger.error(t('skill.error.noTargets', { root: resolved.root }));
+        process.exitCode = 1;
+        return undefined;
+      }
+
+      logger.info(t('skill.usingNeutralTarget', { target: neutral.id, root: resolved.root }));
+      supported.push(neutral);
     }
   }
 

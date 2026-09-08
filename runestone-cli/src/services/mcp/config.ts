@@ -116,7 +116,7 @@ export const MCP_CLIENTS: readonly McpClient[] = [
     location: '~/.copilot/mcp-config.json',
     format: 'json',
     key: 'mcpServers',
-    docsUrl: 'https://docs.github.com/en/copilot/how-tos/copilot/customize-copilot/add-mcp-servers',
+    docsUrl: 'https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers',
     verifiedOn: '2026-09-08',
     addCommand: `copilot mcp add ${SERVER_NAME} -- ${COMMAND} ${ARGS.join(' ')}`,
     note:

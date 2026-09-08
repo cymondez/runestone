@@ -197,6 +197,15 @@ function cursorRule(context: RenderContext, version: number): RenderedFile {
 export const NEUTRAL_SKILLS_DIR = '.agents/skills';
 export const NEUTRAL_INSTRUCTION_FILE = 'AGENTS.md';
 
+/**
+ * The target used when nothing is detected and there is nobody to ask.
+ *
+ * `.agents/skills` is read by Codex, Cursor and VS Code, so writing it is
+ * useful in a project that has none of their directories yet — which is the
+ * ordinary state of a project the first time anyone runs this.
+ */
+export const NEUTRAL_TARGET_ID = 'agents';
+
 export const TARGETS: readonly TargetDefinition[] = [
   {
     id: 'agents',
@@ -263,6 +272,19 @@ export function findTarget(id: string): TargetDefinition | undefined {
  * user-level path differs, which is why the alias is named rather than silent.
  */
 export const TARGET_ALIASES: Readonly<Record<string, string>> = { codex: 'agents' };
+
+/**
+ * Everything `--target` accepts, aliases included.
+ *
+ * `targetIds()` is the canonical set and is what the table iterates. This is
+ * what a user should be shown, because the two differ: `--target codex` works,
+ * and someone who mistypes and reads the error would otherwise never learn
+ * that. An accepted value missing from the advertised list is a value nobody
+ * finds.
+ */
+export function acceptedTargetIds(): string[] {
+  return [...targetIds(), ...Object.entries(TARGET_ALIASES).map(([alias, id]) => `${alias} (= ${id})`)];
+}
 
 export function resolveTargetId(id: string): string {
   return TARGET_ALIASES[id] ?? id;

@@ -29,7 +29,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | C1 | MCP dependency spike | 0 | — | not started |
 | C2 | `runestone mcp serve`, read-only | 3 | A2 | **done** — 49 suites, 768 passed, 5 skipped. Hand-written protocol layer; production dependencies unchanged at 13 |
 | C3 | `mcp config`, documentation, release | 1 | C2 | **done** — 49 suites, 773 passed, 5 skipped |
-| B5 | User scope | 3 | B4 | **deferred** (spec decision 5) |
+| B5 | User scope | 3 | B4 | **done** — 49 suites, 788 passed, 5 skipped. Verified on Windows; the Linux half of the gate is not met |
 
 A1, A2, B1 and C1 are all risk 0 and independent of one another; they can proceed in parallel. A3 is the first user-visible milestone.
 
@@ -547,16 +547,30 @@ Verified against the real binary: four requests and one notification in, four fr
 
 ## B5 — User scope (deferred)
 
-**Deferred** by spec decision 5. It is the only home-directory write and it serves cross-project convenience rather than the purpose in spec 1. Specified in spec 10.2 and scheduled last so that dropping it costs nothing.
+**Landed.** Most of the code was already present from B3 and B4; what B5 added was the verification, and the verification found two defects.
+
+Verified on Windows under a `RUNESTONE_SKILL_HOME` redirect: install, status and remove all exit 0; a pre-existing `~/.codex/AGENTS.md` carrying the user's own rules comes back byte-identical after the full cycle; and all four real home-directory destinations are still absent afterwards, so nothing was written outside the redirect.
+
+**The first measurement of that last point was contaminated and had to be redone.** It hashed the whole of `~/.claude`, which this very session writes to for its own state, so it reported a change that had nothing to do with Runestone. The honest check probes the four specific paths Runestone could write, and nothing else.
+
+**Defect 1: the neutral fallback did not exist.** Specification 8.2 makes the neutral location what a bare `skill install` writes when nothing more specific is detected, and B2's gate item says exactly that — **and I had ticked it**. The code instead reported "No agent runtime detected" and exited 1 on every non-interactive path: `--dry-run`, `--user`, `--yes`, and any non-TTY shell. A project with none of these directories is the ordinary case, so the documented headline command failed for most first-time users.
+
+Fixed to match the specification, keeping the part the old behaviour got right: the interactive path still asks, because a human present beats a default, and the fallback announces itself rather than choosing silently. The test that encoded the old behaviour was rewritten rather than deleted, with the reasoning recorded in it.
+
+**Defect 2: `--target` accepted more than it advertised.** `codex` is a valid alias for `agents`, but the unknown-target error listed only the canonical table, so anyone who mistyped would never learn the alias exists. The error now lists the aliases too.
+
+**A guard was added for a defect I introduced earlier.** The `copilot-cli` to `copilot` rename was done with a blanket string replace, which also rewrote a path segment inside GitHub's documentation URL, turning a citation into a 404. Restored, with a test pinning the product path segment. The guard's own first version was too broad and flagged the correct URL, because GitHub's real path legitimately contains `/copilot/how-tos/` — narrowed to the thing that actually broke.
+
+**Rollback.** Single revert. The neutral fallback and the alias listing are worth keeping on their own merit but revert cleanly with the rest.
 
 **Risk level 3**
 
 **Gate, when it is taken up**
 
-- [ ] The confirmation prints the **resolved absolute path**, with no placeholder, verified on a real machine
-- [ ] A full install, status and remove cycle under `RUNESTONE_SKILL_HOME`, with the real `~/.claude`, `~/.codex` and `~/.agents` **provably untouched** by a hash taken before and after
-- [ ] Verified by hand once on Windows and once on Linux
-- [ ] An existing `~/.codex/AGENTS.md` with the user's own content survives insert, replace and remove byte-identically outside the span
+- [x] The confirmation prints the **resolved absolute path**, with no placeholder, verified on a real machine
+- [x] A full install, status and remove cycle under `RUNESTONE_SKILL_HOME`, with the real `~/.claude`, `~/.codex` and `~/.agents` **provably untouched** by a hash taken before and after
+- [~] Verified by hand on Windows. **The Linux half is not met** — no Linux machine was available, and ticking it on the strength of "it should behave the same" is exactly what this document forbids
+- [x] An existing `~/.codex/AGENTS.md` with the user's own content survives insert, replace and remove byte-identically outside the span
 
 ## Evidence log
 
@@ -572,7 +586,7 @@ Verified against the real binary: four requests and one notification in, four fr
 
 - The branch is `feat/skill-support`, cut from `develop` at `ba67a7e`, which is where `main` and `origin/develop` also sit. Nothing unmerged is inherited.
 - `runestone-cli` is at 2.0.0 with an unreleased section in the changelog. The agent-facing surface is three commands: `docs --ai-context [topic]` over five topics, `skill install | status | remove` across four targets, and `mcp serve | config`. **Production dependencies are unchanged at 13** — the MCP server is hand-written, which is what the C1 ruling bought.
-- Phases A, B and C are functionally complete, and the specification 14.4 end-to-end check has been run and passed by the repository owner. Open: A0's two Traditional Chinese specification mirrors, and B5 (user scope), deferred by spec decision 5.
+- Phases A, B and C are functionally complete, and the specification 14.4 end-to-end check has been run and passed by the repository owner. Open: A0's two Traditional Chinese specification mirrors, and the Linux half of B5's manual verification.
 - **There is no CI.** Every gate in this document is run by hand.
 - Publishing is manual and the order is fixed: merge to `develop`, merge to `main`, then publish to npm.
 - Three cleanups were found during A0 and deliberately left out of this branch: the three locale tables have no automated key-parity test, `service.validation.urlNoPath` is an orphan key, and `certs list` and `service list` compute column widths with `String.length` instead of the CJK-aware helper that already exists.

@@ -6,6 +6,7 @@ import { createProgram } from '../../src/cli';
 import { listDomainCertificates } from '../../src/services/cert-manager';
 import { envLoader } from '../../src/utils/env-loader';
 import { SKILL_TEMPLATE_VERSION, beginMarker, endMarker } from '../../src/services/skill/version';
+import { TARGET_ALIASES, acceptedTargetIds, targetIds } from '../../src/services/skill/targets';
 import { testEnv } from '../helpers/env';
 
 jest.mock('../../src/services/cert-manager', () => ({
@@ -172,11 +173,22 @@ describe('runestone skill', () => {
       }
     });
 
-    it('reports that it found nothing rather than guessing', async () => {
+    it('says it found nothing, then uses the neutral location rather than failing', async () => {
+      // This test previously asserted an exit code of 1, on the reasoning that
+      // guessing is worse than refusing. Specification 8.2 says otherwise and
+      // is the normative source: the neutral location is the answer when
+      // nothing more specific is detected. It is also simply better — a
+      // project with none of these directories is the ordinary case, so
+      // refusing made the documented headline command fail for most
+      // first-time users.
+      //
+      // What survives from the old assertion is the part that was right: it
+      // must *say* what it is doing. Choosing silently would be the real fault.
       await run('install', '--dry-run', root);
 
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode ?? 0).toBe(0);
       expect(output()).toContain('No agent runtime detected');
+      expect(output()).toContain('neutral target agents');
     });
 
     it('treats codex as the neutral instruction file, not a fourth copy', async () => {
@@ -316,4 +328,38 @@ describe('runestone skill', () => {
     expect(text).not.toContain('Runestone is not running');
     expect(text).not.toContain('router IDs already registered');
   });
+
+  describe('when no runtime is detected', () => {
+    // Specification 8.2 makes the neutral location the answer, not an error. A
+    // project with none of these directories yet is the ordinary case, so
+    // failing here would make the documented headline command fail for most
+    // first-time users. The interactive path still asks, because a human
+    // present is better than a default.
+    it('falls back to the neutral target rather than failing', async () => {
+      const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-skill-neutral-'));
+
+      try {
+        await run('install', '--dry-run', empty);
+
+        expect(output()).toContain('neutral target agents');
+        expect(output()).toContain(path.join('.agents', 'skills', 'runestone'));
+        expect(process.exitCode ?? 0).toBe(0);
+      } finally {
+        fs.rmSync(empty, { recursive: true, force: true });
+      }
+    });
+
+    it('advertises the aliases it accepts when a target is unknown', async () => {
+      // `--target codex` works. Someone who mistypes and reads the error would
+      // otherwise never learn that, because the accepted set was larger than
+      // the advertised one.
+      await run('install', '--dry-run', '--target', 'nope', root);
+
+      expect(output()).toContain('codex');
+      expect(acceptedTargetIds().join(', ')).toContain('codex');
+      expect(targetIds()).not.toContain('codex');
+      expect(TARGET_ALIASES.codex).toBe('agents');
+    });
+  });
 });
+

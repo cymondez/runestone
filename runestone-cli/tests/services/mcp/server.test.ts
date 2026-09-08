@@ -389,6 +389,17 @@ describe('the registration block', () => {
     expect(copilot.note).toContain('not the same as VS Code');
   });
 
+  it('cites a URL that survived the id rename', async () => {
+    // A blanket rename of the client ids once rewrote a path segment inside
+    // this URL, turning a citation into a 404. The row's whole purpose is to
+    // let someone re-check it, so a broken link is worse than a missing one.
+    // The precise thing that broke: the product path segment. A broader
+    // pattern is what caused the accident in the first place — GitHub's real
+    // URL legitimately contains `/copilot/how-tos/`, so a rule phrased as
+    // "no id-shaped segment" flags the correct URL too.
+    expect((findClient('copilot') as McpClient).docsUrl).toContain('/copilot-cli/');
+  });
+
   it('carries the provenance of every row', () => {
     // The configuration landscape moves. A row without a source and a date is
     // a row nobody can check.
