@@ -260,7 +260,9 @@ Two conclusions follow, and they are the whole basis of 8.2:
 Hard-coding a vendor's path is cost 2.4 item 8. The resolution order is:
 
 1. **Neutral default.** `.agents/skills/runestone/` and a marked block in `AGENTS.md`. This is what a bare `runestone skill install` writes when nothing more specific is detected.
-2. **Documented exceptions**, as named targets. A built-in table maps a name to paths and a wrapper format: `claude`, `cursor`, `codex`, `copilot`. Selected explicitly with `--target`, or automatically when that runtime's directory is already present in the target directory.
+2. **Documented exceptions**, as named targets: `claude`, `cursor`, `copilot-vscode`, with `codex` as a named alias of the neutral target because Codex reads the project-root `AGENTS.md` the neutral target already writes. Selected explicitly with `--target`, or automatically when that runtime's directory is already present in the target directory. The unknown-target error lists the aliases as well as the canonical ids, because an accepted value missing from the advertised list is a value nobody finds.
+
+   `copilot-vscode` rather than `copilot`: `mcp --client copilot` is the Copilot **CLI**, a different product with its own configuration file, and one id meaning both read as though installing one would configure the other.
 3. **User-settable paths**, for a runtime not in the table or a path that has moved: `--skills-dir <path>` and `--instructions-file <path>`. A machine-level default may be persisted in tool state, because "which agent tools I use" is a property of the person rather than of the repository.
 
 The built-in table is a convenience, not an assumption. It must be one data structure in one file so that a path change is a one-line edit, and every entry must carry the documentation URL it came from and the date it was verified.
@@ -430,7 +432,24 @@ Should this be overruled, the gates are all of the following: an `--allow-write`
 
 Runestone does not write another tool's configuration file. `runestone mcp config` prints a block and the user pastes it.
 
-The shapes differ and one command must emit the right one. Verified: Claude Code and Cursor use the key `mcpServers`; VS Code uses `servers`. Locations are `.mcp.json` at the project root for Claude Code, `.cursor/mcp.json`, `.vscode/mcp.json`, and `~/.copilot/mcp-config.json`.
+The shapes differ, and every difference produces a configuration that silently does not work rather than one that errors. Eight clients, each row read from that vendor's own documentation and carrying the URL and the date it was checked:
+
+| `--client` | Location | Format | Key | `type` |
+| --- | --- | --- | --- | --- |
+| `claude` | `.mcp.json` at the project root | JSON | `mcpServers` | `stdio` |
+| `codex` | `~/.codex/config.toml`, or `.codex/config.toml` | **TOML** | `[mcp_servers.<name>]` | — |
+| `copilot` | `~/.copilot/mcp-config.json` | JSON | `mcpServers` | **`local`** |
+| `cursor` | `.cursor/mcp.json`, or `~/.cursor/mcp.json` | JSON | `mcpServers` | `stdio` |
+| `vscode` | `.vscode/mcp.json` | JSON | **`servers`** | `stdio` |
+| `gemini` | `~/.gemini/settings.json` | JSON | `mcpServers` | — |
+| `windsurf` | `~/.codeium/windsurf/mcp_config.json` | JSON | `mcpServers` | — |
+| `zed` | the Zed settings file | JSON | **`context_servers`** | — |
+
+Three of these are not variations on a theme. **Codex is TOML**: a JSON block pasted into `config.toml` is not a configuration at all. **`type` is not a yes-or-no field**: VS Code documents `"stdio"`, Copilot CLI documents `"local"`, and Gemini, Windsurf and Zed show `command` and `args` alone — so each row emits exactly the shape its cited documentation shows, because emitting a field, or a value, a vendor does not document is a guess a schema validator may reject.
+
+**VS Code and GitHub Copilot CLI are different clients**, routinely assumed to share configuration. They differ in file, key and `type` value, and VS Code's own documentation states the Agent Host does not read `.vscode/mcp.json`. Both rows cross-reference the other.
+
+Where a client has its own registration command — `claude mcp add`, `codex mcp add`, `copilot mcp add` — it is printed above the block, because a command the user runs cannot be pasted into the wrong file.
 
 Project-scoped `.mcp.json` requires the user to approve the server on first use in an interactive session, and does not prompt in non-interactive ones. The user documentation must say so, or a working installation will look broken.
 
@@ -491,10 +510,12 @@ The purpose of this feature is not provable by unit tests. After the online tier
 All settled by the repository owner on 2026-09-07.
 
 1. **The generated corpus is English only.** It is a prompt for a machine, it is committed into the user's repository where English is the lingua franca of configuration, and localizing it would apply the structural-parity gate to every one-sentence edit. Operator-facing messages still go through `t()` in all three locales. This is a deliberate departure from the CLI's i18n rule and is recorded as such.
-2. **The MCP SDK, gated by measurement.** `@modelcontextprotocol/sdk` is adopted, but the milestone that adds it is designed to be reverted: its gate is that the build passes with `module` and `moduleResolution` unchanged, and that the size cost is recorded and accepted. Verified obstacle: this project is pinned to node10 module resolution, because moving to node16 produces `TS1479` on every `@clack/*` import, and the SDK publishes only subpath exports, so it needs a `paths` mapping. If the gate fails, a hand-written stdio JSON-RPC server of roughly 200 lines and no dependencies becomes the plan. `engines.node` does not change.
+2. **Settled as: hand-written, not the SDK.** ~~`@modelcontextprotocol/sdk` is adopted, gated by measurement.~~ **Overturned on 2026-09-08 by the gate that existed to overturn it.** C1 adopted the SDK and passed technically — no `paths` mapping was needed after all, `engines.node` was unchanged, no new vulnerabilities — but the measured cost was **107 production dependencies and about 15 MB against a baseline of 13**. Bundling was also measured and worked (364 KB, clean handshake), but it moves dependency security from npm to us and adds a bundler to a `tsc`-only build. The owner ruled for the hand-written server. C1 was reverted; production dependencies remain at 13.
+
+   What the SDK was buying, now owned here: **protocol conformance**. Five methods is a small surface, but MCP revises quickly, and a break presents to the user as "my agent cannot see Runestone" with nothing in the output to explain it. `PROTOCOL_VERSION` in `src/services/mcp/jsonrpc.ts` is the thing to bump, and the process-level handshake test is the thing that catches a break.
 3. **The MCP server is read-only** (section 11.3).
 4. **`troubleshoot` is in scope.** It is the only place "works in the browser, fails from another container" can land, and that is the most common failure after integration succeeds.
-5. **User scope is deferred.** It is the only home-directory write, and it serves cross-project convenience rather than the purpose in section 1. It is specified here and scheduled last so that dropping it costs nothing.
+5. **User scope is scheduled last, and was then built.** It is the only home-directory write, and it serves cross-project convenience rather than the purpose in section 1, so it was specified here and sequenced last such that dropping it would have cost nothing. It was taken up on 2026-09-08 and is done, verified on Windows; the Linux half of its manual gate is not met.
 6. **stdio, not HTTP** (section 11.1).
 
 ## 16. Milestones and Risk Control
@@ -534,6 +555,6 @@ Sequenced in `SKILL-MILESTONES.md`, which records progress and gates. Phases A, 
 | C1 | MCP dependency spike, revertible by design | 0 |
 | C2 | `runestone mcp serve`, read-only | 3 |
 | C3 | `mcp config`, documentation, release | 1 |
-| B5 | User scope (deferred, decision 5) | 3 |
+| B5 | User scope | 3 |
 
 A3 is the first user-visible milestone.

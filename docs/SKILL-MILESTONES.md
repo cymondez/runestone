@@ -17,7 +17,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 
 | # | Milestone | Risk | Blocked by | Status |
 | --- | --- | --- | --- | --- |
-| A0 | Specification and milestones | 0 | — | **in progress**: both English documents landed; the two Traditional Chinese mirrors are deliberately held until the specification stops moving (see A0) |
+| A0 | Specification and milestones | 0 | — | **done** — both English documents and both Traditional Chinese mirrors |
 | A1 | Renderer and topic corpus | 0 | A0 | **done** — 43 suites, 606 passed, 5 skipped, no existing test file touched |
 | A2 | Offline snapshot module | 0 | — | **done** — 44 suites, 624 passed, 5 skipped |
 | A3 | `--ai-context [topic]` and `--offline` | 1 | A1, A2 | **done** — 44 suites, 630 passed, 5 skipped. First user-visible milestone |
@@ -26,7 +26,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | B2 | `skill status` and `install --dry-run` | 1 | A1, B1 | **done** — 47 suites, 719 passed, 5 skipped. B4's renderers folded in; see below |
 | B3 | `skill install` and `skill remove` | 2 | B2 | **done** — 48 suites, 743 passed, 5 skipped. Every target enabled, so B4 is closed with it |
 | B4 | Full target table and wrappers | 2 | B3 | **done, merged into B2 and B3** — the table and renderers landed in B2 because `status` cannot exist without them; enabling every target for writing landed in B3 |
-| C1 | MCP dependency spike | 0 | — | not started |
+| C1 | MCP dependency spike | 0 | — | **done, then reverted 2026-09-08.** The gate passed technically; the measured size was judged unacceptable and the owner ruled for the hand-written server. That is what this milestone existed to enable |
 | C2 | `runestone mcp serve`, read-only | 3 | A2 | **done** — 49 suites, 768 passed, 5 skipped. Hand-written protocol layer; production dependencies unchanged at 13 |
 | C3 | `mcp config`, documentation, release | 1 | C2 | **done** — 49 suites, 773 passed, 5 skipped |
 | B5 | User scope | 3 | B4 | **done** — 49 suites, 788 passed, 5 skipped. Verified on Windows; the Linux half of the gate is not met |
@@ -58,8 +58,8 @@ The one measurement that can still overturn a plan is C1's. It is deliberately i
 
 - [x] `docs/SKILL-FEATURE-SPEC.md` — 16 sections following the `DNS-FEATURE-SPEC.md` form, including the cost list and the `Cost → Constraint → Section` table
 - [x] `docs/SKILL-MILESTONES.md` — this document
-- [ ] `docs/SKILL-FEATURE-SPEC.zh-TW.md` — Traditional Chinese mirror
-- [ ] `docs/SKILL-MILESTONES.zh-TW.md` — Traditional Chinese mirror
+- [x] `docs/SKILL-FEATURE-SPEC.zh-TW.md` — Traditional Chinese mirror
+- [x] `docs/SKILL-MILESTONES.zh-TW.md` — Traditional Chinese mirror
 - [x] The install-path landscape measured from vendor documentation and recorded with URLs and a verification date (spec 8.1)
 - [x] The `service` field contract measured from the validators rather than the message catalogue (spec 5.2)
 
@@ -67,7 +67,7 @@ The one measurement that can still overturn a plan is C1's. It is deliberately i
 
 - [x] Every claim marked "verified" in the specification was either run or read from a cited source
 - [x] The specification names the purpose narrowly enough to exclude installation and configuration (spec 1, 3.2)
-- [ ] Both Traditional Chinese mirrors exist with the same section structure
+- [x] Both Traditional Chinese mirrors exist with the same section structure
 
 **Landed.** The specification records six things that were wrong in the first draft of the plan and are now measured, each of which would have produced a defect:
 
@@ -82,7 +82,7 @@ The one measurement that can still overturn a plan is C1's. It is deliberately i
 
 Two reuse extractions were also identified and are scheduled rather than discovered later: `composeService.ps` needs an optional timeout it does not have, and `traefikApiBaseUrl` is already duplicated across two command files and belongs in `traefik-api.ts`.
 
-**The two Traditional Chinese mirrors are deliberately held back**, and this is a scheduling decision rather than an omission. The DNS specification was revised repeatedly *during* implementation — decision 2 was overturned, section 6.2 was rewritten from platform inference to a daemon-type table, and a whole finding was reverted — because measurement kept contradicting the plan. This specification will move the same way: A1 and A2 each end in a measurement that can change section 5 or section 6, and C1 exists precisely because its measurement may overturn decision 2. Translating now guarantees translating twice. The mirrors land before phase A ships, and A0 is not closed until they do.
+**The two Traditional Chinese mirrors are deliberately held back**, and this is a scheduling decision rather than an omission. The DNS specification was revised repeatedly *during* implementation — decision 2 was overturned, section 6.2 was rewritten from platform inference to a daemon-type table, and a whole finding was reverted — because measurement kept contradicting the plan. This specification will move the same way: A1 and A2 each end in a measurement that can change section 5 or section 6, and C1 exists precisely because its measurement may overturn decision 2. Translating now guarantees translating twice. The mirrors landed on 2026-09-08, once the specification had stopped moving — and the delay was justified by what happened in between: C1's measurement overturned decision 2, the MCP client table grew from four rows to eight, and the target ids changed. Translating on schedule would have meant translating twice. Both mirrors are structurally identical to their English source: 59 and 19 headings with matching nesting, 106 and 67 table rows, checked mechanically.
 
 **Rollback.** Documentation only.
 
@@ -412,29 +412,26 @@ Verified by hand in a temporary git repository, which is the sequence that matte
 
 ## B4 — Full target table and wrappers
 
-**Goal.** Every target in spec 8.1 renders correctly from the one corpus.
+**Merged into B2 and B3, and closed there.** Nothing was dropped; the split was wrong rather than the work.
 
-**Risk level 2**
+`status` has to compare what is installed against freshly rendered content, so it cannot exist without the renderers this milestone was going to add — splitting them would have meant a `status` that could not answer its own question. The table and every renderer therefore landed in **B2**, and enabling every target for *writing* landed in **B3**, which is where the risk level actually changes.
 
-**Deliverables**
+Where each deliverable ended up:
 
-- [ ] `claude` — `.claude/skills/runestone/SKILL.md` plus `references/*.md`
-- [ ] `cursor` — `.cursor/rules/runestone.mdc`, a single concatenated file with `description`, `globs` and `alwaysApply` frontmatter
-- [ ] `codex` — an alias of the instruction-file target at project scope, **not** a fourth copy of the same block
-- [ ] `copilot` — `.github/skills/runestone/`
-- [ ] The instruction-file block built from each topic's brief, not its body, at roughly 25 lines (spec 8.4)
-- [ ] The Claude Code exception documented in the target table itself, with the reason
+| Deliverable | Landed in |
+| --- | --- |
+| `claude` — `.claude/skills/runestone/` plus `references/*.md` | B2 (rendered), B3 (written) |
+| `cursor` — `.cursor/rules/runestone.mdc`, single concatenated file | B2, B3 |
+| `codex` — an alias of the instruction-file target, not a fourth copy | B2, asserted by a test |
+| `copilot-vscode` — `.github/skills/runestone/` | B2, B3 |
+| The instruction-file block built from each topic's brief | B2 |
+| The Claude Code exception documented in the table itself | B2 |
 
-**Gate**
+The gate items moved with them: the specification's `SKILL.md` constraints are asserted offline in B3 (see that milestone for why the published validator was substituted), the `.mdc` frontmatter is parsed as YAML in B2, and "no live fact appears in any installed file" is enforced by the allowlist assertion recorded in B2.
 
-- [ ] Every generated `SKILL.md` passes `skills-ref validate`, with `name` matching its parent directory and `description` within 1024 characters
-- [ ] Every generated `.mdc` frontmatter parses as YAML and carries the three expected keys
-- [ ] `--target codex` at project scope writes the instruction file and no separate skill copy
-- [ ] The instruction-file block stays under 30 lines
-- [ ] **No live fact appears in any installed file** — asserted by rendering with a snapshot whose online fields are present and checking that none of their values appear in the output (spec 6.2)
-- [ ] Installing every target into one fixture repository produces no path collisions and no duplicated content
+**The id is `copilot-vscode`, not `copilot`.** `mcp --client copilot` is the Copilot CLI, a different product with its own configuration file; one id for both read as though installing one would configure the other. A test asserts the two lists do not share it.
 
-**Rollback.** Single revert; the neutral target from B3 continues to work.
+**Rollback.** Not separately revertible, because it is not a separate commit. B3 reverts the writing; B2 reverts the table and renderers.
 
 ## C1 — MCP dependency spike
 
@@ -444,21 +441,34 @@ Verified by hand in a temporary git repository, which is the sequence that matte
 
 **Deliverables**
 
-- [ ] `@modelcontextprotocol/sdk` in `dependencies`, and the `tsconfig.json` `paths` mapping it requires
-- [ ] One throwaway module importing the server, the stdio transport, the in-memory transport and the client, proving all four type-resolve and load at runtime
-- [ ] A recorded measurement: the `npm pack` size delta and the dependency-count delta, written into this document's evidence log
+- [x] `@modelcontextprotocol/sdk` in `dependencies` — **no `tsconfig.json` `paths` mapping turned out to be needed**, contrary to the prediction in spec decision 2
+- [x] One throwaway module importing the server, the stdio transport, the in-memory transport and the client, proving all four type-resolve and load at runtime
+- [x] A recorded measurement: the dependency-count and size deltas
 
 **Gate**
 
-- [ ] `npm run build` green with `module` and `moduleResolution` **unchanged**
-- [ ] `npm test` green, with the SDK imports working under ts-jest
-- [ ] A test that fails loudly if an SDK upgrade moves the directory the `paths` mapping points at
-- [ ] `engines.node` unchanged
-- [ ] The measurement is written down and accepted
+- [x] `npm run build` green with `module` and `moduleResolution` **unchanged**
+- [x] `npm test` green, with the SDK imports working under ts-jest
+- [~] ~~A test that fails loudly if an SDK upgrade moves the `paths` target~~ — **not applicable.** No `paths` mapping was needed, so there is no directory to guard
+- [x] `engines.node` unchanged
+- [x] The measurement is written down — **and not accepted**
 
-**If the gate fails or the size is judged unacceptable, this milestone is reverted and the hand-written stdio JSON-RPC server becomes the plan** (spec decision 2). That is the entire reason it is separate.
+**Landed, then reverted on 2026-09-08.** Every technical gate passed, and the prediction that made this milestone look risky was wrong: no `paths` mapping was needed, `engines.node` did not move, and `npm audit --omit=dev` reported nothing.
 
-**Rollback.** Single revert: one dependency, one tsconfig key, one throwaway file.
+What failed was the cost:
+
+| | Before | With the SDK |
+| --- | --- | --- |
+| Production dependencies | 13 | 107 |
+| Installed size | — | about 15 MB more |
+
+Bundling was measured as well and worked — 364 KB, with a clean process-level handshake — but it moves dependency security from npm's advisory feed to us, and adds a bundler to a build that is otherwise plain `tsc`. The owner ruled for the hand-written server.
+
+**The revert also removed a `package-lock.json` that this milestone had committed by accident.** `git add -A` picked it up even though the commit message said, in the same breath, that adding one was not this branch's call. The revert put that right.
+
+**This is the milestone working as designed, not failing.** It was written to be reverted, sequenced so that nothing depended on it, and the ruling it enabled is recorded in spec decision 2 with the measurement that produced it. What the SDK was buying — protocol conformance — is now an explicit liability recorded in `jsonrpc.ts` and guarded by the process-level handshake test.
+
+**Rollback.** Done: one revert, which removed the dependency, the throwaway module and the accidental lockfile.
 
 ## C2 — `runestone mcp serve`, read-only
 
