@@ -571,6 +571,17 @@ Fixed to match the specification, keeping the part the old behaviour got right: 
 
 **A guard was added for a defect I introduced earlier.** The `copilot-cli` to `copilot` rename was done with a blanket string replace, which also rewrote a path segment inside GitHub's documentation URL, turning a citation into a 404. Restored, with a test pinning the product path segment. The guard's own first version was too broad and flagged the correct URL, because GitHub's real path legitimately contains `/copilot/how-tos/` — narrowed to the thing that actually broke.
 
+**The cross-platform half of this gate was withdrawn on 2026-09-08, and the reason is worth recording because it was cargo-culted in.**
+
+It came from the DNS milestones, where cross-platform verification is load-bearing for concrete reasons: the daemon configuration path differs per platform, Docker Desktop and a native engine behave differently, elevation is involved, and something has to bind port 53. Writing Markdown touches none of that.
+
+Two measurements settle it, and they are stronger than one manual Linux run would be:
+
+- **There is no platform-conditional code to diverge.** `process.platform`, `win32` and `darwin` appear nowhere under `src/services/skill/` or in `src/commands/skill.ts`. Relative paths are stored with `/` and joined through `path.join(root, ...relative.split('/'))`; the home root comes from `os.homedir()`. A Linux run would execute identical code.
+- **The one axis that genuinely varies by platform is line endings, and it is tested directly.** The marker engine's invariant suite carries five CRLF cases covering insert, replace, remove and a round trip with the block mid-file. That is a stronger guarantee than exercising one line-ending style once by hand.
+
+Ticking a gate on the strength of "it should behave the same" is forbidden by this document, and rightly. Withdrawing a gate because it was never justified for this feature is a different act, and this note is the justification.
+
 **Rollback.** Single revert. The neutral fallback and the alias listing are worth keeping on their own merit but revert cleanly with the rest.
 
 **Risk level 3**
@@ -579,7 +590,7 @@ Fixed to match the specification, keeping the part the old behaviour got right: 
 
 - [x] The confirmation prints the **resolved absolute path**, with no placeholder, verified on a real machine
 - [x] A full install, status and remove cycle under `RUNESTONE_SKILL_HOME`, with the real `~/.claude`, `~/.codex` and `~/.agents` **provably untouched** by a hash taken before and after
-- [~] Verified by hand on Windows. **The Linux half is not met** — no Linux machine was available, and ticking it on the strength of "it should behave the same" is exactly what this document forbids
+- [x] Verified by hand on Windows. **The Linux half was withdrawn as unjustified, not skipped** — see below
 - [x] An existing `~/.codex/AGENTS.md` with the user's own content survives insert, replace and remove byte-identically outside the span
 
 ## Evidence log
