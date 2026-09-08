@@ -241,8 +241,14 @@ export const composeService = {
     runCompose(['rm', '--stop', '--force', ...services], composePath, 120000, options?.profiles ?? []);
   },
 
-  ps(composePath: string): DockerContainer[] {
-    const result = runCompose(['ps', '--format', 'json'], composePath, 30000);
+  /**
+   * `timeoutMs` is a parameter rather than a constant because callers differ by
+   * an order of magnitude in what they can afford to wait. Thirty seconds is
+   * right for `status`, where a human is watching and a cold daemon is worth
+   * waiting for, and far too long for a path an agent calls on every task.
+   */
+  ps(composePath: string, timeoutMs = 30000): DockerContainer[] {
+    const result = runCompose(['ps', '--format', 'json'], composePath, timeoutMs);
     try {
       return parsePsOutput(result.stdout ?? '');
     } catch {

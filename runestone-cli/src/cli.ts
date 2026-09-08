@@ -9,21 +9,14 @@ import { createDoctorCommand } from './commands/doctor';
 import { createKeysCommand } from './commands/keys';
 import { createServiceCommand } from './commands/service';
 import { createSetupCommand } from './commands/setup';
+import { createMcpCommand } from './commands/mcp';
+import { createSkillCommand } from './commands/skill';
 import { createStatusCommand } from './commands/status';
 import { createStopCommand } from './commands/stop';
 import { createUpCommand } from './commands/up';
 import { t } from './i18n';
 import { createCommand } from './utils/command';
-
-function packageVersion(): string {
-  try {
-    const packagePath = path.resolve(__dirname, '..', 'package.json');
-    const parsed = JSON.parse(fs.readFileSync(packagePath, 'utf8')) as { version?: string };
-    return parsed.version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}
+import { packageVersion } from './utils/version';
 
 export function createProgram(): Command {
   return createCommand()
@@ -40,6 +33,8 @@ export function createProgram(): Command {
     .addCommand(createDnsCommand())
     .addCommand(createDoctorCommand())
     .addCommand(createDocsCommand())
+    .addCommand(createSkillCommand())
+    .addCommand(createMcpCommand())
     .addCommand(createStatusCommand());
 }
 

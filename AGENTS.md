@@ -74,3 +74,32 @@ docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}' > ~/containers-befor
 
 - `composeService.restart()` 必須指定 service，不接受無範圍重啟。dynamic config 變更只重啟 `runestone`，DNS 設定變更只重啟 `dns`。
 - Service 名稱一律取自 `COMPOSE_SERVICES`，不要寫字串常值。
+
+## Skill Feature Rules
+
+Agent 支援功能會往**使用者的 repository 與家目錄**寫檔案，並且產出的內容會被
+agent 當成指令執行。動手前先讀 `docs/SKILL-FEATURE-SPEC.md`，進度與 gate 看
+`docs/SKILL-MILESTONES.md`。
+
+- **共用檔案只能 splice，不能覆寫。** `AGENTS.md`、`CLAUDE.md` 這類檔案屬於使用者，
+  Runestone 只擁有 marker 之間那一段。區塊外的位元組永遠不重新產生。兩個 begin
+  marker 或 begin 沒有 end 時一律拒絕、什麼都不寫，不要猜哪一段是自己的。
+- **`--project` 是禁字。** `PROJECT_DIR` 與 `resolveProjectDir()` 在這個 CLI 裡
+  已經是指 `~/.runestone`，不是使用者的 repo。目的地用 positional `[dir]`，
+  使用者範圍用 `--user`。
+- **產出物不得烤進即時狀態。** 安裝好的檔案會活得比寫入那一刻久，容器狀態或
+  Traefik 註冊清單幾分鐘後就是謊言。只替換 `.env` 來的純量，其餘指示 agent 去跑
+  `runestone docs --ai-context state`。
+- **語料的每一條規則都要從強制它的程式碼推導。** 不從散文、不從訊息表 ——
+  `service.validation.urlNoPath` 描述了一條沒有任何呼叫點的規則，照抄它就會把
+  錯的契約餵給會照做的 agent。`tests/utils/tool-docs.test.ts` 把主題寫的規則
+  丟進真正的 validator 跑一次。
+- **`mcp serve` 的 stdout 只能有 protocol frame。** 不得 import `utils/logger`
+  （它的 `info`、`success`、`debug` 全都寫 stdout），不得 import `@clack/prompts`。
+  診斷走 `src/services/mcp/log.ts` 的 stderr。這條規則的範圍是 `serve`；
+  `mcp config` 的工作就是印到 stdout。
+- **MCP 唯讀。** 變更狀態的入口必須走互動式 prompt，而 MCP 呼叫沒有 prompt 可回，
+  client 的工具授權也不是 per-call 的知情同意。工具回傳該執行的指令，由人執行。
+- **協定一致性現在是我們的。** MCP server 是手寫的，`PROTOCOL_VERSION` 在
+  `src/services/mcp/jsonrpc.ts`，而 `tests/integration/cli.test.ts` 的行程層
+  handshake 是唯一會抓到破裂的東西。

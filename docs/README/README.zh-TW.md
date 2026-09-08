@@ -141,28 +141,31 @@ runestone service remove <service name>
 
 ## 專案整合
 
-當您要請 AI agent 將其他專案接入 Runestone 時，請告訴它在修改 Compose 檔案前先呼叫 `runestone docs --ai-context`。
-這個指令會輸出 AI agent 需要的本機 Runestone network name、host domain 與 Traefik entrypoint names。
+Runestone 可以自己把「怎麼把這個專案接上來」講給 AI coding agent 聽，你不必再解釋一次。
+
+把指引安裝到你的 agent 工具本來就會讀的位置：
+
+```bash
+runestone skill install
+```
+
+它會偵測這個專案在用哪些工具，只寫那些。建議先用 `--dry-run` 看它會動到哪些路徑。`runestone skill status` 顯示裝了什麼，`runestone skill remove` 把它收回去。
+
+或是把指引印出來自己貼：
 
 ```bash
 runestone docs --ai-context
 ```
 
-範例 prompt：
+要其他主題就加參數 —— `service`、`state`、`troubleshoot`、`overview`。每個主題結尾都會列出其他主題，所以只跑了無參數版本的 agent 會自己找到其餘的。
 
-```text
-給我 traefik/whoami 且能在 Runestone 環境下運作的 compose.yml。
-Runestone 設定方法請直接呼叫 `runestone docs --ai-context`。
+或是把 Runestone 接成唯讀的 MCP server：
+
+```bash
+runestone mcp config --client claude
 ```
 
-```text
-幫我加上 compose.override.yml，並替 `app` service 補上符合 Runestone 環境的 Traefik labels 與 network 設定。
-Runestone 設定方法請直接呼叫 `runestone docs --ai-context`。
-```
-
-產生的 AI context 來自 [runestone-cli/tool-docs/ai-prompt-context.tmp.md](../../runestone-cli/tool-docs/ai-prompt-context.tmp.md)。
-您可以在分享產生的 context 給 AI agent 前，先檢閱這個 template。
-
+完整說明，包含 agent 不會替你執行哪些指令，在 **[AI agent 文件](../AI-AGENTS.zh-TW.md)**（[English](../AI-AGENTS.md) | [日本語](../AI-AGENTS.ja-JP.md)）。
 ## 版本與支援
 
 | 版本線 | 狀態 | 支援範圍 |

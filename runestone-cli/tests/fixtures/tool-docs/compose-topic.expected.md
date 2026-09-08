@@ -5,10 +5,10 @@ Integrate the current project with Runestone by creating or updating Docker Comp
 
 Runestone provides:
 - Traefik Docker-label routing.
-- External Docker network: ${RUNESTONE_NETWORK_NAME}
-- Host domain suffix: ${RUNESTONE_HOST_DOMAIN}
-- HTTPS entrypoint name: ${RUNESTONE_HTTPS_ENTRYPOINT_NAME}
-- Optional HTTP entrypoint name: ${RUNESTONE_HTTP_ENTRYPOINT_NAME}
+- External Docker network: mylab-network
+- Host domain suffix: example.test
+- HTTPS entrypoint name: secure
+- Optional HTTP entrypoint name: plain
 
 Do not:
 - Add a Traefik service.
@@ -25,18 +25,18 @@ You must inspect this project to determine:
 
 Required Traefik labels:
 - traefik.enable=true
-- traefik.http.routers.<router-id>.entrypoints=${RUNESTONE_HTTPS_ENTRYPOINT_NAME}
-- traefik.http.routers.<router-id>.rule=Host(`<host-prefix>.${RUNESTONE_HOST_DOMAIN}`)
+- traefik.http.routers.<router-id>.entrypoints=secure
+- traefik.http.routers.<router-id>.rule=Host(`<host-prefix>.example.test`)
 - traefik.http.routers.<router-id>.tls=true
 - traefik.http.routers.<router-id>.service=<traefik-service-id>
 - traefik.http.services.<traefik-service-id>.loadbalancer.server.port=<detected-internal-port>
-- traefik.docker.network=${RUNESTONE_NETWORK_NAME}
+- traefik.docker.network=mylab-network
 
 Required network:
 networks:
   runestone:
     external: true
-    name: ${RUNESTONE_NETWORK_NAME}
+    name: mylab-network
 
 Attach the exposed service to the runestone network.
 
