@@ -53,20 +53,21 @@ runestone skill install --dry-run
 
 | 工具 | 位置 |
 | --- | --- |
-| Codex、Cursor、VS Code，以及任何讀共通位置的工具 | `.agents/skills/runestone/` 與 `AGENTS.md` 裡的一段 |
-| Claude Code | `.claude/skills/runestone/` 與 `CLAUDE.md` 裡的一段 |
-| Cursor rules | `.cursor/rules/runestone.mdc` |
+| Codex、Cursor、VS Code，以及任何讀共通位置的工具 | `.agents/skills/runestone/` |
+| Claude Code | `.claude/skills/runestone/` |
 | GitHub Copilot | `.github/skills/runestone/` |
 
 `.agents/skills/` 是好幾個工具都同意的共通位置，所以寫一次就涵蓋大部分。Claude Code 讀的是它自己的路徑，所以它會多拿一份。
 
-如果你的工具不在表上，或它的路徑搬家了，自己指定：
+**Runestone 只安裝 skill，不做別的。** 它不會寫進你的 `AGENTS.md` 或 `CLAUDE.md`，也不會裝任何 rules 檔——那些放的是你自己給 agent 的指示，而且表上每個工具本來就會掃這些目錄找 skill。
+
+如果你的工具不在表上，或它的路徑搬家了，自己指定目錄：
 
 ```bash
-runestone skill install --skills-dir .mytool/skills --instructions-file MYTOOL.md
+runestone skill install --skills-dir .mytool/skills
 ```
 
-Runestone 只擁有它自己寫的東西。它會在你既有的檔案裡加一段有標記的區塊、絕不重寫其餘部分，改動前會先備份，而且你事後改過的東西它不會動。
+Runestone 只擁有它自己寫的東西。它裝的每個檔案都帶著它的標記，沒有標記的它不會移除，而且你事後改過的東西它不會動。
 
 ### 接成 MCP server
 

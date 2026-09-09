@@ -16,7 +16,6 @@ import {
   targetsForScope
 } from '../services/skill/scope';
 import {
-  NEUTRAL_INSTRUCTION_FILE,
   NEUTRAL_SKILLS_DIR,
   NEUTRAL_TARGET_ID,
   TARGETS,
@@ -40,7 +39,6 @@ interface SharedOptions {
   target?: string[];
   yes?: boolean;
   skillsDir?: string;
-  instructionsFile?: string;
   user?: boolean;
   dryRun?: boolean;
   force?: boolean;
@@ -79,10 +77,6 @@ function applyPathOverrides(files: RenderedFile[], options: SharedOptions): Rend
     if (options.skillsDir && file.relativePath.startsWith(`${NEUTRAL_SKILLS_DIR}/`)) {
       return { ...file, relativePath: file.relativePath.replace(NEUTRAL_SKILLS_DIR, options.skillsDir.replace(/\\/g, '/')) };
     }
-    if (options.instructionsFile && file.relativePath === NEUTRAL_INSTRUCTION_FILE) {
-      return { ...file, relativePath: options.instructionsFile.replace(/\\/g, '/') };
-    }
-
     return file;
   });
 }
@@ -94,7 +88,7 @@ function chosenTargets(root: string, options: SharedOptions): TargetDefinition[]
 
   // A path override is itself a statement of intent, so it implies the neutral
   // target rather than requiring --target alongside it.
-  if (options.skillsDir || options.instructionsFile) {
+  if (options.skillsDir) {
     const neutral = findTarget('agents');
     return neutral ? [neutral] : [];
   }
@@ -108,8 +102,6 @@ const ACTION_LABEL: Record<PlannedFile['action'], string> = {
   unchanged: 'unchanged',
   'skip-modified': 'skip',
   'backup-then-update': 'back up, then rewrite',
-  'append-block': 'append a section',
-  'replace-block': 'replace the section',
   'remove-orphan': 'remove (no longer generated)',
   delete: 'delete'
 };
@@ -134,18 +126,6 @@ function colourFor(action: PlannedFile['action']): (text: string) => string {
  * path leaves them working out which directory.
  */
 function printPlan(plan: Plan): void {
-  if (plan.blockers.length > 0) {
-    // Blockers replace the plan rather than appearing beneath it: a blocked run
-    // has no plan to describe.
-    logger.error(t('skill.plan.blocked', { count: String(plan.blockers.length) }));
-    for (const blocker of plan.blockers) {
-      console.log(`  ${red(blocker.absolutePath)}`);
-      console.log(`    ${blocker.reason}`);
-    }
-
-    return;
-  }
-
   const changing = plan.files.filter((file) => file.action !== 'unchanged');
   if (changing.length === 0) {
     logger.info(t('skill.plan.nothing'));
@@ -352,8 +332,6 @@ const STATUS_LABEL: Record<PlannedFile['action'], string> = {
   unchanged: 'current',
   'skip-modified': 'edited here',
   'backup-then-update': 'edited here',
-  'append-block': 'not installed',
-  'replace-block': 'out of date',
   'remove-orphan': 'no longer generated',
   delete: 'installed'
 };
@@ -364,7 +342,6 @@ function createInstallCommand(): Command {
     .argument('[dir]', 'directory to install into')
     .option('--target <name>', t('skill.option.target'), collect, [])
     .option('--skills-dir <path>', t('skill.option.skillsDir'))
-    .option('--instructions-file <path>', t('skill.option.instructionsFile'))
     .option('--user', t('skill.option.user'))
     .option('--dry-run', t('skill.option.dryRun'))
     .option('--force', t('options.force.description'))
@@ -401,10 +378,6 @@ function createInstallCommand(): Command {
         }
       }
 
-      if (plan.blockers.length > 0) {
-        process.exitCode = 1;
-        return;
-      }
       if (options.dryRun) {
         return;
       }
@@ -463,7 +436,6 @@ function createRemoveCommand(): Command {
     .argument('[dir]', 'directory to remove from')
     .option('--target <name>', t('skill.option.target'), collect, [])
     .option('--skills-dir <path>', t('skill.option.skillsDir'))
-    .option('--instructions-file <path>', t('skill.option.instructionsFile'))
     .option('--user', t('skill.option.user'))
     .option('--dry-run', t('skill.option.dryRun'))
     .option('--force', t('options.force.description'))
@@ -490,10 +462,6 @@ function createRemoveCommand(): Command {
       const orphans = findOrphans(prepared.root, expected, skillDirectoriesOf(prepared.targets, options));
 
       printPlan(plan);
-      if (plan.blockers.length > 0) {
-        process.exitCode = 1;
-        return;
-      }
 
       const removing = plan.files.filter((file) => file.action === 'delete');
       if (removing.length === 0 && orphans.length === 0) {

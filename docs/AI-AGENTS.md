@@ -66,24 +66,29 @@ Where it writes:
 
 | Tool | Destination |
 | --- | --- |
-| Codex, Cursor, VS Code, and anything reading the shared location | `.agents/skills/runestone/` and a section in `AGENTS.md` |
-| Claude Code | `.claude/skills/runestone/` and a section in `CLAUDE.md` |
-| Cursor rules | `.cursor/rules/runestone.mdc` |
+| Codex, Cursor, VS Code, and anything reading the shared location | `.agents/skills/runestone/` |
+| Claude Code | `.claude/skills/runestone/` |
 | GitHub Copilot | `.github/skills/runestone/` |
 
 `.agents/skills/` is the shared location several tools agree on, so one write
-covers most of them. Claude Code reads its own paths instead, which is why it
+covers most of them. Claude Code reads its own path instead, which is why it
 gets a second copy.
 
-If your tool is not listed, or its paths have moved, name them yourself:
+**Runestone installs a skill and nothing else.** It does not write into your
+`AGENTS.md` or your `CLAUDE.md`, and it installs no rules file: those carry your
+own instructions to your agent, and every tool in the table finds a skill by
+scanning those directories anyway.
+
+If your tool is not listed, or its paths have moved, name the directory
+yourself:
 
 ```bash
-runestone skill install --skills-dir .mytool/skills --instructions-file MYTOOL.md
+runestone skill install --skills-dir .mytool/skills
 ```
 
-Runestone owns only what it wrote. It adds a marked section to a file you
-already have and never rewrites the rest, it backs a file up before changing it,
-and it leaves alone anything you edited afterwards.
+Runestone owns only what it wrote. Every file it installs carries its marker, it
+never removes one that does not, and it leaves alone anything you edited
+afterwards.
 
 ### Connect it as an MCP server
 

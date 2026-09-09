@@ -53,20 +53,21 @@ runestone skill install --dry-run
 
 | ツール | 場所 |
 | --- | --- |
-| Codex、Cursor、VS Code、および共通の場所を読むツール | `.agents/skills/runestone/` と `AGENTS.md` 内の一節 |
-| Claude Code | `.claude/skills/runestone/` と `CLAUDE.md` 内の一節 |
-| Cursor rules | `.cursor/rules/runestone.mdc` |
+| Codex、Cursor、VS Code、および共通の場所を読むツール | `.agents/skills/runestone/` |
+| Claude Code | `.claude/skills/runestone/` |
 | GitHub Copilot | `.github/skills/runestone/` |
 
 `.agents/skills/` は複数のツールが合意している共通の場所なので、1 回の書き込みで大半をカバーします。Claude Code は独自のパスを読むため、もう 1 部を受け取ります。
 
-お使いのツールが表にない場合、あるいはパスが変わった場合は、自分で指定してください:
+**Runestone が導入するのは skill だけです。** あなたの `AGENTS.md` や `CLAUDE.md` に書き込むことはなく、rules ファイルも導入しません。それらはあなた自身がエージェントに与える指示の置き場所であり、表にあるツールはいずれも skills ディレクトリを走査して skill を見つけるからです。
+
+お使いのツールが表にない場合、あるいはパスが変わった場合は、自分でディレクトリを指定してください:
 
 ```bash
-runestone skill install --skills-dir .mytool/skills --instructions-file MYTOOL.md
+runestone skill install --skills-dir .mytool/skills
 ```
 
-Runestone は自分が書いたものだけを所有します。既存のファイルには印を付けた一節を追加するだけで残りは書き換えず、変更前にバックアップを取り、あなたが後から編集したものには手を触れません。
+Runestone は自分が書いたものだけを所有します。導入するファイルにはすべて印が付いており、印のないファイルを削除することはなく、あなたが後から編集したものには手を触れません。
 
 ### MCP サーバーとして接続する
 

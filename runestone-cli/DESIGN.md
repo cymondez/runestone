@@ -174,7 +174,7 @@ Runestone CLI 需支援管理注入到 Runestone 開發環境的 SSH keys。
 
 若尚未完成 setup，需 exit 1、stdout 全空、localized 訊息走 stderr。此行為為契約：給機器 pipe 的通道在沒有 context 時不得吐出看似 context 的內容。
 
-`runestone skill install | status | remove` 把上述語料安裝到 agent 工具會讀取的位置。安裝目的地採三層解析：中性預設（`.agents/skills/`、`AGENTS.md`）、記錄在案的例外（Claude Code 讀 `.claude/skills/` 與 `CLAUDE.md`）、以及使用者自訂路徑（`--skills-dir`、`--instructions-file`）。
+`runestone skill install | status | remove` 把上述語料安裝成 skill，放到 agent 工具會掃描的 skills 目錄。安裝目的地採三層解析：中性預設（`.agents/skills/`）、記錄在案的例外（Claude Code 讀 `.claude/skills/`）、以及使用者自訂路徑（`--skills-dir`）。安裝的東西只有 skill：使用者的 `AGENTS.md`、`CLAUDE.md` 與各家的 rules 檔都不寫，那些放的是使用者自己給 agent 的指示。
 
 寫入需求：
 

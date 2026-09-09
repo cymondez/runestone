@@ -65,7 +65,7 @@ Runestone 有兩種結構上完全不同的方式可以把流量導到一個專�
 
 | 成本 | 約束 | 章節 |
 | --- | --- | --- |
-| 檔案不是我們的 | 只擁有一個標記區塊，絕不擁有整個檔案；splice，絕不 re-render；沒有 marker 時用 append，絕不覆寫 | 9.3 |
+| 檔案不是我們的 | 根本不要寫它。Runestone 只把 skill 裝進 skills 目錄，不碰任何屬於使用者的指引檔或 rules 檔 | 8.4 |
 | 它會進使用者的 git | 寫入前印出每一個絕對路徑；每個會寫入的指令都要有 `--dry-run`；絕不寫在印出的計畫之外 | 10.3 |
 | 它會過期 | marker 帶模板版本；`doctor` 回報過期；重新渲染再比對可同時偵測過期與設定漂移 | 9.1, 10.4 |
 | 使用者會改它 | 以重新渲染比對偵測修改；沒有 `--force` 就跳過被改過的檔案；拒絕刪除內容不是我們產生的檔案 | 9.2, 9.5 |
@@ -107,8 +107,7 @@ Runestone 有兩種結構上完全不同的方式可以把流量導到一個專�
 | 離線層 | 可從 `.env` 與檔案系統取得的事實，不 spawn 行程、不走網路。 |
 | 線上層 | 需要 Docker 或 Traefik HTTP API 的事實。 |
 | Target | 一個具名的安裝目的地：一組路徑加上它們需要的 wrapper 格式（§8）。 |
-| A 類檔案 | Runestone 產生且完全擁有的檔案。 |
-| B 類檔案 | 屬於使用者的檔案，Runestone 只擁有其中一個標記區塊。 |
+| A 類檔案 | Runestone 產生且完全擁有的檔案。§8.4 之後，這是唯一的類別。 |
 | 模板版本 | 每個產生的 marker 都帶著的整數，用於偵測過期。 |
 
 ## 5. 內容模型
@@ -253,7 +252,7 @@ Runestone 有兩種結構上完全不同的方式可以把流量導到一個專�
 由此得出兩個結論，而它們就是 §8.2 的全部基礎：
 
 - **`.agents/skills/` 是中性位置。** 寫一次就被 Codex、Cursor 與 VS Code / Copilot 讀到。
-- **Claude Code 是記錄在案的例外**，skill 讀 `.claude/skills`，指引檔讀 `CLAUDE.md` 而不是 `AGENTS.md`。在這個 repository 裡已查證：它根目錄的 `AGENTS.md` 不會被載入 Claude Code session 的 context。
+- **Claude Code 是記錄在案的例外**：它掃的是 `.claude/skills` 而不是中性位置，所以它需要自己的 target。它的指引檔是 `CLAUDE.md` 而不是 `AGENTS.md`，而這兩個 Runestone 都不寫（§8.4）。在這個 repository 裡已查證：它根目錄的 `AGENTS.md` 不會被載入 Claude Code session 的 context。
 
 讀 `AGENTS.md` 的工具之間的優先順序：離被編輯檔案最近的那一份勝出，而使用者的明確指示凌駕一切。
 
@@ -261,11 +260,13 @@ Runestone 有兩種結構上完全不同的方式可以把流量導到一個專�
 
 寫死廠商路徑就是成本 §2.4 第 8 項。解析順序是：
 
-1. **中性預設。** `.agents/skills/runestone/` 與 `AGENTS.md` 裡的一個標記區塊。這就是偵測不到更明確目標時，無參數 `runestone skill install` 會寫的東西。
-2. **記錄在案的例外**，以具名 target 呈現：`claude`、`cursor`、`copilot-vscode`，另外 `codex` 是中性 target 的具名別名，因為 Codex 讀的是專案根的 `AGENTS.md`，而中性 target 本來就會寫它。以 `--target` 明確選擇，或在該 runtime 的目錄已存在於目標目錄時自動選擇。未知 target 的錯誤訊息會連別名一起列出，因為一個「接受但沒有公告」的值，等於沒有人找得到的值。
+1. **中性預設。** `.agents/skills/runestone/`。這就是偵測不到更明確目標時，無參數 `runestone skill install` 會寫的東西。
+2. **記錄在案的例外**，以具名 target 呈現：`claude` 與 `copilot-vscode`，另外 `codex` 是中性 target 的具名別名，因為 Codex 掃的就是中性 target 已經寫的 `.agents/skills`。以 `--target` 明確選擇，或在該 runtime 的目錄已存在於目標目錄時自動選擇。未知 target 的錯誤訊息會連別名一起列出，因為一個「接受但沒有公告」的值，等於沒有人找得到的值。
+
+   Cursor 不需要自己的 target：§8.1 記載它會掃 `.agents/skills`，連同 `.claude/skills` 與 `.codex/skills`，所以中性那一次寫入本來就涵蓋它。這份規格曾經要求的 `.cursor/rules/runestone.mdc` 在 2026-09-09 跟指引檔一起移除，理由相同 —— rules 檔是指引，不是 skill。
 
    用 `copilot-vscode` 而不是 `copilot`：`mcp --client copilot` 指的是 Copilot **CLI**，那是另一個產品、有自己的設定檔，一個 id 同時代表兩者，讀起來會像「裝了其中一個就會設定好另一個」。
-3. **使用者可設定的路徑**，給不在表上的 runtime 或路徑搬過家的情況：`--skills-dir <path>` 與 `--instructions-file <path>`。機器層級的預設可以存進 tool state，因為「我用哪些 agent 工具」是人的屬性而不是 repository 的屬性。
+3. **使用者可設定的路徑**，給不在表上的 runtime 或路徑搬過家的情況：`--skills-dir <path>`。機器層級的預設可以存進 tool state，因為「我用哪些 agent 工具」是人的屬性而不是 repository 的屬性。
 
 內建的表是便利，不是假設。它必須是單一檔案裡的單一資料結構，好讓路徑變更是一行修改，而且每一列都必須帶上它的來源文件 URL 與查證日期。
 
@@ -283,20 +284,23 @@ Runestone 有兩種結構上完全不同的方式可以把流量導到一個專�
 
 有一個驗證器並被當成 gate 使用：`skills-ref validate ./my-skill`。
 
-### 8.4 指引檔區塊
+### 8.4 沒有指引檔區塊
 
-指引檔永遠在 context 裡，所以它拿到的是每個主題的**摘要** —— 一到三行 —— 而不是本文，結尾指向 `runestone docs --ai-context <topic>`。全部約 25 行。把語料倒進那裡，會對使用者之後每一個 request 課稅。
+**Runestone 只安裝 skill，其他什麼都不寫。** 這份規格較早的版本要它往 `AGENTS.md` 與 `CLAUDE.md` splice 一個標記區塊，並寫一個 `.cursor/rules/runestone.mdc`。這三件事在 2026-09-09 由 repository 擁有者全部移除 —— 當初的要求是一個 skill 跟一個 MCP server，這兩者都不在其中。它從來不是 §15 的決策之一：它是寫這份文件時未經檢驗就假設進來的，這也是它撐過四個里程碑都沒被質疑的原因。
 
-Cursor 的 rule 是一個檔案一條規則、不支援巢狀引用，所以那個 target 必須是單一串接檔。這就是為什麼每個主題都必須能獨立成立。
+**移除沒有任何可量測的代價。** §8.1 表上的每個 runtime 都靠掃自己的 skills 目錄找到 skill，所以那個區塊沒有買到 skill 本來就沒有的可發現性。它的內容 —— 每個主題一句摘要，加上「這些指令不要自己跑」清單 —— `SKILL.md` 裡本來就有，而 skill 一啟用那些 runtime 就會載入它。
+
+**它換來的反而是風險。** 那些檔案放的是使用者自己給 agent 的指示；這個 repository 自己的 `AGENTS.md` 就有 77 行手寫內容。splice 引擎一旦出錯，毀的是一個沒有人要求我們碰的檔案，而「不寫」是比「小心地 splice」更強的保證。
+
+強制它的是 `tests/services/skill/apply.test.ts`：每個 target 產生的每一條路徑都必須落在 `<skills-dir>/runestone/` 底下，而且不得是 `AGENTS.md`、`CLAUDE.md` 或 `.mdc`。
 
 ### 8.5 擁有權類別
 
 | 類別 | 檔案 | 引擎 |
 | --- | --- | --- |
-| A | `<skills-dir>/runestone/**`、`.cursor/rules/runestone.mdc` | 版本閘門的整檔改寫，位元組要變之前先備份 |
-| B | `AGENTS.md`、`CLAUDE.md`、`~/.codex/AGENTS.md` | splice 一個標記區塊；絕不 re-render |
+| A | `<skills-dir>/runestone/**` | 版本閘門的整檔改寫，位元組要變之前先備份 |
 
-`.cursor/rules/runestone.mdc` 是 B 類目錄裡的 A 類檔案：檔名是我們的，目錄裡全是使用者自己的 rule。改寫那一個檔；絕不碰 sibling；可以建立目錄，但除了「空了」以外絕不移除它。
+只有一個類別，而這正是 §8.4 換來的：Runestone 寫的每一個檔案，都是它自己完整產生的檔案。目錄可以建立，但除了「空了」以外絕不移除，也絕不往 `<skills-dir>/runestone` 以上爬。
 
 ## 9. 擁有權模型
 
@@ -312,9 +316,8 @@ Cursor 的 rule 是一個檔案一條規則、不支援巢狀引用，所以那�
 Marker：
 
 ```
-AGENTS.md、CLAUDE.md      <!-- runestone:begin skill-template=1 --> … <!-- runestone:end -->
 references/*.md，第 1 行   <!-- runestone:generated skill-template=1 -->
-SKILL.md、.mdc            在 frontmatter 內，以 metadata 加一個 YAML 註解呈現
+SKILL.md                  在 frontmatter 內，以 metadata 加一個 YAML 註解呈現
 ```
 
 曾考慮並否決一個 `toolState` 索引：它會讓每一次**專案層級**的安裝都寫進使用者的家目錄，把那個里程碑的風險等級整整抬高一級，換來的只是一個沒有人要求的跨專案 `skill list`。DNS 引擎必須記住它插入的東西，是因為一個 IP 字串沒地方帶 marker；markdown 有。**以內容辨識，不靠記住的清單。**
@@ -325,17 +328,9 @@ SKILL.md、.mdc            在 frontmatter 內，以 metadata 加一個 YAML 註
 
 處於當前版本但內容不同的檔案是**被改過**：沒有 `--force` 就跳過，有的話就備份後改寫。
 
-### 9.3 B 類
+### 9.3 沒有 B 類
 
-splice，沿用 `src/services/dns/daemon-config.ts` 與 `json-edit.ts`。區塊外的位元組永遠不重新產生。
-
-- 沒有檔案 —— 建立，只含該區塊。
-- marker 存在 —— 只取代 marker 之間的內容。
-- 檔案存在但沒有 marker —— **append**，且先確認。絕不覆寫。
-- 兩個 `begin` marker —— `conflict`。什麼都不寫；印出 offset 與手動移除步驟。
-- 有 `begin` 但沒有 `end` —— `unterminated`。什麼都不寫；同樣處理。
-
-全有全無的規則繼承自 `removeOwnedEntries`：移除掉 Runestone 一半的改動，比一個都沒移除更糟。
+這一節原本規定的是「屬於使用者的檔案」的 splice 引擎。它在 2026-09-09 跟指引檔本身一起移除（§8.4），連同 `conflict`、`unterminated` 兩個狀態、它們產生的 blocker，以及整個 marker-block 模組。Runestone 只寫自己完整產生的檔案，所以沒有「別人的檔案裡我們擁有的那一段」這種東西。
 
 ### 9.4 備份
 
@@ -345,7 +340,7 @@ splice，沿用 `src/services/dns/daemon-config.ts` 與 `json-edit.ts`。區塊�
 
 ### 9.5 移除
 
-- 只 splice 掉我們的區塊。**絕不做整檔還原** —— 這與 DNS 規格對 `daemon.json` 下的禁令相同，理由也相同：那會丟掉此後所有無關的編輯。
+- **絕不做整檔還原** —— 這與 DNS 規格對 `daemon.json` 下的禁令相同，理由也相同：那會丟掉此後所有無關的編輯。
 - 刪除帶我們 marker 的 A 類檔案。只有在 skill 目錄因此變空時才移除它。**絕不遞迴刪除。** 沒有 marker 的檔案會保留該目錄，並在輸出中被點名。
 - 拒絕刪除內容不是我們產生的檔案，除非 `--force`。
 
@@ -355,7 +350,7 @@ splice，沿用 `src/services/dns/daemon-config.ts` 與 `json-edit.ts`。區塊�
 
 ```
 runestone skill                                     自己沒有任何 option
-  install [dir]  [--target <name...>] [--skills-dir <path>] [--instructions-file <path>]
+  install [dir]  [--target <name...>] [--skills-dir <path>]
                  [--user] [--dry-run] [--force] [-y|--yes]
   status  [dir]  [--user] [--no-header]
   remove  [dir]  [--target <name...>] [--user] [--dry-run] [--force] [-y|--yes]   別名 rm、del
@@ -369,18 +364,20 @@ parent 自己沒有 option，因為 `tests/integration/cli.test.ts:106` 斷言�
 
 所以範圍是一個 positional `[dir]`，預設 `process.cwd()`，比照 `certs create <domain>`；再加一個 boolean opt-in `--user`。`--user` 與 `[dir]` 同時給是錯誤。
 
-`--user` 只支援真的有使用者層級路徑的 target：中性的 `~/.agents/skills`、`claude`（`~/.claude/skills`）與 `codex`（`~/.codex/AGENTS.md`）。`cursor` 被拒絕，因為 Cursor 的使用者 rule 存在應用程式設定裡；`AGENTS.md` 指引 target 也被拒絕，因為沒有任何工具會讀 `~/AGENTS.md`。
+`--user` 只支援真的有使用者層級 skills 目錄的 target，而且必須寫**那個**目錄：中性的 `~/.agents/skills`、`claude`（`~/.claude/skills`）與 `copilot-vscode`（`~/.copilot/skills`，依 §8.1）。§8.4 之後已經沒有指引檔要放，所以剩下的問題只有「這個 runtime 在家目錄而不是專案裡掃哪個目錄」。
+
+**已知偏差，2026-09-09 量測，尚未修正。** `targetsForScope` 只判斷 `userScope` 有沒有*定義*，值從來沒被當成路徑讀過。所以 `--user --target copilot-vscode` 寫的是 `~/.github/skills` —— 專案層級的路徑接到家目錄根上 —— 而不是表上記載的 `~/.copilot/skills`。中性與 `claude` 兩個 target 沒事，只是因為它們的兩條路徑剛好相同。
 
 `RUNESTONE_SKILL_HOME` 為開發與測試重導家目錄根，沿用 `RUNESTONE_TOOL_STATE_PATH` 的先例。依 `AGENTS.md` 的覆寫規則，`skill status` 在它生效時必須大聲回報。
 
 ### 10.3 行為
 
-- **未指定時的 target 偵測**：某個 runtime 的目錄或指引檔已存在於 `[dir]` 時，該 target 被選中；否則用中性預設。這就是避免一個只用 Cursor 的 repository 長出多餘 `.claude/` 的機制。
+- **未指定時的 target 偵測**：某個 runtime 的**目錄**已存在於 `[dir]` 時，該 target 被選中；否則用中性預設。這就是避免一個只用某個 runtime 的 repository 長出別家目錄的機制。只看目錄：`AGENTS.md` 或 `CLAUDE.md` 是使用者自己的指引檔，而 §8.4 之後 Runestone 既不寫也不讀它們。
 - **plan 與 apply 是分開的函式**，沿用 `dns disable`，這樣 `--dry-run` 就不是一份會漂移的第二實作。有測試斷言 dry-run 的輸出與實跑的計畫逐行相同。
 - **blocker 取代計畫**，不是附在計畫後面。
 - `-y, --yes` 是對印出的計畫表示同意。`--force` 是改寫沒有 marker 或被使用者改過的檔案。兩者不可互換。
 - **非 TTY** 且未給 `--yes` 或 `--dry-run` 時拒絕並說明，鏡像 `src/commands/dns-enable.ts:537` 這唯一的既有先例。
-- 確認時列舉每一個將被建立、覆寫（含其備份路徑）、splice 或刪除的絕對路徑。
+- 確認時列舉每一個將被建立、覆寫（含其備份路徑）或刪除的絕對路徑。
 - 互動式修正遵守 `AGENTS.md` 的 prompt 規則：不合法的 `[dir]` 回到**同一個** prompt，理由放在該 prompt 的 description，沿用 `promptForExistingServiceName`；空的 target 選擇回到同一個多選。兩者都在真正的 command 入口測試。
 
 ### 10.4 生命週期
@@ -504,8 +501,7 @@ stdout 只承載 protocol frame，別無其他。
 
 - Renderer：對 committed fixture 斷言 `compose` 輸出位元組相同；含 `$&`、`$1`、`$$` 的值被字面替換；未知 token 會 throw；manifest 與主題檔一對一。
 - Snapshot：§6.3 的每一列；以 `spawnCommand` 的 spy 斷言零 spawn；零 stdout 與 stderr 寫入；`JSON.parse(JSON.stringify(snapshot))` 與 snapshot deep-equal；任何字串欄位不含 `'✓'`、`'✗'` 或跳脫字元。
-- Marker 引擎：對任意「插入、使用者在他處編輯、替換、移除」序列，**區塊外每一個位元組不變**，涵蓋至少六種文件形狀，包含空檔、無結尾換行、CRLF、tab 縮排、使用者自己手寫的 `## Runestone` 標題、以及不相關的 HTML 註解。**這個 repository 自己那份 77 行的 `AGENTS.md` 就是其中一個 fixture。**
-- conflict 與 unterminated 的 marker 什麼都不寫。
+- 寫入邊界（§8.4）：每個 target 產生的每一條路徑都落在 `<skills-dir>/runestone/` 底下，而且不得是 `AGENTS.md`、`CLAUDE.md` 或 `.mdc`。這條測試已用「故意插入一個 `AGENTS.md` 寫入」反證過會失敗。
 
 ### 14.2 Command 入口測試
 
@@ -538,6 +534,7 @@ stdout 只承載 protocol frame，別無其他。
 4. **`troubleshoot` 在範圍內。** 它是「瀏覽器通但另一個容器不通」唯一的落點，而那是接入成功之後最常見的失敗。
 5. **使用者範圍排在最後，之後有做。** 它是唯一的家目錄寫入，而且服務的是跨專案便利性而不是 §1 的目的，所以它被寫進規格並排在最後，使得放棄它不會有任何代價。2026-09-08 開始做並完成，於 Windows 驗證；它手動 gate 的 Linux 那一半未達成。
 6. **stdio，不是 HTTP**（§11.1）。
+7. **Runestone 不寫任何指引檔。** 2026-09-09 裁決，也是這裡唯一一個不是在實作前就定案的決策 —— 因為它從來沒有被當成問題提出。當初的要求是一個 skill 跟一個 MCP server；`AGENTS.md` 與 `CLAUDE.md` 裡的標記區塊、還有 Cursor 的 rules 檔，是寫這份文件時假設進 §8.2 然後就被實作出來的。移除是徹底的：marker 引擎、`--instructions-file` 選項、`cursor` target，以及只有「別人檔案裡的畸形 marker」才會產生的 blocker，全部拿掉。見 §8.4。
 
 ## 16. 里程碑與風險控制
 
@@ -569,7 +566,7 @@ stdout 只承載 protocol frame，別無其他。
 | A2 | 離線 snapshot 模組 | 0 |
 | A3 | 接上 `--ai-context [topic]` 與 `--offline`，只有離線層 | 1 |
 | A4 | 線上層：撞名偵測 | 2 |
-| B1 | Marker-block 擁有權引擎，純函式 | 0 |
+| B1 | Marker-block 擁有權引擎，純函式 —— **2026-09-09 移除，見 §8.4** | 0 |
 | B2 | `skill status` 與 `skill install --dry-run` | 1 |
 | B3 | `skill install` 與 `skill remove`，目標目錄範圍 | 2 |
 | B4 | 完整 target 表與其 wrapper | 2 |

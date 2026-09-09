@@ -22,7 +22,7 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | A2 | Offline snapshot module | 0 | — | **done** — 44 suites, 624 passed, 5 skipped |
 | A3 | `--ai-context [topic]` and `--offline` | 1 | A1, A2 | **done** — 44 suites, 630 passed, 5 skipped. First user-visible milestone |
 | A4 | Online tier: collision detection | 2 | A3 | **done** — 45 suites, 650 passed, 5 skipped. Phase A complete except the A0 mirrors |
-| B1 | Marker-block ownership engine | 0 | — | **done** — 46 suites, 697 passed, 5 skipped |
+| B1 | Marker-block ownership engine | 0 | — | **done, then removed 2026-09-09** — see the note under this board |
 | B2 | `skill status` and `install --dry-run` | 1 | A1, B1 | **done** — 47 suites, 719 passed, 5 skipped. B4's renderers folded in; see below |
 | B3 | `skill install` and `skill remove` | 2 | B2 | **done** — 48 suites, 743 passed, 5 skipped. Every target enabled, so B4 is closed with it |
 | B4 | Full target table and wrappers | 2 | B3 | **done, merged into B2 and B3** — the table and renderers landed in B2 because `status` cannot exist without them; enabling every target for writing landed in B3 |
@@ -33,6 +33,12 @@ Risk levels are defined in spec 16.1 and referenced by number throughout.
 | C4 | MCP tool surface: drop the topic enum | 3 | C2 | **done** — 49 suites, 792 passed, 5 skipped. Removes a shipped parameter; see below for why it was wrong |
 
 A1, A2, B1 and C1 are all risk 0 and independent of one another; they can proceed in parallel. A3 is the first user-visible milestone.
+
+**Removed on 2026-09-09: the instruction-file half of this feature.** The repository owner ruled that Runestone must not write into `AGENTS.md` or `CLAUDE.md` — the original request had been a skill and an MCP server, and the marked block was never one of specification 15's decisions. The `.cursor/rules/runestone.mdc` went with it, for the same reason: a rules file is guidance, not a skill.
+
+What came out: B1's marker engine in full, the `--instructions-file` option, the `cursor` target, the `conflict` and `unterminated` blockers, and the 358 lines of test and fixture that existed to prove the splice was safe. What stayed: the skill itself, in `.agents/skills`, `.claude/skills` and `.github/skills`. Nothing was lost with it — every runtime in specification 8.1's table finds a skill by scanning those directories, and the block's content was already in `SKILL.md`.
+
+**Nothing below this note is rewritten.** B1 through B5 record what was built and why it was believed correct at the time, and that record is the point: this decision is written down rather than erased, because a milestone document that quietly matches today's code cannot show how something got in. Specification 8.4 carries the reasoning; specification 15 carries it as decision 7. After the removal: 48 suites, 734 passed, 5 skipped.
 
 ## Decision gate
 

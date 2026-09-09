@@ -5,7 +5,7 @@ import * as path from 'path';
 import { createProgram } from '../../src/cli';
 import { listDomainCertificates } from '../../src/services/cert-manager';
 import { envLoader } from '../../src/utils/env-loader';
-import { SKILL_TEMPLATE_VERSION, beginMarker, endMarker } from '../../src/services/skill/version';
+import { SKILL_TEMPLATE_VERSION } from '../../src/services/skill/version';
 import { TARGET_ALIASES, acceptedTargetIds, targetIds } from '../../src/services/skill/targets';
 import { testEnv } from '../helpers/env';
 
@@ -130,7 +130,8 @@ describe('runestone skill', () => {
 
       expect(process.exitCode).toBeUndefined();
       expect(fs.existsSync(path.join(root, '.agents', 'skills', 'runestone', 'SKILL.md'))).toBe(true);
-      expect(fs.existsSync(path.join(root, 'AGENTS.md'))).toBe(true);
+      // And nothing outside the skills directory: AGENTS.md is the user's file.
+      expect(fs.existsSync(path.join(root, 'AGENTS.md'))).toBe(false);
     });
 
     it('prints the same plan in a dry run as the real run acts on', async () => {
@@ -153,17 +154,16 @@ describe('runestone skill', () => {
     it.each([
       ['.agents', 'agents'],
       ['.claude', 'claude'],
-      ['.cursor', 'cursor'],
       ['.vscode', 'copilot-vscode']
     ])('selects only the runtime whose directory is present: %s', async (marker, expected) => {
-      // Detection is what stops a Cursor-only repository acquiring a stray
-      // .claude/ directory it never asked for.
+      // Detection is what stops a repository that uses one runtime acquiring
+      // another's directory.
       fs.mkdirSync(path.join(root, marker), { recursive: true });
 
       await run('install', '--dry-run', root);
 
       const text = output();
-      const others = { agents: '.agents/skills', claude: '.claude/skills', cursor: '.cursor/rules', 'copilot-vscode': '.github/skills' };
+      const others = { agents: '.agents/skills', claude: '.claude/skills', 'copilot-vscode': '.github/skills' };
       expect(text).toContain(path.join(...others[expected as keyof typeof others].split('/')));
 
       for (const [id, dir] of Object.entries(others)) {
@@ -191,10 +191,12 @@ describe('runestone skill', () => {
       expect(output()).toContain('neutral target agents');
     });
 
-    it('treats codex as the neutral instruction file, not a fourth copy', async () => {
+    it('treats codex as the neutral skill, not a second copy', async () => {
+      // Codex scans .agents/skills, so the alias resolves to the neutral
+      // target rather than writing a .codex/ directory of its own.
       await run('install', '--dry-run', '--target', 'codex', root);
 
-      expect(output()).toContain('AGENTS.md');
+      expect(output()).toContain(path.join('.agents', 'skills', 'runestone'));
       expect(output()).not.toContain('.codex');
     });
   });
@@ -205,12 +207,6 @@ describe('runestone skill', () => {
 
       expect(output()).toContain(path.join('.weird', 'skills', 'runestone', 'SKILL.md'));
       expect(output()).not.toContain(path.join('.agents', 'skills'));
-    });
-
-    it('honours --instructions-file', async () => {
-      await run('install', '--dry-run', '--instructions-file', 'RULES.md', root);
-
-      expect(output()).toContain('RULES.md');
     });
   });
 
@@ -257,9 +253,10 @@ describe('runestone skill', () => {
       fs.mkdirSync(path.join(root, '.agents', 'skills', 'runestone'), { recursive: true });
 
       // Out of date: our marker, an older template version.
+      fs.mkdirSync(path.join(root, '.agents', 'skills', 'runestone', 'references'), { recursive: true });
       fs.writeFileSync(
-        path.join(root, 'AGENTS.md'),
-        `# Mine\n\n${beginMarker(SKILL_TEMPLATE_VERSION - 1)}\nold\n${endMarker()}\n`,
+        path.join(root, '.agents', 'skills', 'runestone', 'references', 'state.md'),
+        `<!-- runestone:generated skill-template=${SKILL_TEMPLATE_VERSION - 1} -->\n\nold\n`,
         'utf8'
       );
       // Edited here: our marker at the current version, different bytes.
@@ -277,42 +274,19 @@ describe('runestone skill', () => {
     });
 
     it('hides the header with --no-header', async () => {
-      fs.mkdirSync(path.join(root, '.agents'), { recursive: true });
-      fs.writeFileSync(path.join(root, 'AGENTS.md'), '# Mine\n', 'utf8');
-
-      await run('status', root, '--no-header');
-
-      expect(output()).not.toContain('State');
-    });
-  });
-
-  describe('blockers replace the plan', () => {
-    it('refuses on two begin markers and names the offsets', async () => {
-      fs.mkdirSync(path.join(root, '.agents'), { recursive: true });
+      fs.mkdirSync(path.join(root, '.agents', 'skills', 'runestone'), { recursive: true });
       fs.writeFileSync(
-        path.join(root, 'AGENTS.md'),
-        `${beginMarker()}\na\n${endMarker()}\n\n${beginMarker()}\nb\n${endMarker()}\n`,
+        path.join(root, '.agents', 'skills', 'runestone', 'SKILL.md'),
+        `---\n# runestone:generated skill-template=${SKILL_TEMPLATE_VERSION}\nname: runestone\n---\n\nedited by hand\n`,
         'utf8'
       );
 
-      await run('install', '--dry-run', root);
+      await run('status', root, '--no-header');
 
-      expect(process.exitCode).toBe(1);
-      const text = output();
-      expect(text).toContain('begin markers');
-      // A blocked run has no plan to describe, so the plan must not appear.
-      expect(text).not.toContain('would change');
-      expect(text).not.toContain('create');
-    });
-
-    it('refuses on a begin marker with no end', async () => {
-      fs.mkdirSync(path.join(root, '.agents'), { recursive: true });
-      fs.writeFileSync(path.join(root, 'AGENTS.md'), `${beginMarker()}\nunclosed\n`, 'utf8');
-
-      await run('install', '--dry-run', root);
-
-      expect(process.exitCode).toBe(1);
-      expect(output()).toContain('no matching end marker');
+      // The row still prints; only the header is suppressed. Asserting both
+      // keeps this from passing on an empty table.
+      expect(output()).toContain('SKILL.md');
+      expect(output()).not.toContain('State');
     });
   });
 
@@ -328,6 +302,18 @@ describe('runestone skill', () => {
     expect(text).not.toContain('Runestone is not running');
     expect(text).not.toContain('router IDs already registered');
   });
+
+  it('gives a Cursor-only repository the neutral skills directory', async () => {
+      // Cursor scans .agents/skills, so it needs no target of its own. The
+      // .cursor/rules file Runestone used to write went with the instruction
+      // files on 2026-09-09: a rules file is guidance, not a skill.
+      fs.mkdirSync(path.join(root, '.cursor'), { recursive: true });
+
+      await run('install', '--dry-run', root);
+
+      expect(output()).toContain(path.join('.agents', 'skills', 'runestone'));
+      expect(output()).not.toContain(path.join('.cursor', 'rules'));
+    });
 
   describe('when no runtime is detected', () => {
     // Specification 8.2 makes the neutral location the answer, not an error. A

@@ -6,13 +6,8 @@ import * as yaml from 'js-yaml';
 import { applyInstall, applyRemove, findOrphans } from '../../../src/services/skill/apply';
 import { planInstall, planRemove } from '../../../src/services/skill/plan';
 import { TARGETS, RenderContext, findTarget } from '../../../src/services/skill/targets';
-import { SKILL_TEMPLATE_VERSION, beginMarker, endMarker } from '../../../src/services/skill/version';
+import { SKILL_TEMPLATE_VERSION } from '../../../src/services/skill/version';
 import { TOPICS } from '../../../src/utils/tool-docs';
-
-const AGENTS_FIXTURE = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'fixtures', 'skill', 'agents-md.fixture.md'),
-  'utf8'
-);
 
 function context(): RenderContext {
   const topics: Record<string, string> = {};
@@ -67,12 +62,12 @@ describe('applying a skill plan', () => {
       deps()
     );
 
-    return { plan, result: plan.blockers.length === 0 ? applyInstall(plan) : undefined };
+    return { plan, result: applyInstall(plan) };
   }
 
   function remove(force = false) {
     const plan = planRemove({ root, targetIds: ['agents'], files: neutralFiles(), force }, deps());
-    return { plan, result: plan.blockers.length === 0 ? applyRemove(plan) : undefined };
+    return { plan, result: applyRemove(plan) };
   }
 
   beforeEach(() => {
@@ -103,42 +98,7 @@ describe('applying a skill plan', () => {
 
     expect(treeHash(root)).toBe(afterFirst);
     expect(result?.written).toEqual([]);
-    expect(fs.existsSync(path.join(root, 'AGENTS.md.bak'))).toBe(false);
-  });
-
-  describe("against this repository's own AGENTS.md", () => {
-    beforeEach(() => {
-      fs.writeFileSync(path.join(root, 'AGENTS.md'), AGENTS_FIXTURE, 'utf8');
-    });
-
-    it('leaves every one of its lines untouched, and backs it up once', () => {
-      install();
-
-      const after = fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
-      expect(after.startsWith(AGENTS_FIXTURE.replace(/\n+$/, '\n'))).toBe(true);
-      expect(after).toContain('Interactive Prompt Rules');
-      expect(fs.readFileSync(path.join(root, 'AGENTS.md.bak'), 'utf8')).toBe(AGENTS_FIXTURE);
-    });
-
-    it('returns it byte-identical after removal', () => {
-      install();
-      remove();
-
-      expect(fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8')).toBe(AGENTS_FIXTURE);
-    });
-  });
-
-  it('splices out only the section, leaving text the user added afterwards', () => {
-    install();
-    const withTail = `${fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8')}\n## Mine\n\nAdded later.\n`;
-    fs.writeFileSync(path.join(root, 'AGENTS.md'), withTail, 'utf8');
-
-    remove();
-
-    const after = fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
-    expect(after).toContain('## Mine');
-    expect(after).toContain('Added later.');
-    expect(after).not.toContain('runestone:begin');
+    expect(fs.existsSync(path.join(root, '.agents', 'skills', 'runestone', 'SKILL.md.bak'))).toBe(false);
   });
 
   it('removes a file the current template no longer generates', () => {
@@ -178,23 +138,6 @@ describe('applying a skill plan', () => {
     expect(fs.readFileSync(`${skill}.bak`, 'utf8')).toBe(edited);
   });
 
-  it('refuses to write anything when a file has two of our begin markers', () => {
-    fs.writeFileSync(
-      path.join(root, 'AGENTS.md'),
-      `${beginMarker()}\na\n${endMarker()}\n\n${beginMarker()}\nb\n${endMarker()}\n`,
-      'utf8'
-    );
-    const before = treeHash(root);
-
-    const { plan } = install();
-
-    expect(plan.blockers).toHaveLength(1);
-    expect(plan.blockers[0].reason).toContain('begin markers');
-    expect(treeHash(root)).toBe(before);
-    // applyInstall must refuse even if a caller ignores the blockers.
-    expect(() => applyInstall(plan)).toThrow(/blockers/);
-  });
-
   it('does not climb above the skill directory when cleaning up', () => {
     // `.agents/` is the user's, and it is the directory target detection looks
     // for: deleting it would silently change what a later install decides.
@@ -229,6 +172,25 @@ describe('applying a skill plan', () => {
       });
 
     expect(walk(root).filter((file) => file.includes('runestone-tmp'))).toEqual([]);
+  });
+});
+
+describe('what Runestone is allowed to write', () => {
+  // The instruction-file half of this feature was removed on 2026-09-09: an
+  // AGENTS.md or a CLAUDE.md is the user's own file, and every runtime in the
+  // table finds a skill by scanning its skills directories anyway. This is the
+  // guard. It fails the moment a target emits a path outside its own skill
+  // directory, which is the check the original user-scope gate never made.
+  it.each(TARGETS.map((target) => [target.id, target] as const))('%s writes only inside a skills directory', (_id, target) => {
+    const rendered = target.render(context());
+    expect(rendered.length).toBeGreaterThan(0);
+
+    for (const file of rendered) {
+      expect(file.relativePath).toContain('/skills/runestone/');
+      expect(path.basename(file.relativePath)).not.toBe('AGENTS.md');
+      expect(path.basename(file.relativePath)).not.toBe('CLAUDE.md');
+      expect(file.relativePath.endsWith('.mdc')).toBe(false);
+    }
   });
 });
 
@@ -271,23 +233,6 @@ describe('the generated skill matches the Agent Skills specification', () => {
 
       // Under 500 lines, per the progressive-disclosure guidance.
       expect(file.content.split('\n').length).toBeLessThan(500);
-    }
-  });
-
-  it('renders the Cursor rule as one self-contained file with valid frontmatter', () => {
-    // Cursor rules have no nested references, which is why every topic in the
-    // corpus has to stand alone.
-    const files = findTarget('cursor')?.render(context()) ?? [];
-    expect(files).toHaveLength(1);
-
-    const match = /^---\n([\s\S]*?)\n---/.exec(files[0].content);
-    const front = yaml.load((match as RegExpExecArray)[1]) as Record<string, unknown>;
-
-    expect(front.description).toBeDefined();
-    expect(Array.isArray(front.globs)).toBe(true);
-    expect(front.alwaysApply).toBe(false);
-    for (const topic of TOPICS) {
-      expect(files[0].content).toContain(`Body for ${topic.id}.`);
     }
   });
 });

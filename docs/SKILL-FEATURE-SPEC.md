@@ -65,7 +65,7 @@ Each row exists to bound a cost from 2.4. None is a matter of taste.
 
 | Cost | Constraint | Section |
 | --- | --- | --- |
-| The file is not ours | Own a marked span, never the file; splice, never re-render; append when no marker exists, never overwrite | 9.3 |
+| The file is not ours | Do not write it at all. Runestone installs a skill into a skills directory and touches no instruction or rules file the user owns | 8.4 |
 | It enters the user's git | Print every absolute path before writing; `--dry-run` on every writing command; never write outside the printed plan | 10.3 |
 | It goes stale | The marker carries the template version; `doctor` reports staleness; re-rendering and comparing detects both staleness and configuration drift | 9.1, 10.4 |
 | The user edits it | Detect modification by re-render comparison; skip modified files unless `--force`; refuse to delete a file whose content we did not produce | 9.2, 9.5 |
@@ -107,8 +107,7 @@ Costs we refuse to pay: we do not overwrite a file we did not generate, we do no
 | Offline tier | Facts obtainable from `.env` and the filesystem, with no process spawn and no network. |
 | Online tier | Facts requiring Docker or the Traefik HTTP API. |
 | Target | A named install destination: a set of paths plus the wrapper format they need (section 8). |
-| Class A file | A file Runestone generates and owns outright. |
-| Class B file | A file belonging to the user, inside which Runestone owns one marked span. |
+| Class A file | A file Runestone generates and owns outright. Since 8.4 it is the only class there is. |
 | Template version | The integer carried in every generated marker, used for staleness detection. |
 
 ## 5. Content Model
@@ -253,7 +252,7 @@ Sources: <https://developers.openai.com/codex/skills>, <https://cursor.com/docs/
 Two conclusions follow, and they are the whole basis of 8.2:
 
 - **`.agents/skills/` is the neutral location.** One write is read by Codex, Cursor and VS Code / Copilot.
-- **Claude Code is the documented exception**, for skills (`.claude/skills`) and for the instruction file (`CLAUDE.md` rather than `AGENTS.md`). Verified in this repository: its root `AGENTS.md` is not loaded into a Claude Code session's context.
+- **Claude Code is the documented exception**: it scans `.claude/skills` rather than the neutral location, which is why it needs a target of its own. Its instruction file is `CLAUDE.md` rather than `AGENTS.md`, and Runestone writes neither (8.4). Verified in this repository: its root `AGENTS.md` is not loaded into a Claude Code session's context.
 
 `AGENTS.md` precedence across the tools that read it: the closest file to the edited file wins, and an explicit user instruction overrides everything.
 
@@ -261,11 +260,13 @@ Two conclusions follow, and they are the whole basis of 8.2:
 
 Hard-coding a vendor's path is cost 2.4 item 8. The resolution order is:
 
-1. **Neutral default.** `.agents/skills/runestone/` and a marked block in `AGENTS.md`. This is what a bare `runestone skill install` writes when nothing more specific is detected.
-2. **Documented exceptions**, as named targets: `claude`, `cursor`, `copilot-vscode`, with `codex` as a named alias of the neutral target because Codex reads the project-root `AGENTS.md` the neutral target already writes. Selected explicitly with `--target`, or automatically when that runtime's directory is already present in the target directory. The unknown-target error lists the aliases as well as the canonical ids, because an accepted value missing from the advertised list is a value nobody finds.
+1. **Neutral default.** `.agents/skills/runestone/`. This is what a bare `runestone skill install` writes when nothing more specific is detected.
+2. **Documented exceptions**, as named targets: `claude` and `copilot-vscode`, with `codex` as a named alias of the neutral target because Codex scans the `.agents/skills` the neutral target already writes. Selected explicitly with `--target`, or automatically when that runtime's directory is already present in the target directory. The unknown-target error lists the aliases as well as the canonical ids, because an accepted value missing from the advertised list is a value nobody finds.
+
+   Cursor needs no target of its own: 8.1 records it scanning `.agents/skills` alongside `.claude/skills` and `.codex/skills`, so the neutral write already reaches it. The `.cursor/rules/runestone.mdc` this specification once required went with the instruction files on 2026-09-09, for the same reason — a rules file is guidance, not a skill.
 
    `copilot-vscode` rather than `copilot`: `mcp --client copilot` is the Copilot **CLI**, a different product with its own configuration file, and one id meaning both read as though installing one would configure the other.
-3. **User-settable paths**, for a runtime not in the table or a path that has moved: `--skills-dir <path>` and `--instructions-file <path>`. A machine-level default may be persisted in tool state, because "which agent tools I use" is a property of the person rather than of the repository.
+3. **User-settable paths**, for a runtime not in the table or a path that has moved: `--skills-dir <path>`. A machine-level default may be persisted in tool state, because "which agent tools I use" is a property of the person rather than of the repository.
 
 The built-in table is a convenience, not an assumption. It must be one data structure in one file so that a path change is a one-line edit, and every entry must carry the documentation URL it came from and the date it was verified.
 
@@ -283,20 +284,23 @@ The format is specified at <https://agentskills.io/specification> and is not Run
 
 A validator exists and is used as a gate: `skills-ref validate ./my-skill`.
 
-### 8.4 Instruction-file block
+### 8.4 No instruction-file block
 
-The instruction file is always in context, so it receives each topic's **brief** — one to three lines — not its body, ending in a pointer to `runestone docs --ai-context <topic>`. Around 25 lines in total. Dumping the corpus there would tax every request the user ever makes.
+**Runestone installs a skill and writes nothing else.** Earlier revisions of this specification had it splice a marked block into `AGENTS.md` and `CLAUDE.md` and write a `.cursor/rules/runestone.mdc`. All three were removed on 2026-09-09 by the repository owner, whose request had been a skill and an MCP server and neither of those. It was never one of section 15's decisions — it entered as an unexamined assumption while this document was being written, which is how it survived four milestones without being questioned.
 
-Cursor rules are one file per rule with no nested references, so that target is a single concatenated file. This is why every topic must stand alone.
+**The removal costs nothing measurable.** Every runtime in 8.1's table finds a skill by scanning its skills directories, so the block bought no discoverability the skill did not already have. Its content — one brief per topic and the "never run these yourself" list — is already in `SKILL.md`, which those runtimes load when the skill activates.
+
+**What it bought instead was risk.** Those files carry the user's own instructions to their agent; this repository's own `AGENTS.md` is 77 hand-written lines. A splice engine that gets it wrong damages a file nobody asked us to touch, and not writing is a stronger guarantee than splicing carefully.
+
+The enforcement is `tests/services/skill/apply.test.ts`: every path a target renders must lie inside `<skills-dir>/runestone/`, and none may be an `AGENTS.md`, a `CLAUDE.md` or a `.mdc`.
 
 ### 8.5 Ownership classes
 
 | Class | Files | Engine |
 | --- | --- | --- |
-| A | `<skills-dir>/runestone/**`, `.cursor/rules/runestone.mdc` | Version-gated whole-file rewrite, backed up before the bytes change |
-| B | `AGENTS.md`, `CLAUDE.md`, `~/.codex/AGENTS.md` | Splice a marked span; never re-render |
+| A | `<skills-dir>/runestone/**` | Version-gated whole-file rewrite, backed up before the bytes change |
 
-`.cursor/rules/runestone.mdc` is a Class A file inside a Class B directory: the filename is ours, the directory is full of the user's own rules. Rewrite that one file; never touch a sibling; create the directory but never remove it beyond emptiness.
+There is one class, and that is what 8.4 buys: every file Runestone writes is a file Runestone generated in full. A directory is created but never removed beyond emptiness, and never above `<skills-dir>/runestone`.
 
 ## 9. Ownership Model
 
@@ -312,9 +316,8 @@ There is no receipt file. Every generated file carries a marker naming the templ
 Markers:
 
 ```
-AGENTS.md, CLAUDE.md      <!-- runestone:begin skill-template=1 --> … <!-- runestone:end -->
 references/*.md, line 1   <!-- runestone:generated skill-template=1 -->
-SKILL.md, .mdc            inside the frontmatter, as metadata plus a YAML comment
+SKILL.md                  inside the frontmatter, as metadata plus a YAML comment
 ```
 
 A `toolState` index was considered and rejected: it would make every *project-scope* install write into the user's home directory, raising that milestone's risk level by a whole step to buy a cross-project `skill list` that nobody asked for. The DNS engine must remember its insertions because an IP string cannot carry a marker; Markdown can. **Identify by content, not by a remembered list.**
@@ -325,17 +328,9 @@ Version-gated whole-file rewrite, following `updateComposeFile` in `src/utils/pr
 
 A file at the current version whose content differs is **modified**: skipped without `--force`, backed up and rewritten with it.
 
-### 9.3 Class B
+### 9.3 There is no Class B
 
-Splice, following `src/services/dns/daemon-config.ts` and `json-edit.ts`. Bytes outside the span are never re-rendered.
-
-- No file — create it containing only the block.
-- Marker present — replace only what lies between the markers.
-- File present, no marker — **append**, after confirmation. Never overwrite.
-- Two `begin` markers — `conflict`. Write nothing; print the offsets and the manual removal steps.
-- A `begin` with no `end` — `unterminated`. Write nothing; same treatment.
-
-The all-or-nothing rule is inherited from `removeOwnedEntries`: half of Runestone's changes removed is worse than none.
+This section specified the splice engine for files belonging to the user. It was removed on 2026-09-09 with the instruction files themselves (8.4), and with it the `conflict` and `unterminated` states, the blockers they raised, and the whole marker-block module. Runestone writes only files it generated in full, so there is no span to own inside somebody else's file.
 
 ### 9.4 Backup
 
@@ -345,7 +340,7 @@ Reuse `nextBackupPath()` (`src/utils/project-files.ts:129`), which already handl
 
 ### 9.5 Removal
 
-- Splice out our span only. **Never restore a whole-file backup** — the same prohibition the DNS specification places on `daemon.json`, for the same reason: it would discard unrelated edits made since.
+- **Never restore a whole-file backup** — the same prohibition the DNS specification places on `daemon.json`, for the same reason: it would discard unrelated edits made since.
 - Delete Class A files carrying our marker. Remove the skill directory only if it is then empty. **Never a recursive delete.** An unmarked file keeps the directory and is named in the output.
 - Refuse to delete a file whose content we did not produce, unless `--force`.
 
@@ -355,7 +350,7 @@ Reuse `nextBackupPath()` (`src/utils/project-files.ts:129`), which already handl
 
 ```
 runestone skill                                     no options of its own
-  install [dir]  [--target <name...>] [--skills-dir <path>] [--instructions-file <path>]
+  install [dir]  [--target <name...>] [--skills-dir <path>]
                  [--user] [--dry-run] [--force] [-y|--yes]
   status  [dir]  [--user] [--no-header]
   remove  [dir]  [--target <name...>] [--user] [--dry-run] [--force] [-y|--yes]   aliases rm, del
@@ -369,18 +364,20 @@ The parent carries no options because `tests/integration/cli.test.ts:106` assert
 
 Scope is therefore a positional `[dir]` defaulting to `process.cwd()`, matching `certs create <domain>`, plus one boolean opt-in, `--user`. `--user` together with `[dir]` is an error.
 
-`--user` supports only the targets with a real user-level path: the neutral `~/.agents/skills`, `claude` (`~/.claude/skills`) and `codex` (`~/.codex/AGENTS.md`). `cursor` is refused because Cursor's user rules live in application settings, and the `AGENTS.md` instruction target is refused because no tool reads `~/AGENTS.md`.
+`--user` supports only the targets with a real user-level skills directory, and it must write **that** directory: the neutral `~/.agents/skills`, `claude` (`~/.claude/skills`) and `copilot-vscode` (`~/.copilot/skills`, per 8.1). Since 8.4 there is no instruction file to place, so the only question left is which directory the runtime scans in the home directory rather than in a project.
+
+**Known divergence, measured on 2026-09-09 and not yet fixed.** `targetsForScope` tests only whether `userScope` is *defined*; its value is never read as a path. So `--user --target copilot-vscode` writes `~/.github/skills` — the project-scope path joined to the home root — rather than the `~/.copilot/skills` the table records. The neutral and `claude` targets are unaffected only because their two paths happen to be identical.
 
 `RUNESTONE_SKILL_HOME` redirects the home root for development and testing, following `RUNESTONE_TOOL_STATE_PATH`. Per the override rule in `AGENTS.md`, `skill status` must report loudly whenever it is active.
 
 ### 10.3 Behaviour
 
-- **Target detection** when none is named: a runtime's target is selected when its directory or instruction file is already present in `[dir]`; otherwise the neutral default. This is what stops a Cursor-only repository acquiring a stray `.claude/`.
+- **Target detection** when none is named: a runtime's target is selected when its **directory** is already present in `[dir]`; otherwise the neutral default. This is what stops a repository that uses one runtime acquiring another's directory. Directories only: an `AGENTS.md` or a `CLAUDE.md` is the user's own instruction file, and since 8.4 Runestone neither writes nor reads one.
 - **Plan and apply are separate functions**, following `dns disable`, so `--dry-run` is not a second implementation that can drift. A test asserts the dry-run output matches the real run's plan line for line.
 - **Blockers replace the plan**; they are not appended to it.
 - `-y, --yes` consents to the printed plan. `--force` rewrites a file that carries no marker or that the user modified. The two are not interchangeable.
 - **Non-TTY** without `--yes` or `--dry-run` is refused with an explanation, mirroring the one existing precedent at `src/commands/dns-enable.ts:537`.
-- Confirmation enumerates every absolute path to be created, overwritten with its backup path, spliced, or deleted.
+- Confirmation enumerates every absolute path to be created, overwritten with its backup path, or deleted.
 - Interactive correction obeys the prompt rules in `AGENTS.md`: a bad `[dir]` returns to the *same* prompt with the reason in that prompt's description, following `promptForExistingServiceName`; an empty target selection returns to the same multi-select. Both are tested at the real command entry point.
 
 ### 10.4 Lifecycle
@@ -504,8 +501,7 @@ stdout carries protocol frames and nothing else.
 
 - Renderer: byte-identical `compose` output against a committed fixture; a value containing `$&`, `$1` and `$$` substituted literally; an unknown token throwing; manifest and topic files in bijection.
 - Snapshot: every row of 6.3; zero spawns, with a spy on `spawnCommand`; zero writes to stdout and stderr; `JSON.parse(JSON.stringify(snapshot))` deep-equal to the snapshot; no string field containing `'✓'`, `'✗'` or an escape character.
-- Marker engine: for any sequence of insert, user edit elsewhere, replace and remove, **every byte outside the span unchanged**, across at least six document shapes including an empty file, no trailing newline, CRLF, tab indentation, a hand-written `## Runestone` heading of the user's own, and an unrelated HTML comment. **This repository's own 77-line `AGENTS.md` is one of the fixtures.**
-- Conflict and unterminated markers write nothing.
+- Write boundary (8.4): every path each target renders lies inside `<skills-dir>/runestone/`, and none is an `AGENTS.md`, a `CLAUDE.md` or a `.mdc`. Verified by injecting a deliberate `AGENTS.md` write and confirming that the test fails.
 
 ### 14.2 Command entry-point tests
 
@@ -538,6 +534,7 @@ All settled by the repository owner on 2026-09-07.
 4. **`troubleshoot` is in scope.** It is the only place "works in the browser, fails from another container" can land, and that is the most common failure after integration succeeds.
 5. **User scope is scheduled last, and was then built.** It is the only home-directory write, and it serves cross-project convenience rather than the purpose in section 1, so it was specified here and sequenced last such that dropping it would have cost nothing. It was taken up on 2026-09-08 and is done, verified on Windows; the Linux half of its manual gate is not met.
 6. **stdio, not HTTP** (section 11.1).
+7. **Runestone writes no instruction file.** Ruled on 2026-09-09, and the only decision here that was not settled before implementation — because it was never put as a question. The owner's request had been a skill and an MCP server; the marked block in `AGENTS.md` and `CLAUDE.md`, and the Cursor rules file, were assumed into 8.2 while this document was written, and then built. Removed in full: the marker engine, the `--instructions-file` option, the `cursor` target, and the blockers that only a malformed marker in someone else's file could raise. See 8.4.
 
 ## 16. Milestones and Risk Control
 
@@ -569,7 +566,7 @@ Sequenced in `SKILL-MILESTONES.md`, which records progress and gates. Phases A, 
 | A2 | Offline snapshot module | 0 |
 | A3 | `--ai-context [topic]` and `--offline` wired, offline tiers only | 1 |
 | A4 | Online tier: collision detection | 2 |
-| B1 | Marker-block ownership engine, pure | 0 |
+| B1 | Marker-block ownership engine, pure — **removed on 2026-09-09, see 8.4** | 0 |
 | B2 | `skill status` and `skill install --dry-run` | 1 |
 | B3 | `skill install` and `skill remove`, target-directory scope | 2 |
 | B4 | The full target table and its wrappers | 2 |

@@ -26,22 +26,8 @@
  */
 export const SKILL_TEMPLATE_VERSION = 1;
 
-/** Opens the span Runestone owns inside a file belonging to the user. */
-export const BLOCK_BEGIN = 'runestone:begin';
-
-/** Closes it. */
-export const BLOCK_END = 'runestone:end';
-
-/** Marks a whole file as generated, for files Runestone owns outright. */
+/** Marks a whole file as generated. Every file Runestone writes carries it. */
 export const FILE_MARKER = 'runestone:generated';
-
-export function beginMarker(version: number = SKILL_TEMPLATE_VERSION): string {
-  return `<!-- ${BLOCK_BEGIN} skill-template=${version} -->`;
-}
-
-export function endMarker(): string {
-  return `<!-- ${BLOCK_END} -->`;
-}
 
 export function fileMarker(version: number = SKILL_TEMPLATE_VERSION): string {
   return `<!-- ${FILE_MARKER} skill-template=${version} -->`;
@@ -52,10 +38,8 @@ export function fileMarker(version: number = SKILL_TEMPLATE_VERSION): string {
  * `---` because a frontmatter parser is going to read them.
  *
  * A comment rather than a `metadata` key: the Agent Skills specification does
- * define `metadata` as a free-form string map, and the generated skill uses it,
- * but the Cursor rules format is not that specification and its frontmatter has
- * no such field. One marker syntax that every YAML parser is guaranteed to
- * ignore beats two.
+ * define `metadata` as a free-form string map and the generated skill uses it,
+ * but a comment is ignored by every YAML parser without depending on that.
  */
 export function frontmatterMarker(version: number = SKILL_TEMPLATE_VERSION): string {
   return `# ${FILE_MARKER} skill-template=${version}`;

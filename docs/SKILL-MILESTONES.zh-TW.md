@@ -22,7 +22,7 @@
 | A2 | 離線 snapshot 模組 | 0 | — | **完成** —— 44 suites、624 通過、5 skipped |
 | A3 | `--ai-context [topic]` 與 `--offline` | 1 | A1, A2 | **完成** —— 44 suites、630 通過、5 skipped。第一個使用者可見的里程碑 |
 | A4 | 線上層：撞名偵測 | 2 | A3 | **完成** —— 45 suites、650 通過、5 skipped |
-| B1 | Marker-block 擁有權引擎 | 0 | — | **完成** —— 46 suites、697 通過、5 skipped |
+| B1 | Marker-block 擁有權引擎 | 0 | — | **完成，之後於 2026-09-09 移除** —— 見這張表下方的說明 |
 | B2 | `skill status` 與 `install --dry-run` | 1 | A1, B1 | **完成** —— 47 suites、719 通過、5 skipped。B4 的 renderer 併入此處，見下 |
 | B3 | `skill install` 與 `skill remove` | 2 | B2 | **完成** —— 48 suites、743 通過、5 skipped。所有 target 都啟用，B4 隨之結案 |
 | B4 | 完整 target 表與 wrapper | 2 | B3 | **完成，併入 B2 與 B3** —— 表與 renderer 落在 B2，因為 `status` 沒有它們就不存在；把每個 target 開放寫入落在 B3 |
@@ -33,6 +33,12 @@
 | C4 | MCP 工具介面：拿掉 topic enum | 3 | C2 | **完成** —— 49 suites、792 通過、5 skipped。移除一個已出貨的參數；為什麼它是錯的見下 |
 
 A1、A2、B1、C1 都是風險 0 且彼此獨立，可以並行。A3 是第一個使用者可見的里程碑。
+
+**2026-09-09 移除：這個功能的指引檔那一半。** repository 擁有者裁決 Runestone 不得寫進 `AGENTS.md` 或 `CLAUDE.md` —— 當初的要求是一個 skill 跟一個 MCP server，而那個標記區塊從來不是規格 §15 的決策之一。`.cursor/rules/runestone.mdc` 一併移除，理由相同：rules 檔是指引，不是 skill。
+
+拿掉的東西：B1 的 marker 引擎整個、`--instructions-file` 選項、`cursor` target、`conflict` 與 `unterminated` 兩種 blocker，以及那 358 行為了證明 splice 安全而存在的測試與 fixture。留下的：skill 本身，寫在 `.agents/skills`、`.claude/skills` 與 `.github/skills`。沒有東西跟著消失 —— 規格 §8.1 表上每個 runtime 都靠掃這些目錄找到 skill，而那個區塊的內容 `SKILL.md` 本來就有。
+
+**這段說明以下的內容一律不改寫。** B1 到 B5 記錄的是當時做了什麼、以及當時為什麼相信它是對的，而那份記錄正是重點：這個決定是寫下來而不是抹掉，因為一份悄悄與今天程式碼一致的里程碑文件，沒辦法顯示某個東西當初是怎麼進來的。理由寫在規格 §8.4，決策記在規格 §15 第 7 條。移除後：48 suites、734 通過、5 skipped。
 
 ## 裁決閘門
 

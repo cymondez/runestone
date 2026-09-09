@@ -14,27 +14,25 @@
  *
  *   1. the neutral default   `.agents/skills/`, read by Codex, Cursor and
  *                            VS Code / Copilot from one write
- *   2. documented exceptions Claude Code reads `.claude/skills/` and
- *                            `CLAUDE.md`, not the neutral paths
- *   3. user-settable paths   `--skills-dir` and `--instructions-file`, for a
- *                            runtime not in this table or a path that moved
+ *   2. documented exceptions Claude Code reads `.claude/skills/`, not the
+ *                            neutral paths
+ *   3. user-settable paths   `--skills-dir`, for a runtime not in this table
+ *                            or a path that moved
+ *
+ * **Runestone installs skills, and nothing else.** It never writes into
+ * `AGENTS.md`, `CLAUDE.md` or any other file carrying the user's own
+ * instructions to their agent, and it installs no runtime-specific rules file
+ * either. Every runtime in the table finds a skill by scanning its skills
+ * directories, so the skill is the whole delivery.
  */
 
 import { TOPICS, TopicDefinition } from '../../utils/tool-docs';
 import { SKILL_TEMPLATE_VERSION, fileMarker, frontmatterMarker } from './version';
 
-/** How Runestone relates to a generated path. */
-export type Ownership =
-  /** Runestone generates and owns the whole file. */
-  | 'file'
-  /** The file belongs to the user; Runestone owns one marked span in it. */
-  | 'block';
-
 export interface RenderedFile {
   /** Slash-separated, relative to the target directory. */
   relativePath: string;
   content: string;
-  ownership: Ownership;
 }
 
 export interface TargetDefinition {
@@ -45,8 +43,10 @@ export interface TargetDefinition {
   /** When they were last checked against that documentation. */
   verifiedOn: string;
   /**
-   * Paths whose presence means this runtime is in use here. Detection is what
-   * stops a Cursor-only repository acquiring a stray `.claude/` directory.
+   * Directories whose presence means this runtime is in use here. Detection is
+   * what stops a repository using one runtime acquiring another's directory.
+   * Directories only: an `AGENTS.md` or a `CLAUDE.md` is the user's own
+   * instruction file, and Runestone neither writes nor reads those.
    */
   detect: string[];
   /** Home-relative destination, when the runtime has a real user-level path. */
@@ -134,68 +134,16 @@ function skillFiles(skillsDir: string, context: RenderContext, version: number):
   return [
     {
       relativePath: `${root}/SKILL.md`,
-      content: `${frontmatter(version)}${skillBody(context)}`,
-      ownership: 'file'
+      content: `${frontmatter(version)}${skillBody(context)}`
     },
     ...TOPICS.map((topic) => ({
       relativePath: `${root}/references/${topic.id}.md`,
-      content: `${fileMarker(version)}\n\n${context.topics[topic.id]}`,
-      ownership: 'file' as Ownership
+      content: `${fileMarker(version)}\n\n${context.topics[topic.id]}`
     }))
   ];
 }
 
-/**
- * The instruction file is always in context, so it gets each topic's brief
- * rather than its body. Dumping the corpus there would tax every request the
- * user ever makes.
- */
-export function instructionBlockBody(context: RenderContext): string {
-  return [
-    '## Runestone',
-    '',
-    `This machine runs Runestone: local HTTPS on \`*.${context.hostDomain}\` through Traefik.`,
-    '',
-    ...TOPICS.map((topic) => `- ${topic.brief}`),
-    '',
-    'Run `runestone docs --ai-context <topic>` for the detail, where topic is one of: ' +
-      `${TOPICS.map((topic) => topic.id).join(', ')}.`,
-    '',
-    'Do not run `runestone dns enable`, `runestone certs install`, `runestone setup`, `runestone down`, `runestone up`',
-    'or `runestone stop` yourself — they change state beyond this project. Propose them instead.'
-  ].join('\n');
-}
-
-function instructionFile(name: string, context: RenderContext): RenderedFile {
-  return { relativePath: name, content: instructionBlockBody(context), ownership: 'block' };
-}
-
-/**
- * Cursor rules are one file per rule with no nested references, so this target
- * is a single concatenated document. That constraint is why every topic in the
- * corpus has to stand alone.
- */
-function cursorRule(context: RenderContext, version: number): RenderedFile {
-  const header = [
-    '---',
-    frontmatterMarker(version),
-    `description: ${SKILL_DESCRIPTION}`,
-    'globs:',
-    '  - "compose*.yml"',
-    '  - "compose*.yaml"',
-    '  - "docker-compose*.yml"',
-    '  - ".devcontainer/**"',
-    'alwaysApply: false',
-    '---',
-    ''
-  ].join('\n');
-
-  const body = TOPICS.map((topic) => context.topics[topic.id]).join('\n\n---\n\n');
-  return { relativePath: '.cursor/rules/runestone.mdc', content: `${header}\n${body}`, ownership: 'file' };
-}
-
 export const NEUTRAL_SKILLS_DIR = '.agents/skills';
-export const NEUTRAL_INSTRUCTION_FILE = 'AGENTS.md';
 
 /**
  * The target used when nothing is detected and there is nobody to ask.
@@ -209,39 +157,23 @@ export const NEUTRAL_TARGET_ID = 'agents';
 export const TARGETS: readonly TargetDefinition[] = [
   {
     id: 'agents',
-    title: 'Neutral: .agents/skills and AGENTS.md',
+    title: 'Neutral: .agents/skills',
     docsUrl: 'https://agents.md',
     verifiedOn: '2026-09-07',
-    detect: [NEUTRAL_SKILLS_DIR, NEUTRAL_INSTRUCTION_FILE, '.agents'],
+    detect: [NEUTRAL_SKILLS_DIR, '.agents'],
     userScope: '.agents/skills',
-    render: (context) => [
-      ...skillFiles(NEUTRAL_SKILLS_DIR, context, SKILL_TEMPLATE_VERSION),
-      instructionFile(NEUTRAL_INSTRUCTION_FILE, context)
-    ]
+    render: (context) => skillFiles(NEUTRAL_SKILLS_DIR, context, SKILL_TEMPLATE_VERSION)
   },
   {
     id: 'claude',
     title: 'Claude Code',
     docsUrl: 'https://code.claude.com/docs/en/skills',
     verifiedOn: '2026-09-07',
-    detect: ['.claude/skills', '.claude', 'CLAUDE.md'],
+    detect: ['.claude/skills', '.claude'],
     userScope: '.claude/skills',
-    // The documented exception: Claude Code reads neither .agents/skills nor
-    // AGENTS.md, so it needs its own copy of both.
-    render: (context) => [
-      ...skillFiles('.claude/skills', context, SKILL_TEMPLATE_VERSION),
-      instructionFile('CLAUDE.md', context)
-    ]
-  },
-  {
-    id: 'cursor',
-    title: 'Cursor',
-    docsUrl: 'https://cursor.com/docs/skills',
-    verifiedOn: '2026-09-07',
-    detect: ['.cursor/rules', '.cursor'],
-    // Cursor's user-level rules live in application settings, not in a file
-    // Runestone could write, so this target has no user scope.
-    render: (context) => [cursorRule(context, SKILL_TEMPLATE_VERSION)]
+    // The documented exception: Claude Code does not read .agents/skills, so it
+    // needs its own copy.
+    render: (context) => skillFiles('.claude/skills', context, SKILL_TEMPLATE_VERSION)
   },
   {
     // `copilot-vscode`, not `copilot`, because `mcp --client copilot` is the
@@ -267,9 +199,8 @@ export function findTarget(id: string): TargetDefinition | undefined {
 }
 
 /**
- * Codex reads the project-root `AGENTS.md`, which the neutral target already
- * writes, so it is an alias rather than a fourth copy of the same block. Its
- * user-level path differs, which is why the alias is named rather than silent.
+ * Codex scans `.agents/skills`, which the neutral target already writes, so it
+ * is an alias rather than a second copy of the same skill.
  */
 export const TARGET_ALIASES: Readonly<Record<string, string>> = { codex: 'agents' };
 

@@ -4,7 +4,7 @@
  * Two rules it exists to enforce:
  *
  * **Atomic.** Every write goes to a temporary file in the same directory and is
- * then renamed, following `dns/daemon-file.ts`. A half-written `AGENTS.md` is a
+ * then renamed, following `dns/daemon-file.ts`. A half-written `SKILL.md` is a
  * worse outcome than a failed install, and a rename within one directory is the
  * only cheap way to rule it out.
  *
@@ -16,9 +16,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { identifyBlock, removeBlock } from './marker-block';
 import { Plan, PlannedFile } from './plan';
-import { SKILL_TEMPLATE_VERSION } from './version';
 
 export interface AppliedFile {
   absolutePath: string;
@@ -63,10 +61,6 @@ function isWithinOwnSkillDirectory(directory: string): boolean {
 }
 
 export function applyInstall(plan: Plan): ApplyResult {
-  if (plan.blockers.length > 0) {
-    throw new Error('refusing to apply a plan with blockers');
-  }
-
   const written: AppliedFile[] = [];
   const skipped: AppliedFile[] = [];
 
@@ -91,8 +85,7 @@ export function applyInstall(plan: Plan): ApplyResult {
 /**
  * Remove only what Runestone put there.
  *
- * A marked span is spliced out and the rest of the file left alone — a
- * whole-file backup is never restored, which is the same prohibition the DNS
+ * A whole-file backup is never restored, which is the same prohibition the DNS
  * specification places on `daemon.json` and for the same reason: restoring
  * would discard every unrelated edit made since.
  *
@@ -101,10 +94,6 @@ export function applyInstall(plan: Plan): ApplyResult {
  * left behind keeps its directory, and the caller reports which file that was.
  */
 export function applyRemove(plan: Plan): ApplyResult {
-  if (plan.blockers.length > 0) {
-    throw new Error('refusing to apply a plan with blockers');
-  }
-
   const written: AppliedFile[] = [];
   const skipped: AppliedFile[] = [];
   const removedDirectories: string[] = [];
@@ -117,26 +106,6 @@ export function applyRemove(plan: Plan): ApplyResult {
     }
 
     if (!fs.existsSync(file.absolutePath)) {
-      continue;
-    }
-
-    if (file.ownership === 'block') {
-      const existing = fs.readFileSync(file.absolutePath, 'utf8');
-      const status = identifyBlock(existing, SKILL_TEMPLATE_VERSION);
-      if (status.kind !== 'matched' && status.kind !== 'stale') {
-        skipped.push({ absolutePath: file.absolutePath, action: file.action });
-        continue;
-      }
-
-      const next = removeBlock(existing, status.span);
-      if (next.length === 0) {
-        // The file held nothing but our section, so it was ours after all.
-        fs.rmSync(file.absolutePath, { force: true });
-      } else {
-        writeAtomic(file.absolutePath, next);
-      }
-
-      written.push({ absolutePath: file.absolutePath, action: 'delete' });
       continue;
     }
 
