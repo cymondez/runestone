@@ -1,22 +1,25 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 - 2026-09-09
 
 **Agent support.** Runestone can now tell an AI coding agent how to connect a project to it, so you no longer have to explain it in every prompt. See [docs/AI-AGENTS.md](../docs/AI-AGENTS.md).
 
 ### Added
 
-- `runestone skill install` writes the guidance where your agent tools already look, detecting which tools the project uses. `--dry-run` shows every path it would touch first; `runestone skill status` reports what is installed and whether it is current; `runestone skill remove` takes it back out. It adds a marked section to a file you already have rather than rewriting it, backs a file up before changing it, and leaves alone anything you edited afterwards.
-- `runestone docs --ai-context` takes a topic, and `runestone docs --help` now lists every one with a description, which it did not before. `--ai-context all` prints them all in one go. Topics: `service` for a project that is not in Docker, `state` for live facts about this machine, `troubleshoot` for 404s, 502s and certificate warnings, and `overview` for how to choose between them. Every topic ends with the list of the others.
-- `runestone docs --ai-context` now also reports which hostnames a certificate covers and which service names and routes are already taken, so an agent stops guessing.
-- `runestone docs --ai-context state` additionally reports the router names other projects have registered with Traefik, which is not visible from your own project.
-- `runestone mcp serve` exposes Runestone to MCP-capable agents over stdio, read-only, through four tools: `runestone_integration_guide`, `runestone_troubleshoot`, `runestone_status` and `runestone_check_name`. None takes a topic — the agent picks a tool, which is a choice it is already making. `runestone mcp config` prints what your client needs for Claude Code, Codex, GitHub Copilot CLI, Cursor, VS Code, Gemini CLI, Windsurf and Zed — the shapes are not interchangeable, so it emits TOML for Codex, the `servers` key for VS Code, `context_servers` for Zed, and `"type": "local"` for Copilot CLI, which is a different tool from VS Code with its own file. Where a client has its own registration command it prints that too.
+- `runestone skill install` installs a Runestone skill into your project, where Codex, Claude Code, Cursor and GitHub Copilot already look for one. `--dry-run` shows every path first, `runestone skill status` says whether it is still current, and `runestone skill remove` takes it back out. It writes only its own files and leaves your `AGENTS.md` and `CLAUDE.md` alone.
+- `runestone skill install --user` does the same once for every project on this machine.
+- `runestone mcp serve` connects Runestone to an MCP-capable agent, read-only: it answers questions and hands back the command for you to run, rather than changing anything itself. `runestone mcp config` prints the configuration your client needs, for Claude Code, Codex, GitHub Copilot CLI, Cursor, VS Code, Gemini CLI, Windsurf and Zed.
+- `runestone docs --ai-context <topic>` prints guidance you can paste into an agent: `service`, `state`, `troubleshoot`, `overview`, or `all` for every one. `runestone docs --help` lists them.
+- The guidance now reports which hostnames your certificates cover and which service and router names are already taken, including ones other projects registered, so an agent stops guessing.
 - `runestone docs --offline` skips the Docker and Traefik checks.
 
 ### Changed
 
-- `runestone docs --ai-context` with no topic still prints the compose guidance it always did, with the machine's own facts and the topic list appended.
-- The published package no longer contains a dead link to the AI context template, and the links to the DNS and domain documentation now resolve.
+- `runestone docs --ai-context` with no topic prints what it always did, now followed by this machine's own facts and the list of topics.
+
+### Fixed
+
+- Broken documentation links in the published package.
 
 ## 2.0.0 - 2026-08-30
 

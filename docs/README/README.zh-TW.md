@@ -166,6 +166,7 @@ runestone mcp config --client claude
 ```
 
 完整說明，包含 agent 不會替你執行哪些指令，在 **[AI agent 文件](../AI-AGENTS.zh-TW.md)**（[English](../AI-AGENTS.md) | [日本語](../AI-AGENTS.ja-JP.md)）。
+
 ## 版本與支援
 
 | 版本線 | 狀態 | 支援範圍 |
