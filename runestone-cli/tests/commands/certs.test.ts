@@ -13,6 +13,7 @@ jest.mock('../../src/services/cert-manager', () => ({
 }));
 
 jest.mock('../../src/services/traefik-api', () => ({
+  ...jest.requireActual('../../src/services/traefik-api'),
   readTraefikSnapshot: jest.fn()
 }));
 

@@ -141,27 +141,31 @@ runestone service remove <service name>
 
 ## Project Integration
 
-When asking an AI agent to connect a project to Runestone, tell it to call `runestone docs --ai-context` before editing Compose files.
-The command prints the local Runestone network name, host domain, and Traefik entrypoint names that the agent needs.
+Runestone can tell an AI coding agent how to connect your project to it, so you do not have to explain it yourself.
+
+Install the guidance where your agent tools already look:
+
+```bash
+runestone skill install
+```
+
+It detects which tools the project uses and writes only for those. Use `--dry-run` first to see every path it would touch. `runestone skill status` shows what is installed, and `runestone skill remove` takes it back out.
+
+Or print the guidance and paste it yourself:
 
 ```bash
 runestone docs --ai-context
 ```
 
-Example prompts:
+Add a topic — `service`, `state`, `troubleshoot` or `overview` — for the rest. Every topic ends with the list of the others, so an agent that runs the bare command finds them on its own.
 
-```text
-Create a compose.yml for traefik/whoami that works in my Runestone environment.
-For the Runestone settings, call `runestone docs --ai-context` directly.
+Or connect Runestone as a read-only MCP server:
+
+```bash
+runestone mcp config --client claude
 ```
 
-```text
-Add a compose.override.yml and update the `app` service with Traefik labels and network settings for Runestone.
-For the Runestone settings, call `runestone docs --ai-context` directly.
-```
-
-The generated AI context is rendered from [runestone-cli/tool-docs/ai-prompt-context.tmp.md](runestone-cli/tool-docs/ai-prompt-context.tmp.md).
-You can review this template before sharing the generated context with an AI agent.
+The full explanation, including what an agent will not do on your behalf, is in **[AI agent documentation](docs/AI-AGENTS.md)** ([繁體中文](docs/AI-AGENTS.zh-TW.md) | [日本語](docs/AI-AGENTS.ja-JP.md)).
 
 ## Versions And Support
 

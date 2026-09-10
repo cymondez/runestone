@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.1.0 - 2026-09-09
+
+**Agent support.** Runestone can now tell an AI coding agent how to connect a project to it, so you no longer have to explain it in every prompt. See [docs/AI-AGENTS.md](../docs/AI-AGENTS.md).
+
+### Added
+
+- `runestone skill install` installs a Runestone skill into your project, where Codex, Claude Code, Cursor and GitHub Copilot already look for one. `--dry-run` shows every path first, `runestone skill status` says whether it is still current, and `runestone skill remove` takes it back out. It writes only its own files and leaves your `AGENTS.md` and `CLAUDE.md` alone.
+- `runestone skill install --user` does the same once for every project on this machine.
+- `runestone mcp serve` connects Runestone to an MCP-capable agent, read-only: it answers questions and hands back the command for you to run, rather than changing anything itself. `runestone mcp config` prints the configuration your client needs, for Claude Code, Codex, GitHub Copilot CLI, Cursor, VS Code, Gemini CLI, Windsurf and Zed.
+- `runestone docs --ai-context <topic>` prints guidance you can paste into an agent: `service`, `state`, `troubleshoot`, `overview`, or `all` for every one. `runestone docs --help` lists them.
+- The guidance now reports which hostnames your certificates cover and which service and router names are already taken, including ones other projects registered, so an agent stops guessing.
+- `runestone docs --offline` skips the Docker and Traefik checks.
+
+### Changed
+
+- `runestone docs --ai-context` with no topic prints what it always did, now followed by this machine's own facts and the list of topics.
+
+### Fixed
+
+- Broken documentation links in the published package.
+
 ## 2.0.0 - 2026-08-30
 
 **Container DNS.** Runestone domains now resolve correctly from inside containers, not just from your browser. It is off by default, and turning it on edits the Docker daemon's own configuration and requires a Docker restart — read [docs/DNS.md](../docs/DNS.md) before enabling it.

@@ -14,7 +14,7 @@ import { createCommand } from '../utils/command';
 import { installRootCa } from '../services/root-ca-installer';
 import { runInDynamicConfigBatch } from '../services/dynamic-config-manager';
 import { findCoveringCertificate } from '../services/service-manager';
-import { readTraefikSnapshot, TraefikNamedResource, TraefikSnapshot } from '../services/traefik-api';
+import { readTraefikSnapshot, traefikApiBaseUrl, TraefikNamedResource, TraefikSnapshot } from '../services/traefik-api';
 import { syncDnsMappings } from '../services/dns/lifecycle';
 import { printMappingSync } from './dns-notices';
 
@@ -57,10 +57,6 @@ function formatCertificateTable(items: CertificateListItem[], options: { header:
   return allRows
     .map((row) => row.map((cell, index) => cell.padEnd(widths[index])).join('  ').trimEnd())
     .join('\n');
-}
-
-function traefikApiBaseUrl(hostDomain: string): string {
-  return `https://traefik.${hostDomain}`;
 }
 
 function extractHostRuleDomains(rule: string | undefined): string[] {

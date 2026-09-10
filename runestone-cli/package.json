@@ -1,6 +1,6 @@
 {
   "name": "@developers-homelab/runestone-cli",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Cross-platform CLI tool for the runestone Docker development environment",
   "author": "cymondez",
   "url": "https://github.com/cymondez/runestone",
@@ -18,8 +18,9 @@
     "runestone": "./bin/runestone"
   },
   "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "sync:readme": "node scripts/sync-readme.js",
-    "build": "npm run sync:readme && tsc --project tsconfig.json",
+    "build": "npm run clean && npm run sync:readme && tsc --project tsconfig.json",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build",
     "test": "jest",

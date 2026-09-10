@@ -3,3 +3,12 @@
 # "/bin/sh\r" and reports a bad interpreter. Windows checkouts with
 # core.autocrlf=true would otherwise produce exactly that.
 *.sh text eol=lf
+
+# The agent-facing corpus ships in the npm tarball and is read by agents, so
+# its bytes should not depend on who published it. Without this, a checkout
+# with core.autocrlf=true produces CRLF assets and a Linux checkout produces
+# LF, and the rendered output differs by one byte per line between the two.
+# The fixture is pinned for the same reason: it is compared byte-for-byte
+# against the rendered asset.
+runestone-cli/tool-docs/** text eol=lf
+runestone-cli/tests/fixtures/** text eol=lf
