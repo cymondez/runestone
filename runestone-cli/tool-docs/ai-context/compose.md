@@ -66,11 +66,15 @@ Where to put it:
 - If the Compose service or its port is unclear, ask the user.
 
 Before committing it:
-compose.override.yml is loaded by every `docker compose up` in this directory,
-on every machine. Where Runestone is not installed the external network does not
-exist and `docker compose up` fails, and the labels carry this machine's host
-domain. Ask the user whether everyone on the project uses Runestone; if not, keep
-the file out of git.
+Write the file without asking, but ask before committing it. compose.override.yml
+is loaded by every `docker compose up` in this directory, on every machine. Where
+Runestone is not installed the external network does not exist and
+`docker compose up` fails, and the labels carry this machine's host domain. Ask
+the user whether everyone on the project uses Runestone; if not, keep the file
+out of git.
+
+Recreating the containers restarts the user's running stack. Ask the user to run
+`docker compose up -d`, or ask before running it yourself.
 
 Verify afterwards:
 - `docker compose config` shows the Compose service on both `default` and `runestone`, with every label above.

@@ -389,3 +389,23 @@ describe('the guide a bare --ai-context prints', () => {
     expect(overview).toContain('If the `runestone` command is not found');
   });
 });
+
+describe('the topic footer', () => {
+  it('advertises the two composites as well as every topic', () => {
+    // A re-run probe agent found guide and all only through `docs --help`; the
+    // footer it had read on every page listed neither.
+    const footer = renderAiContext('service', config(), stubBlocks());
+
+    expect(footer).toContain('`runestone docs --ai-context guide`');
+    expect(footer).toContain('`runestone docs --ai-context all`');
+  });
+
+  it('asks before committing what carries this machine domain, not before writing it', () => {
+    const compose = renderAiContext('compose', config(), stubBlocks());
+    const service = renderAiContext('service', config(), stubBlocks());
+
+    expect(compose).toContain('Write the file without asking, but ask before committing it.');
+    expect(compose).toContain('Recreating the containers restarts the user');
+    expect(service).toContain('add the Runestone hostname there before you verify');
+  });
+});

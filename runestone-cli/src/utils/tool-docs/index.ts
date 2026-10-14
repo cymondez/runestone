@@ -10,7 +10,7 @@
 import { mailpitUiUrl, smtpEndpoints, traefikDashboardUrl } from '../endpoints';
 import { RunestoneEnv } from '../env-loader';
 import { readTopicAsset } from './assets';
-import { DEFAULT_TOPIC, TOPICS, findTopic } from './manifest';
+import { ALL_TOPIC, DEFAULT_TOPIC, GUIDE_TOPIC, TOPICS, findTopic } from './manifest';
 import { BlockRenderers, substitute } from './render';
 
 export { TemplateError } from './render';
@@ -69,9 +69,17 @@ function scalarsOf(config: RunestoneEnv): Record<string, string> {
 function renderFooter(): string {
   return [
     'More Runestone context, each a separate command:',
-    ...TOPICS.map((topic) => `- \`runestone docs --ai-context ${topic.id}\` — ${topic.summary}`)
+    ...TOPICS.map((topic) => `- \`runestone docs --ai-context ${topic.id}\` — ${topic.summary}`),
+    // The two composites are not manifest entries, so they were missing here,
+    // and an agent reading only the corpus never learned that one call could
+    // replace three.
+    `- \`runestone docs --ai-context ${GUIDE_TOPIC}\` — ${GUIDE_SUMMARY}`,
+    `- \`runestone docs --ai-context ${ALL_TOPIC}\` — ${ALL_SUMMARY}`
   ].join('\n');
 }
+
+const GUIDE_SUMMARY = 'How to connect a project: overview, compose and service in one go. What a bare `--ai-context` prints.';
+const ALL_SUMMARY = 'Every topic in one go, including the live state and troubleshooting.';
 
 /** Blocks that need no machine state, so every render can supply them. */
 export function manifestBlocks(): BlockRenderers {

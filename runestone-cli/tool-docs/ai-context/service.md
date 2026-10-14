@@ -49,9 +49,10 @@ Do not:
 Inspect this project to determine:
 - Whether the app runs in Docker at all. If it does, use the compose topic instead.
 - The port it actually listens on, from its dev script, its config, or its `.env`.
+- Whether its dev server checks the Host header. Vite (`server.allowedHosts`) and webpack-dev-server (`devServer.allowedHosts`) refuse hostnames they do not know, so add the Runestone hostname there before you verify. That change carries this machine's host domain; ask the user before committing it.
 
 Choose these yourself and state them in your report; do not stop to ask:
-- Hostname prefix: the project's name, from its package manifest or its directory name.
+- Hostname prefix: the project's directory name.
 - Route name: the same value. First check that `runestone docs --ai-context state` does not list either.
 
 Verify afterwards:

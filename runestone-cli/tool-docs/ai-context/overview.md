@@ -110,7 +110,7 @@ Project-integration writes, fine to run as part of the task you were given:
 - Traefik router IDs and Traefik service IDs are global, not scoped per project. Check for a collision before choosing one.
 - A hostname with no certificate covering it still routes, but the browser warns. Coverage is by wildcard and one level deep only.
 - Do not assume the Compose service or the port. Read them from this project, and ask when one is not discoverable.
-- Do choose the hostname: default its prefix to the project's name, check it against `runestone docs --ai-context state`, and say in your report that you chose it. Do not stop to ask.
+- Do choose the hostname: default its prefix to the project's directory name (for a Compose project, its Compose project name), check it against `runestone docs --ai-context state`, and say in your report that you chose it. Do not stop to ask.
 
 ## Anything to flag on this machine
 
