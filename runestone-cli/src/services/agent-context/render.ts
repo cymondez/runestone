@@ -63,10 +63,10 @@ export function renderUsedNames(snapshot: AgentContextSnapshot): string {
   const lines: string[] = [];
 
   if (snapshot.services.length === 0) {
-    lines.push('No routed services are registered, so no service name or route is taken by one.');
+    lines.push('No routes have been added with `runestone service add`, so none of their names or hostnames is taken.');
   } else {
-    lines.push(`Service names in use: ${snapshot.usedNames.serviceNames.join(', ')}`);
-    lines.push(`Routes in use: ${snapshot.usedNames.routes.join(', ')}`);
+    lines.push(`Names of routes added with \`service add\`: ${snapshot.usedNames.serviceNames.join(', ')}`);
+    lines.push(`Hostnames of routes added with \`service add\`: ${snapshot.usedNames.routes.join(', ')}`);
   }
 
   if (snapshot.traefik.ok) {

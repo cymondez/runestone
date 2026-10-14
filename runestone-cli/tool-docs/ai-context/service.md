@@ -39,13 +39,13 @@ Do not:
 - Start a reverse proxy or a mail catcher of your own for the app. Runestone already runs Traefik and Mailpit; an app on the host sends mail to Mailpit at `{{RUNESTONE_SMTP_FROM_HOST}}`.
 - Add Traefik labels for this path. They do nothing without a container.
 - Write into Runestone's `configuration/services/` directory by hand. `service add` generates those files and `service remove` deletes them; a hand-written file there will be overwritten or orphaned.
-- Guess the service name, the hostname, or the port. Read them from this project, and if the port is not discoverable, ask the user.
+- Guess the name, the hostname, or the port. Read them from this project, and if the port is not discoverable, ask the user.
 - Run `runestone certs install`, `runestone dns enable` or `runestone dns disable` yourself. See the overview topic for why.
 
 Inspect this project to determine:
 - Whether the app runs in Docker at all. If it does, use the compose topic instead.
 - The port it actually listens on, from its dev script, its config, or its `.env`.
-- A hostname prefix that reflects the project, and a service name that matches it.
+- A hostname prefix that reflects the project, and a route name that matches it.
 
 Verify afterwards:
 - `runestone service list` shows the new entry with its route and URL.
@@ -53,7 +53,7 @@ Verify afterwards:
 
 Report:
 - The command you ran.
-- Service name, route, target URL.
+- Route name, hostname, target URL.
 - Whether a certificate already covered the domain.
 - Anything you had to assume.
 

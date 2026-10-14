@@ -60,7 +60,8 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: 'runestone_status',
     description:
-      'The machine facts as structured data: covered domains, certificates, routed services, container state, and ' +
+      'The machine facts as structured data: covered domains, certificates, routes added with service add, container ' +
+      'state, and ' +
       'the router names other projects have registered.',
     inputSchema: {
       $schema: 'http://json-schema.org/draft-07/schema#',
@@ -153,7 +154,7 @@ export function createHandlers(deps: Partial<ServerDependencies> = {}): ServerHa
         case 'runestone_status':
           return {
             ...text(
-              `Runestone on ${config.HOST_DOMAIN}: ${snapshot.services.length} routed service(s), ` +
+              `Runestone on ${config.HOST_DOMAIN}: ${snapshot.services.length} route(s) added with service add, ` +
                 `${snapshot.domains.wildcards.length + snapshot.domains.covered.length} covered name(s).`
             ),
             structuredContent: snapshot

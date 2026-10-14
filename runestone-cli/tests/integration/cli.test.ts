@@ -72,6 +72,20 @@ describe('runestone CLI integration', () => {
     }
   });
 
+  it('says what `service` is for and what it is not', () => {
+    // "service" read as "the services Runestone provides". It is the routes the
+    // user adds for things outside Docker, so the help says both halves.
+    const root = runCli(['--help']);
+    expect(root.stdout).toContain('Put a host dev server or external URL on a Runestone hostname');
+
+    const service = runCli(['service', '--help']);
+    expect(service.status).toBe(0);
+    expect(service.stdout).toContain('not in Docker');
+    expect(service.stdout).toContain('not services Runestone provides');
+    expect(service.stdout).toContain('runestone status');
+    expect(service.stdout).not.toContain('routed service');
+  });
+
   it('prints package version', () => {
     const result = runCli(['--version']);
     const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { version: string };

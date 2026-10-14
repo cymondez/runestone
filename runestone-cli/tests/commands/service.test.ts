@@ -304,6 +304,24 @@ describe('service command', () => {
     expect(output).toContain('Config');
   });
 
+  it('says what an empty list means instead of printing a bare heading', async () => {
+    // A heading row and nothing else read as "Runestone provides nothing",
+    // and agents went on to install a Traefik or a Mailpit of their own.
+    await createProgram().parseAsync(['node', 'runestone', 'service', 'list']);
+
+    const output = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    expect(output).toContain('No routes have been added with `runestone service add`');
+    expect(output).toContain('`runestone status`');
+    expect(output).toContain('`runestone docs --ai-context state`');
+    expect(output).not.toContain('Group Name');
+  });
+
+  it('keeps an empty list empty with --no-header, for scripts', async () => {
+    await createProgram().parseAsync(['node', 'runestone', 'service', 'list', '--no-header']);
+
+    expect(logSpy).not.toHaveBeenCalled();
+  });
+
   it('offers to replace localhost upstream URLs with host.docker.internal', async () => {
     const program = createProgram();
 

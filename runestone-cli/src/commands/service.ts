@@ -644,7 +644,16 @@ async function handleModify(name: string): Promise<void> {
 
 function handleList(options: ListOptions): void {
   const config = envLoader.load();
-  const rows = listServices(config).map((service) => [
+  const services = listServices(config);
+  // A bare heading row read as "Runestone has nothing", which sent agents off to
+  // install their own. Say what the list covers and where the rest is. With
+  // --no-header the output stays empty, for scripts.
+  if (services.length === 0 && options.header !== false) {
+    logger.info(t('service.list.empty'));
+    return;
+  }
+
+  const rows = services.map((service) => [
     displayGroupName(service.group),
     service.name,
     service.route,
@@ -801,7 +810,11 @@ async function wrapAsync(action: () => Promise<void> | void, message: string): P
 }
 
 export function createServiceCommand(): Command {
+  // The summary is what the root help lists; the description, shown by
+  // `service --help`, also says what this command is not, because "service"
+  // reads as "the services Runestone provides" and it is the opposite.
   const command = createCommand('service')
+    .summary(t('commands.service.summary'))
     .description(t('commands.service.description'));
 
   command

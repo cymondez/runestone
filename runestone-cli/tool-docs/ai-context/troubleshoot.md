@@ -8,7 +8,7 @@ External Docker network: {{RUNESTONE_NETWORK_NAME}}
 
 Read-only commands, safe to run without asking:
 - runestone status          containers, network, volume
-- runestone service list    routed services and their routes
+- runestone service list    routes added with `service add`, and nothing else
 - runestone certs list      certificates and the domains they cover
 - runestone dns status      whether container DNS is in effect
 - runestone doctor          host environment check
@@ -17,14 +17,14 @@ Symptom: 404 from Traefik.
 There is no route for that hostname. Either the router was never registered, or
 its rule does not match the hostname you opened.
 - Compose path: is the container running, is it attached to {{RUNESTONE_NETWORK_NAME}}, and does it carry `traefik.enable=true`? A container that is not on that network is invisible to Traefik even with correct labels.
-- Service path: does `runestone service list` show the route?
+- `service add` path: does `runestone service list` show the route?
 - Check the hostname for a typo against the rule.
 
 Symptom: 502 from Traefik.
 The route matched and the target did not answer. The routing is correct; the
 port or the host is wrong.
 - Compose path: the port in `loadbalancer.server.port` must be the **container's internal** port, not the host-published one. In `"8080:3000"` the correct value is 3000. This is the single most common mistake on this path.
-- Service path: the --url host must be reachable from inside the Runestone container. If the app listens on the host, `localhost` will not do — use `host.docker.internal`.
+- `service add` path: the --url host must be reachable from inside the Runestone container. If the app listens on the host, `localhost` will not do — use `host.docker.internal`.
 - Confirm the app is actually listening: on the host, or inside the container with the container's own port.
 
 Symptom: the browser warns about the certificate.
@@ -49,7 +49,7 @@ Symptom: the route worked and then stopped.
 - `runestone status` — did the Runestone container stop?
 - Did another project register the same router name or the same hostname? Names are global to Traefik, not scoped per project. `runestone service list` plus the state topic will show what is registered.
 
-Symptom: a change to a service made no difference.
+Symptom: a change to a route added with `service add` made no difference.
 Traefik reloads its file provider on change, but a syntactically invalid file is
 ignored rather than reported. If a service stopped resolving right after an
 edit, prefer `runestone service repair <name>` over editing the generated file

@@ -8,6 +8,8 @@
 - `runestone doctor --help` no longer says "repair": doctor only installs something after asking.
 - The agent guidance and the installed skill now say that Runestone already runs Traefik and Mailpit, tell the agent not to add its own reverse proxy or mail catcher, and give the Mailpit SMTP address to use from the host, from a container on the Runestone network, and from any other container. Run `runestone skill install` again to update an installed skill.
 - `runestone up` prints the Mailpit address as `https://`.
+- `runestone service --help` now says what the command is for, putting a host dev server or an external URL on a Runestone hostname, and that it does not list what Runestone itself provides. `runestone service list` with nothing added says where to look instead of printing only the column headings.
+- `runestone service` will be renamed `runestone route` in 3.0. `runestone service` will keep working.
 
 ## 2.1.0 - 2026-09-09
 

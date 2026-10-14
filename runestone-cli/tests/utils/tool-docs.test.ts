@@ -283,3 +283,25 @@ describe('the corpus says what Runestone already provides', () => {
     expect(renderAiContext('service', config(), stubBlocks())).toContain('Start a reverse proxy or a mail catcher of your own');
   });
 });
+
+describe('the corpus gives "service" one meaning per term', () => {
+  // "service" means Runestone's components, a route added with `service add`,
+  // a Traefik service ID and a Compose service. Agents read `runestone service`
+  // as "the services Runestone provides", which it is not.
+  it('defines the four meanings once, in the overview', () => {
+    const overview = renderAiContext('overview', config(), stubBlocks());
+
+    expect(overview).toContain('What "service" means in these topics');
+    for (const term of ["Runestone's own components", 'A route added with `runestone service add`', 'Traefik router ID and Traefik service ID', 'Compose service']) {
+      expect(overview).toContain(term);
+    }
+  });
+
+  it.each(['overview', 'service', 'troubleshoot', 'state'])('does not use the ambiguous phrasings in %s', (id) => {
+    const rendered = renderAiContext(id, config(), stubBlocks());
+
+    expect(rendered).not.toMatch(/routed service/i);
+    expect(rendered).not.toMatch(/\bService path\b/);
+    expect(rendered).not.toMatch(/Add a Traefik service/);
+  });
+});

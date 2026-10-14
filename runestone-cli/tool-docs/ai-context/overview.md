@@ -55,6 +55,16 @@ If the project has a Compose file but the thing the user wants exposed is a host
 process, the second path is still the right one. The presence of a Compose file
 does not decide it; the presence of a container does.
 
+## What "service" means in these topics
+
+The word means four different things around Runestone, so these topics keep
+them apart:
+
+- **Runestone's own components**: Traefik, Mailpit and the DNS service. They are already running; a project never adds or configures them.
+- **A route added with `runestone service add`**: something outside Docker that you put on a Runestone hostname. `runestone service list` lists these and nothing else, so an empty list does not mean Runestone provides nothing.
+- **Traefik router ID and Traefik service ID**: the names inside Traefik labels. Traefik shares them across every project on the machine.
+- **Compose service**: a service in this project's own Compose file, such as `api`.
+
 ## Commands you must not run
 
 These change state outside this project. Propose them, explain what they cost,
@@ -81,9 +91,9 @@ Project-integration writes, fine to run as part of the task you were given:
 
 - Use the **internal** container port, never the host-published one. `"8080:3000"` means the port Traefik needs is 3000.
 - Never add a reverse proxy or a mail catcher of your own (see the table above), and never edit Runestone's own Compose file or the generated files under its `configuration/` directory.
-- Router and service names are global to Traefik, not scoped per project. Check for a collision before choosing one.
+- Traefik router IDs and Traefik service IDs are global, not scoped per project. Check for a collision before choosing one.
 - A hostname with no certificate covering it still routes, but the browser warns. Coverage is by wildcard and one level deep only.
-- Do not assume the service name, the port, the hostname, or whether `COMPOSE_PROJECT_NAME` is set. Read them from this project, and ask when a value is not discoverable.
+- Do not assume the Compose service, the port, the hostname, or whether `COMPOSE_PROJECT_NAME` is set. Read them from this project, and ask when a value is not discoverable.
 
 ## Anything to flag on this machine
 

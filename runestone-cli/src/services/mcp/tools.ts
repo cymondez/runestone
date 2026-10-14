@@ -126,7 +126,7 @@ export function checkName(
     try {
       const name = validateServiceName(input.serviceName);
       if (snapshot.usedNames.serviceNames.includes(name)) {
-        result.serviceName = { value: name, available: false, reason: `a routed service named '${name}' already exists` };
+        result.serviceName = { value: name, available: false, reason: `a route named '${name}' was already added with service add` };
       } else {
         // Traefik is the only source that knows what *other* projects have
         // registered, and a router ID is global rather than scoped per project.
@@ -147,7 +147,7 @@ export function checkName(
 
       if (snapshot.usedNames.routes.includes(route)) {
         verdict.available = false;
-        verdict.reason = `a routed service already uses '${route}'`;
+        verdict.reason = `a route added with service add already uses '${route}'`;
       } else if (traefik) {
         try {
           assertNoTraefikHostConflict(route, traefik);

@@ -167,7 +167,7 @@ describe('the offline snapshot', () => {
 
     expect(snapshot.services).toEqual([]);
     expect(snapshot.warnings.join(' ')).not.toContain('routed service');
-    expect(renderUsedNames(snapshot)).toContain('No routed services are registered');
+    expect(renderUsedNames(snapshot)).toContain('No routes have been added with `runestone service add`');
   });
 
   it('collects the names and routes an agent must not collide with', () => {

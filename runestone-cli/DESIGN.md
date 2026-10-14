@@ -186,6 +186,10 @@ Runestone CLI 需支援管理注入到 Runestone 開發環境的 SSH keys。
 
 `runestone mcp serve` 以 stdio 提供唯讀 MCP server，`runestone mcp config` 印出各 client 的註冊區塊（不代為寫入）。MCP 不提供任何變更狀態的工具。
 
+`runestone service` 是使用者自己加上的路由：把不在 Docker 裡的東西（host 上的 dev server、已經在跑的程式、外部 URL）掛到 Runestone 網址。它不是 Runestone 自己提供的服務；Runestone 提供的 Traefik 與 Mailpit 由 `runestone status` 顯示。help 與語料需同時說明它是什麼與不是什麼，因為 agent 會把「service」讀成「Runestone 提供的服務」。
+
+2.x 維持 `service` 這個名稱；3.x 將改名為 `runestone route`，`service` 保留為 alias。2.x 的 help 與語料不提 `route`，以免 agent 去試一個還不存在的指令。
+
 ## 7. 命令範圍
 
 Runestone CLI 需提供下列命令：
@@ -211,6 +215,13 @@ runestone certs list --no-header
 runestone certs remove <domain>
 runestone keys ls
 runestone keys add <path>
+runestone service add [name] --route <domain> --url <url>
+runestone service modify <name>
+runestone service repair <name>
+runestone service list
+runestone service list --no-header
+runestone service remove <name>
+runestone service group list|clean|move
 runestone skill install [dir]
 runestone skill status [dir]
 runestone skill remove [dir]
@@ -228,9 +239,14 @@ runestone certs ls
 runestone certs rm <domain>
 runestone certs del <domain>
 runestone keys list
+runestone service m <name>
+runestone service ls
+runestone service rm <name>
 runestone skill rm <dir>
 runestone skill del <dir>
 ```
+
+`runestone service` 在 3.x 將改名為 `runestone route`，`service` 保留為 alias（見 6.6）。
 
 ## 8. 設定需求
 

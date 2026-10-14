@@ -196,7 +196,7 @@ function warningsOf(certificates: SnapshotCertificate[], services: SnapshotServi
   const orphaned = services.filter((service) => !service.dynamicConfigExists);
   if (orphaned.length > 0) {
     warnings.push(
-      `${orphaned.length} routed service(s) are registered but have no dynamic configuration file: ` +
+      `${orphaned.length} route(s) added with \`service add\` have no Traefik file: ` +
         `${orphaned.map((service) => service.name).join(', ')}. Run 'runestone service repair <name>'.`
     );
   }
@@ -204,7 +204,7 @@ function warningsOf(certificates: SnapshotCertificate[], services: SnapshotServi
   const uncovered = services.filter((service) => !service.certificateCovered);
   if (uncovered.length > 0) {
     warnings.push(
-      `${uncovered.length} routed service(s) have no certificate covering their route, so the browser will warn: ` +
+      `${uncovered.length} route(s) added with \`service add\` have no certificate covering their hostname, so the browser will warn: ` +
         `${uncovered.map((service) => service.route).join(', ')}.`
     );
   }
@@ -242,7 +242,7 @@ export function buildOfflineSnapshot(
     warnings.unshift(`The certificate list could not be read: ${rawCertificates.message ?? 'unknown error'}.`);
   }
   if (!rawServices.ok) {
-    warnings.unshift(`The routed service list could not be read: ${rawServices.message ?? 'unknown error'}.`);
+    warnings.unshift(`The routes added with \`service add\` could not be read: ${rawServices.message ?? 'unknown error'}.`);
   }
 
   return {
