@@ -444,3 +444,24 @@ describe('who is allowed to reach the snapshot module', () => {
     expect(source).not.toContain('buildLiveSnapshot');
   });
 });
+
+describe('warnings an agent sees in the state topic', () => {
+  it('warns about a DNS web UI without authentication, from .env alone', () => {
+    const open = buildOfflineSnapshot(
+      config({ DNS_ENABLE: 'true', DNS_UI_ENABLE: 'true', DNS_UI_USER: '', DNS_UI_PASS: '' }),
+      deps([certificate()], [])
+    );
+    const closed = buildOfflineSnapshot(
+      config({ DNS_ENABLE: 'true', DNS_UI_ENABLE: 'true', DNS_UI_USER: 'me', DNS_UI_PASS: 'secret' }),
+      deps([certificate()], [])
+    );
+
+    expect(open.warnings.join(' ')).toContain('has no authentication');
+    expect(renderWarnings(open)).not.toBe('Nothing to flag.');
+    expect(closed.warnings.join(' ')).not.toContain('has no authentication');
+  });
+
+  it('says why container state is unknown in an offline topic, not just that it is', () => {
+    expect(renderRuntime(buildOfflineSnapshot(config(), deps([], [])))).toContain('`runestone status`');
+  });
+});

@@ -16,7 +16,8 @@ import { AgentContextSnapshot, SnapshotCertificate, SnapshotContainer, SnapshotS
 import { COMPOSE_SERVICES, composeService } from './docker-compose';
 import { networkService } from './docker-network';
 import { volumeService } from './docker-volume';
-import { isDnsEnabled } from './dns/settings';
+import { isDnsEnabled, isDnsUiAuthConfigured, isDnsUiEnabled } from './dns/settings';
+import { dnsUiUrl } from './dns/ui-route';
 import { certificateBaseDomainForRoute } from './service-manager';
 import { sshManager } from './ssh-manager';
 import { t } from '../i18n';
@@ -200,6 +201,16 @@ export async function buildStatusReport(
         ? { text: t('status.problem.dnsPendingRestart'), fix: t('status.fix.dnsPendingRestart') }
         : { text: t('status.problem.dnsUnfinished'), fix: 'runestone dns status' }
     );
+  }
+
+  // `dns status` already discloses this; `status` said nothing, so its verdict
+  // read "ready" on a machine whose DNS rules anyone on the network could edit.
+  // The route only exists when both DNS and its UI are on (ui-route.ts).
+  if (dnsEnabled && isDnsUiEnabled(config) && !isDnsUiAuthConfigured(config)) {
+    problems.push({
+      text: t('status.problem.dnsUiNoAuth', { url: dnsUiUrl(config) }),
+      fix: t('status.fix.dnsUiNoAuth', { envPath: config.ENV_PATH })
+    });
   }
 
   if (snapshot.certificates.length === 0) {

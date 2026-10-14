@@ -12,6 +12,7 @@ import {
   UnknownTopicError,
   findTopic,
   renderAiContext,
+  renderAiContextSequence,
   renderAiPromptContext,
   topicIds
 } from '../../src/utils/tool-docs';
@@ -407,5 +408,33 @@ describe('the topic footer', () => {
     expect(compose).toContain('Write the file without asking, but ask before committing it.');
     expect(compose).toContain('Recreating the containers restarts the user');
     expect(service).toContain('add the Runestone hostname there before you verify');
+  });
+});
+
+describe('several topics rendered as one document', () => {
+  // The guide printed the footer once per topic and the hostname lists twice.
+  const blocks = () => ({
+    ...stubBlocks(),
+    DOMAINS: () => '- STUB_DOMAINS',
+    USED_NAMES: () => '- STUB_USED_NAMES'
+  });
+
+  it('prints the footer once, at the end', () => {
+    const text = renderAiContextSequence(GUIDE_TOPIC_ORDER, config(), blocks());
+
+    expect(text.match(/More Runestone context/g)).toHaveLength(1);
+    expect(text.trimEnd().endsWith('Every topic in one go, including the live state and troubleshooting.')).toBe(true);
+  });
+
+  it('prints each fact block in full once, then points back to it', () => {
+    const text = renderAiContextSequence(GUIDE_TOPIC_ORDER, config(), blocks());
+
+    expect(text.match(/STUB_DOMAINS/g)).toHaveLength(1);
+    expect(text.match(/STUB_USED_NAMES/g)).toHaveLength(1);
+    expect(text).toContain('- As listed earlier in this output.');
+  });
+
+  it('renders a single topic exactly as renderAiContext does', () => {
+    expect(renderAiContextSequence(['service'], config(), blocks())).toBe(renderAiContext('service', config(), blocks()));
   });
 });

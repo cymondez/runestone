@@ -215,3 +215,43 @@ describe('the status report', () => {
     stderr.mockRestore();
   });
 });
+
+describe('the status report and the DNS web UI', () => {
+  beforeEach(() => {
+    process.env.RUNESTONE_LANG = 'en';
+  });
+
+  afterEach(() => {
+    delete process.env.RUNESTONE_LANG;
+  });
+
+  const withDns = snapshot({
+    dns: { enabled: true },
+    containers: { ok: true, value: [running('runestone'), running('dns', 'mylab-dns')] }
+  });
+
+  it('flags a DNS web UI without authentication, with the setting that fixes it', async () => {
+    // `dns status` disclosed this while `status` said "ready".
+    const report = await buildStatusReport(
+      config({ DNS_ENABLE: 'true', DNS_UI_ENABLE: 'true', DNS_UI_USER: '', DNS_UI_PASS: '' }),
+      deps({}, withDns)
+    );
+
+    expect(report.verdict).toBe('degraded');
+    expect(report.problems).toEqual([
+      expect.objectContaining({
+        text: expect.stringContaining('https://dns.example.test'),
+        fix: expect.stringContaining('DNS_UI_USER and DNS_UI_PASS')
+      })
+    ]);
+  });
+
+  it.each([
+    ['credentials are set', { DNS_UI_ENABLE: 'true', DNS_UI_USER: 'me', DNS_UI_PASS: 'secret' }],
+    ['the UI is off', { DNS_UI_ENABLE: 'false', DNS_UI_USER: '', DNS_UI_PASS: '' }]
+  ])('says nothing about the UI when %s', async (_name, settings) => {
+    const report = await buildStatusReport(config({ DNS_ENABLE: 'true', ...settings }), deps({}, withDns));
+
+    expect(report.verdict).toBe('ready');
+  });
+});

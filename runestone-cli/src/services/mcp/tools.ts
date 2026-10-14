@@ -31,7 +31,7 @@ import {
 } from '../service-manager';
 import { listDomainCertificates } from '../cert-manager';
 import { RunestoneEnv } from '../../utils/env-loader';
-import { GUIDE_TOPIC_ORDER, TOPICS, renderAiContext, topicIds } from '../../utils/tool-docs';
+import { GUIDE_TOPIC_ORDER, TOPICS, renderAiContextSequence, topicIds } from '../../utils/tool-docs';
 import { TraefikSnapshot } from '../traefik-api';
 
 export interface NameVerdict {
@@ -77,8 +77,7 @@ const GUIDE_TOPICS: readonly string[] = GUIDE_TOPIC_ORDER;
 const TROUBLESHOOT_TOPICS: readonly string[] = ['troubleshoot'];
 
 function renderTopics(ids: readonly string[], config: RunestoneEnv, snapshot: AgentContextSnapshot): string {
-  const blocks = contextBlocks(snapshot);
-  return ids.map((id) => renderAiContext(id, config, blocks)).join('\n\n---\n\n');
+  return renderAiContextSequence(ids, config, contextBlocks(snapshot));
 }
 
 /** How to connect this project: both paths, how to choose, and the guardrails. */

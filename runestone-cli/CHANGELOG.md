@@ -22,6 +22,8 @@
 ### Fixed
 
 - `runestone dns status` no longer prints the dns service's state twice.
+- `runestone status` and `runestone docs --ai-context state` now report a DNS web UI that has no authentication, which only `runestone dns status` mentioned before.
+- `runestone docs --ai-context` with no topic, and with `all`, no longer repeats the topic list and the hostname lists once per topic.
 - `runestone docs`, `runestone service add` and `runestone doctor` no longer crash when run without a terminal, as AI agents run them. `runestone docs` points to `--ai-context`; `service add` and `doctor` stop where they would have asked a question and say what to do instead.
 - The agent guidance for Docker projects no longer cuts the exposed service off from the project's other services, such as its database: its example `compose.override.yml` keeps the project's own network.
 - The agent guidance no longer says an unrouted hostname gets a 404. Runestone answers it with its "Service not found!" page and status 200, so the guidance now checks the page rather than the status code, and covers dev servers that refuse unknown hostnames, such as Vite and webpack-dev-server.

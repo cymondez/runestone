@@ -100,6 +100,48 @@ export function renderAiContext(
   return substitute(readTopicAsset(topicId), scalarsOf(config), { ...manifestBlocks(), ...blocks });
 }
 
+export const SEQUENCE_SEPARATOR = '\n\n---\n\n';
+
+/**
+ * Several topics as one document: the guide a bare `--ai-context` prints, `all`,
+ * and the MCP tools. Used by both surfaces so they stay identical.
+ *
+ * Each topic is written to stand alone, so each carries the footer and the fact
+ * blocks it needs. Concatenated, that printed the footer once per topic and the
+ * hostname lists twice, and the guide grew to about 22 KB. Here every block is
+ * rendered in full the first time it appears and as a one-line pointer after
+ * that, and the footer only at the end. A single topic renders as before.
+ */
+export function renderAiContextSequence(
+  topicIds: readonly string[],
+  config: RunestoneEnv,
+  blocks: BlockRenderers = {}
+): string {
+  const all: BlockRenderers = { ...manifestBlocks(), ...blocks };
+  const rendered = new Set<string>();
+
+  return topicIds
+    .map((topicId, index) => {
+      const last = index === topicIds.length - 1;
+      const once: BlockRenderers = {};
+      for (const [name, render] of Object.entries(all)) {
+        once[name] = () => {
+          if (name === 'FOOTER') {
+            return last ? render() : 'The full list of topics is at the end of this output.';
+          }
+          if (rendered.has(name)) {
+            return '- As listed earlier in this output.';
+          }
+          rendered.add(name);
+          return render();
+        };
+      }
+
+      return renderAiContext(topicId, config, once);
+    })
+    .join(SEQUENCE_SEPARATOR);
+}
+
 /**
  * Retained for one release as the compose topic under its old name. The added
  * optional argument keeps every existing call site valid.

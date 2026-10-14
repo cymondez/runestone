@@ -11,6 +11,7 @@ import {
   compositeTopicOrder,
   findTopic,
   renderAiContext,
+  renderAiContextSequence,
   selectableTopicIds
 } from '../utils/tool-docs';
 import { logger } from '../utils/logger';
@@ -147,7 +148,7 @@ export function createDocsCommand(): Command {
       // A composite's own order, not the manifest's: overview explains how to
       // choose between the two paths, so it comes first.
       const body = parts
-        ? parts.map((id) => renderAiContext(id, config, blocks)).join('\n\n---\n\n')
+        ? renderAiContextSequence(parts, config, blocks)
         : renderAiContext(topic, config, blocks);
 
       process.stdout.write(body);

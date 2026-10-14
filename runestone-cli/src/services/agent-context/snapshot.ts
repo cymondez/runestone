@@ -16,7 +16,8 @@
 
 import { CertificateListItem, listDomainCertificates } from '../cert-manager';
 import { DockerContainer, composeService } from '../docker-compose';
-import { isDnsEnabled } from '../dns/settings';
+import { isDnsEnabled, isDnsUiAuthConfigured, isDnsUiEnabled } from '../dns/settings';
+import { dnsUiUrl } from '../dns/ui-route';
 import { ServiceListItem, findCoveringCertificate, listServices } from '../service-manager';
 import { TraefikSnapshot, readTraefikSnapshot, traefikApiBaseUrl } from '../traefik-api';
 import { RunestoneEnv } from '../../utils/env-loader';
@@ -181,8 +182,17 @@ function servicesOf(services: ServiceListItem[], certificates: CertificateListIt
   }));
 }
 
-function warningsOf(certificates: SnapshotCertificate[], services: SnapshotService[]): string[] {
+function warningsOf(config: RunestoneEnv, certificates: SnapshotCertificate[], services: SnapshotService[]): string[] {
   const warnings: string[] = [];
+
+  // Read from .env alone, so the offline tier can say it. `dns status` already
+  // disclosed this while `state` said "Nothing to flag".
+  if (isDnsEnabled(config) && isDnsUiEnabled(config) && !isDnsUiAuthConfigured(config)) {
+    warnings.push(
+      `The DNS web UI at ${dnsUiUrl(config)} has no authentication: anyone who can reach this machine over HTTPS ` +
+        "can change its custom DNS rules. Ask the user to set DNS_UI_USER and DNS_UI_PASS in Runestone's .env."
+    );
+  }
 
   if (certificates.length === 0) {
     warnings.push('No certificates have been created yet, so no hostname is covered.');
@@ -236,7 +246,7 @@ export function buildOfflineSnapshot(
 
   const certificates = certificatesOf(certificateItems);
   const services = servicesOf(serviceItems, certificateItems);
-  const warnings = warningsOf(certificates, services);
+  const warnings = warningsOf(config, certificates, services);
 
   if (!rawCertificates.ok) {
     warnings.unshift(`The certificate list could not be read: ${rawCertificates.message ?? 'unknown error'}.`);

@@ -132,7 +132,10 @@ export function renderRuntime(snapshot: AgentContextSnapshot): string {
           'Docker could not be reached, so it is unknown whether Runestone is running. ' +
             'Ask the user to run `runestone up` if routes do not resolve.'
         ])
-      : bullets(['Container state was not checked.']);
+      : bullets([
+          'Container state was not checked here: this text is rendered without querying Docker. ' +
+            '`runestone status` says whether Runestone is running.'
+        ]);
   }
 
   const containers = snapshot.containers.value;
