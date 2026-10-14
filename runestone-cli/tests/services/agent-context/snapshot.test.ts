@@ -465,3 +465,20 @@ describe('warnings an agent sees in the state topic', () => {
     expect(renderRuntime(buildOfflineSnapshot(config(), deps([], [])))).toContain('`runestone status`');
   });
 });
+
+describe('the root CA in the agent context', () => {
+  it('warns when the system trust store lacks it, and says who runs the fix', () => {
+    const snapshot = buildOfflineSnapshot(config(), { ...deps([certificate()], []), caTrust: () => 'not-trusted' });
+
+    expect(snapshot.caTrust).toBe('not-trusted');
+    expect(snapshot.warnings.join(' ')).toContain('runestone certs install');
+    expect(snapshot.warnings.join(' ')).toContain('do not run it yourself');
+  });
+
+  it('says nothing when it is trusted, or when there is no root CA yet', () => {
+    for (const caTrust of ['trusted', 'no-root-ca', 'unknown'] as const) {
+      const snapshot = buildOfflineSnapshot(config(), { ...deps([certificate()], []), caTrust: () => caTrust });
+      expect(snapshot.warnings.join(' ')).not.toContain('root CA');
+    }
+  });
+});

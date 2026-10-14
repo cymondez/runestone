@@ -23,6 +23,7 @@
 
 - `runestone dns status` no longer prints the dns service's state twice.
 - `runestone status` and `runestone docs --ai-context state` now report a DNS web UI that has no authentication, which only `runestone dns status` mentioned before.
+- `runestone status` and the agent guidance now say whether this machine's system trust store holds Runestone's root CA, and point to `runestone certs install` when it does not. Before, nothing said why every hostname showed a certificate warning.
 - `runestone docs --ai-context` with no topic, and with `all`, no longer repeats the topic list and the hostname lists once per topic.
 - `runestone docs`, `runestone service add` and `runestone doctor` no longer crash when run without a terminal, as AI agents run them. `runestone docs` points to `--ai-context`; `service add` and `doctor` stop where they would have asked a question and say what to do instead.
 - The agent guidance for Docker projects no longer cuts the exposed service off from the project's other services, such as its database: its example `compose.override.yml` keeps the project's own network.

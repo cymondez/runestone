@@ -14,6 +14,7 @@
  * renderer over this value rather than a rewrite. A test asserts the round trip.
  */
 
+import { CaTrust, checkCaTrust } from '../ca-trust';
 import { CertificateListItem, listDomainCertificates } from '../cert-manager';
 import { DockerContainer, composeService } from '../docker-compose';
 import { isDnsEnabled, isDnsUiAuthConfigured, isDnsUiEnabled } from '../dns/settings';
@@ -88,6 +89,8 @@ export interface AgentContextSnapshot {
     wildcards: string[];
   };
   certificates: SnapshotCertificate[];
+  /** Whether the system trust store holds Runestone's root CA. See ca-trust.ts. */
+  caTrust: CaTrust;
   services: SnapshotService[];
   /** What an agent must not collide with. */
   usedNames: { serviceNames: string[]; routes: string[] };
@@ -107,6 +110,8 @@ export interface AgentContextSnapshot {
 export interface AgentContextDependencies {
   listCertificates: (runestoneDir: string) => CertificateListItem[];
   listServices: (config: RunestoneEnv) => ServiceListItem[];
+  /** Offline: reads the root CA file and the system store, spawns nothing. */
+  caTrust: (runestoneDir: string) => CaTrust;
   now: () => Date;
   /** Online. Spawns `docker compose ps`. */
   listContainers: (composePath: string) => DockerContainer[];
@@ -126,6 +131,7 @@ export const CONTAINER_PROBE_TIMEOUT_MS = 8000;
 export const defaultAgentContextDependencies: AgentContextDependencies = {
   listCertificates: (runestoneDir) => listDomainCertificates(runestoneDir),
   listServices: (config) => listServices(config),
+  caTrust: (runestoneDir) => checkCaTrust(runestoneDir),
   now: () => new Date(),
   listContainers: (composePath) => composeService.ps(composePath, CONTAINER_PROBE_TIMEOUT_MS),
   readTraefik: (baseUrl) => readTraefikSnapshot(baseUrl)
@@ -182,8 +188,20 @@ function servicesOf(services: ServiceListItem[], certificates: CertificateListIt
   }));
 }
 
-function warningsOf(config: RunestoneEnv, certificates: SnapshotCertificate[], services: SnapshotService[]): string[] {
+function warningsOf(
+  config: RunestoneEnv,
+  certificates: SnapshotCertificate[],
+  services: SnapshotService[],
+  caTrust: CaTrust
+): string[] {
   const warnings: string[] = [];
+
+  if (caTrust === 'not-trusted') {
+    warnings.push(
+      "Runestone's root CA is not in this machine's system trust store, so browsers that use it warn on every " +
+        'Runestone hostname. Ask the user to run `runestone certs install`; it needs elevation, so do not run it yourself.'
+    );
+  }
 
   // Read from .env alone, so the offline tier can say it. `dns status` already
   // disclosed this while `state` said "Nothing to flag".
@@ -234,7 +252,7 @@ export function buildOfflineSnapshot(
   config: RunestoneEnv,
   deps: Partial<AgentContextDependencies> = {}
 ): AgentContextSnapshot {
-  const { listCertificates, listServices: readServices, now } = { ...defaultAgentContextDependencies, ...deps };
+  const { listCertificates, listServices: readServices, caTrust: readCaTrust, now } = { ...defaultAgentContextDependencies, ...deps };
 
   // A missing certificate directory is an ordinary state, not a failure, so
   // the probe collapses to an empty list rather than surfacing as a warning
@@ -246,7 +264,8 @@ export function buildOfflineSnapshot(
 
   const certificates = certificatesOf(certificateItems);
   const services = servicesOf(serviceItems, certificateItems);
-  const warnings = warningsOf(config, certificates, services);
+  const caTrust = readCaTrust(config.PROJECT_DIR);
+  const warnings = warningsOf(config, certificates, services, caTrust);
 
   if (!rawCertificates.ok) {
     warnings.unshift(`The certificate list could not be read: ${rawCertificates.message ?? 'unknown error'}.`);
@@ -263,6 +282,7 @@ export function buildOfflineSnapshot(
     environment: environmentOf(config),
     domains: domainsOf(config, certificates),
     certificates,
+    caTrust,
     services,
     usedNames: {
       serviceNames: services.map((service) => service.name).sort(),

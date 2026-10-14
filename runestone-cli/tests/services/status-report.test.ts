@@ -34,6 +34,7 @@ function snapshot(overrides: Partial<AgentContextSnapshot> = {}): AgentContextSn
     environment: {} as AgentContextSnapshot['environment'],
     domains: { hostDomain: 'example.test', covered: [], wildcards: ['*.example.test'] },
     certificates: [certificate()],
+    caTrust: 'trusted',
     services: [],
     usedNames: { serviceNames: [], routes: [] },
     dns: { enabled: false },
@@ -251,6 +252,30 @@ describe('the status report and the DNS web UI', () => {
     ['the UI is off', { DNS_UI_ENABLE: 'false', DNS_UI_USER: '', DNS_UI_PASS: '' }]
   ])('says nothing about the UI when %s', async (_name, settings) => {
     const report = await buildStatusReport(config({ DNS_ENABLE: 'true', ...settings }), deps({}, withDns));
+
+    expect(report.verdict).toBe('ready');
+  });
+});
+
+describe('the status report and the root CA', () => {
+  beforeEach(() => {
+    process.env.RUNESTONE_LANG = 'en';
+  });
+
+  afterEach(() => {
+    delete process.env.RUNESTONE_LANG;
+  });
+
+  it('flags a root CA the system does not trust, and leaves the fix to the user', async () => {
+    const report = await buildStatusReport(config(), deps({}, snapshot({ caTrust: 'not-trusted' })));
+
+    expect(report.verdict).toBe('degraded');
+    expect(report.caTrust).toBe('not-trusted');
+    expect(report.problems).toEqual([expect.objectContaining({ fix: expect.stringContaining('runestone certs install') })]);
+  });
+
+  it.each(['trusted', 'no-root-ca', 'unknown'] as const)('raises no problem when the root CA is %s', async (caTrust) => {
+    const report = await buildStatusReport(config(), deps({}, snapshot({ caTrust })));
 
     expect(report.verdict).toBe('ready');
   });

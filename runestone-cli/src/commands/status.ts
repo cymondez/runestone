@@ -47,6 +47,19 @@ function padCell(cell: string, width: number): string {
   return cell + ' '.repeat(Math.max(0, width - displayWidth(stripColour(cell))));
 }
 
+function caTrustLine(caTrust: string): string {
+  switch (caTrust) {
+    case 'trusted':
+      return t('status.ca.trusted');
+    case 'not-trusted':
+      return red(t('status.ca.notTrusted'));
+    case 'no-root-ca':
+      return t('status.ca.noRootCa');
+    default:
+      return dim(t('status.ca.unknown'));
+  }
+}
+
 /**
  * The first line answers the question the command is run for: can Runestone be
  * used right now. It goes to stdout whatever the verdict, so a caller reading
@@ -111,6 +124,7 @@ function render(report: StatusReport): void {
     console.log(`  ${report.traefikRouters === null
       ? t('status.routes.traefikUnknown')
       : t('status.routes.traefik', { count: String(report.traefikRouters.length) })}`);
+    console.log(`  ${caTrustLine(report.caTrust)}`);
 
     logger.info(t('status.section.sshKeys'));
     if (report.sshKeys === null) {

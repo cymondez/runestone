@@ -66,6 +66,8 @@ export interface StatusReport {
     serviceRunning: boolean | null;
   };
   certificates: SnapshotCertificate[];
+  /** Whether the system trust store holds Runestone's root CA. */
+  caTrust: string;
   covered: { wildcards: string[]; names: string[] };
   /** Routes added with `runestone service add`. */
   routes: SnapshotService[];
@@ -138,6 +140,7 @@ function notConfigured(config: RunestoneEnv, deps: StatusReportDependencies): St
     traefikRouters: null,
     dns: { enabled: isDnsEnabled(config), phase: null, preparedReason: null, serviceRunning: null },
     certificates: [],
+    caTrust: 'unknown',
     covered: { wildcards: [], names: [] },
     routes: [],
     problems: [{ text: t('status.problem.notConfigured'), fix: 'runestone setup' }]
@@ -213,6 +216,12 @@ export async function buildStatusReport(
     });
   }
 
+  // Every hostname warns until the root CA is trusted, and only the user can
+  // fix it: installing needs elevation.
+  if (snapshot.caTrust === 'not-trusted') {
+    problems.push({ text: t('status.problem.caNotTrusted'), fix: t('status.fix.caNotTrusted') });
+  }
+
   if (snapshot.certificates.length === 0) {
     problems.push({
       text: t('status.problem.noCertificates'),
@@ -276,6 +285,7 @@ export async function buildStatusReport(
       serviceRunning: dnsContainer ? dnsContainer.state === 'running' : containers ? false : null
     },
     certificates: snapshot.certificates,
+    caTrust: snapshot.caTrust,
     covered: { wildcards: snapshot.domains.wildcards, names: snapshot.domains.covered },
     routes: snapshot.services,
     problems
