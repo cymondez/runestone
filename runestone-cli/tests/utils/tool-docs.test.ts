@@ -449,3 +449,13 @@ describe('the corpus says how the host resolves Runestone hostnames', () => {
     expect(troubleshoot).toContain('do not change it yourself');
   });
 });
+
+describe('the corpus warns about names on the shared network', () => {
+  it('says how a sibling name can collide, where to look, and what to call it instead', () => {
+    const compose = renderAiContext('compose', config(), stubBlocks());
+
+    expect(compose).toContain('Names on the shared network:');
+    expect(compose).toContain('`<project>-<service>-1`');
+    expect(renderAiContext('troubleshoot', config(), stubBlocks())).toContain("reaches another project's service");
+  });
+});

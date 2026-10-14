@@ -40,6 +40,7 @@ function snapshot(overrides: Partial<AgentContextSnapshot> = {}): AgentContextSn
     dns: { enabled: false },
     containers: { ok: true, value: [running('runestone')] },
     traefik: { ok: true, value: { routers: [{ name: 'other@docker', provider: 'docker', rule: null }], services: [] } },
+    networkMembers: { ok: true, value: [] },
     warnings: [],
     ...overrides
   };

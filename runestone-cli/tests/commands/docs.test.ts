@@ -2,6 +2,7 @@ import { createProgram } from '../../src/cli';
 import { composeService } from '../../src/services/docker-compose';
 import { readTraefikSnapshot } from '../../src/services/traefik-api';
 import { listDomainCertificates } from '../../src/services/cert-manager';
+import { networkService } from '../../src/services/docker-network';
 import { envLoader } from '../../src/utils/env-loader';
 import { testEnv } from '../helpers/env';
 
@@ -13,6 +14,11 @@ jest.mock('../../src/services/traefik-api', () => ({
 jest.mock('../../src/services/docker-compose', () => ({
   ...jest.requireActual('../../src/services/docker-compose'),
   composeService: { ps: jest.fn() }
+}));
+
+jest.mock('../../src/services/docker-network', () => ({
+  ...jest.requireActual('../../src/services/docker-network'),
+  networkService: { members: jest.fn() }
 }));
 
 jest.mock('../../src/services/cert-manager', () => ({
@@ -32,6 +38,7 @@ jest.mock('../../src/utils/env-loader', () => ({
 const psMock = composeService.ps as jest.Mock;
 const traefikMock = readTraefikSnapshot as jest.Mock;
 const certsMock = listDomainCertificates as jest.Mock;
+const membersMock = networkService.members as jest.Mock;
 
 async function run(...args: string[]) {
   await createProgram().parseAsync(['node', 'runestone', 'docs', ...args]);
@@ -55,6 +62,7 @@ describe('docs --ai-context', () => {
     certsMock.mockReturnValue([]);
     psMock.mockReturnValue([]);
     traefikMock.mockResolvedValue({ routers: [], services: [] });
+    membersMock.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -76,6 +84,7 @@ describe('docs --ai-context', () => {
 
       expect(psMock).not.toHaveBeenCalled();
       expect(traefikMock).not.toHaveBeenCalled();
+      expect(membersMock).not.toHaveBeenCalled();
       expect(output().length).toBeGreaterThan(0);
       expect(process.exitCode).toBeUndefined();
     });
@@ -86,6 +95,8 @@ describe('docs --ai-context', () => {
 
     expect(psMock).toHaveBeenCalledTimes(1);
     expect(traefikMock).toHaveBeenCalledTimes(1);
+    expect(membersMock).toHaveBeenCalledTimes(1);
+    expect(membersMock).toHaveBeenCalledWith(expect.any(String), 8000);
     expect(traefikMock).toHaveBeenCalledWith('https://traefik.example.test');
   });
 

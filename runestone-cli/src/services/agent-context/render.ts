@@ -121,7 +121,41 @@ export function renderUsedNames(snapshot: AgentContextSnapshot): string {
     );
   }
 
+  // A service attached to the shared network also resolves every name on it.
+  // Measured on 2026-10-14: when a name exists on both of a container's
+  // networks, Docker answered with the network whose name sorts first, so a
+  // sibling's name can reach another project's container.
+  const network = snapshot.environment.networkName;
+  if (snapshot.networkMembers.ok) {
+    const names = namesOnNetwork(snapshot.networkMembers.value);
+    lines.push(
+      names.length > 0
+        ? `Names already on the shared \`${network}\` network, which a service you attach to it also resolves: ` +
+            `${names.join(', ')}. If that service calls a sibling by one of these names, Docker may answer with the ` +
+            'container listed here instead of the sibling; the compose topic says how to avoid it.'
+        : `Nothing is attached to the shared \`${network}\` network yet.`
+    );
+  } else if (snapshot.networkMembers.reason === 'unavailable') {
+    lines.push(
+      `The containers on the shared \`${network}\` network could not be listed ` +
+        `(${snapshot.networkMembers.message ?? 'unknown error'}), so names that may collide there are unknown.`
+    );
+  }
+
   return bullets(lines);
+}
+
+/** Every name a member answers to on the network: its container name and its Compose service name. */
+function namesOnNetwork(members: Array<{ container: string; service: string | null }>): string[] {
+  const names = new Set<string>();
+  for (const member of members) {
+    names.add(member.container);
+    if (member.service) {
+      names.add(member.service);
+    }
+  }
+
+  return [...names].filter(Boolean).sort();
 }
 
 /** Whether the environment is up. Only meaningful when it was probed. */

@@ -231,6 +231,10 @@ describe('the live snapshot', () => {
       ...deps([certificate()], [service()]),
       listContainers: () => containers,
       readTraefik: async () => traefik,
+      listNetworkMembers: () => [
+        { container: 'runestone', project: 'runestone', service: 'runestone' },
+        { container: 'other-api-1', project: 'other', service: 'api' }
+      ],
       ...overrides
     };
   }
@@ -480,5 +484,56 @@ describe('the root CA in the agent context', () => {
       const snapshot = buildOfflineSnapshot(config(), { ...deps([certificate()], []), caTrust: () => caTrust });
       expect(snapshot.warnings.join(' ')).not.toContain('root CA');
     }
+  });
+});
+
+describe('names on the shared network', () => {
+  // Measured on 2026-10-14 with temporary networks: a service on its own
+  // network and the shared one resolved a sibling's name to another project's
+  // container whenever the shared network's name sorted first.
+  const base = {
+    ...deps([certificate()], []),
+    listContainers: () => [{ Id: '1', Name: 'runestone', State: 'running', Status: 'Up', Service: 'runestone' }],
+    readTraefik: async () => ({ routers: [], services: [] })
+  };
+
+  it('lists every name a container on it answers to, in the state topic', async () => {
+    const snapshot = await buildLiveSnapshot(config(), {
+      ...base,
+      listNetworkMembers: () => [
+        { container: 'other-api-1', project: 'other', service: 'api' },
+        { container: 'plain', project: null, service: null }
+      ]
+    });
+
+    const text = renderUsedNames(snapshot);
+    // testEnv fixes NETWORK_NAME at runestone-network whatever PREFIX is.
+    expect(text).toContain('Names already on the shared `runestone-network` network');
+    expect(text).toContain('api, other-api-1, plain');
+  });
+
+  it('says the names are unknown when they could not be listed, not that there are none', async () => {
+    const snapshot = await buildLiveSnapshot(config(), {
+      ...base,
+      listNetworkMembers: () => {
+        throw new Error('timed out');
+      }
+    });
+
+    expect(renderUsedNames(snapshot)).toContain('could not be listed (timed out)');
+  });
+
+  it('is not asked offline, nor when Docker did not answer', async () => {
+    const listNetworkMembers = jest.fn(() => []);
+    buildOfflineSnapshot(config(), { ...base, listNetworkMembers });
+    await buildLiveSnapshot(config(), {
+      ...base,
+      listContainers: () => {
+        throw new Error('Cannot connect to the Docker daemon');
+      },
+      listNetworkMembers
+    });
+
+    expect(listNetworkMembers).not.toHaveBeenCalled();
   });
 });

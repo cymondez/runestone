@@ -17,6 +17,7 @@
 import { CaTrust, checkCaTrust } from '../ca-trust';
 import { CertificateListItem, listDomainCertificates } from '../cert-manager';
 import { DockerContainer, composeService } from '../docker-compose';
+import { NetworkMember, networkService } from '../docker-network';
 import { isDnsEnabled, isDnsUiAuthConfigured, isDnsUiEnabled } from '../dns/settings';
 import { dnsUiUrl } from '../dns/ui-route';
 import { ServiceListItem, findCoveringCertificate, listServices } from '../service-manager';
@@ -97,6 +98,12 @@ export interface AgentContextSnapshot {
   dns: { enabled: boolean };
   containers: Probe<SnapshotContainer[]>;
   traefik: Probe<SnapshotTraefik>;
+  /**
+   * Running containers on the shared Runestone network. A service attached to
+   * it resolves these names too, and a name that also exists on its own
+   * network may answer with another project's container.
+   */
+  networkMembers: Probe<NetworkMember[]>;
   /** Rendered into prose. Never written to stderr. */
   warnings: string[];
 }
@@ -117,6 +124,8 @@ export interface AgentContextDependencies {
   listContainers: (composePath: string) => DockerContainer[];
   /** Online. Issues an HTTPS request to Traefik's API. */
   readTraefik: (baseUrl: string) => Promise<TraefikSnapshot>;
+  /** Online. Spawns `docker ps --filter network=...`. */
+  listNetworkMembers: (networkName: string) => NetworkMember[];
 }
 
 /**
@@ -134,7 +143,8 @@ export const defaultAgentContextDependencies: AgentContextDependencies = {
   caTrust: (runestoneDir) => checkCaTrust(runestoneDir),
   now: () => new Date(),
   listContainers: (composePath) => composeService.ps(composePath, CONTAINER_PROBE_TIMEOUT_MS),
-  readTraefik: (baseUrl) => readTraefikSnapshot(baseUrl)
+  readTraefik: (baseUrl) => readTraefikSnapshot(baseUrl),
+  listNetworkMembers: (networkName) => networkService.members(networkName, CONTAINER_PROBE_TIMEOUT_MS)
 };
 
 function environmentOf(config: RunestoneEnv): SnapshotEnvironment {
@@ -291,6 +301,7 @@ export function buildOfflineSnapshot(
     dns: { enabled: isDnsEnabled(config) },
     containers: skipped(),
     traefik: skipped(),
+    networkMembers: skipped(),
     warnings
   };
 }
@@ -346,6 +357,10 @@ export async function buildLiveSnapshot(
 
   const containers = probe(() => containersOf(merged.listContainers(config.COMPOSE_FILE_PATH)));
   const traefik = await probeAsync(async () => traefikOf(await merged.readTraefik(traefikApiBaseUrl(config.HOST_DOMAIN))));
+  // Asked only when Docker answered, so a stopped daemon costs one timeout, not two.
+  const networkMembers = containers.ok
+    ? probe(() => merged.listNetworkMembers(config.NETWORK_NAME))
+    : skipped<NetworkMember[]>();
 
   const warnings = [...offline.warnings];
   if (!containers.ok && containers.reason === 'unavailable') {
@@ -358,5 +373,5 @@ export async function buildLiveSnapshot(
     );
   }
 
-  return { ...offline, probeMode: 'live', containers, traefik, warnings };
+  return { ...offline, probeMode: 'live', containers, traefik, networkMembers, warnings };
 }

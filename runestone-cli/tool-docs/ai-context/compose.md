@@ -55,6 +55,18 @@ networks:
     name: {{RUNESTONE_NETWORK_NAME}}
 ```
 
+Names on the shared network:
+Joining `{{RUNESTONE_NETWORK_NAME}}` lets this service resolve every other container on
+it by name, including the Compose service names other projects expose, such as
+`api`, `web` or `app`. When a name exists both there and on this project's own
+network, Docker may answer with the other project's container: in a measurement
+it depended on how the two network names sort, not on anything in this file.
+`runestone docs --ai-context state` lists the names already on
+`{{RUNESTONE_NETWORK_NAME}}`. If the service you expose calls a sibling by one of
+those names, have it call the sibling by a name only this project has: its
+container name (`<project>-<service>-1`), or an alias you give the sibling on the
+project's own network.
+
 Port rule:
 Use the internal container port, not the host-published port.
 Example: "8080:3000" means Traefik port is 3000.

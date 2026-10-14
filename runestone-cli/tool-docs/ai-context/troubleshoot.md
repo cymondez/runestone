@@ -63,6 +63,12 @@ depending on where it is resolved.
 - Turning it on is `runestone dns enable`, which **restarts the Docker daemon and therefore stops every container on the machine**. Never run it. Tell the user it exists, tell them what it costs, and let them decide.
 - As a narrow workaround for one container, `extra_hosts` with `host-gateway` reaches the host without touching the daemon. It does not scale, because every project must then enumerate every domain it talks to.
 
+Symptom: a service exposed through Runestone reaches another project's service.
+It calls a sibling by a name that another container on {{RUNESTONE_NETWORK_NAME}} also
+answers to, and Docker answered with that container.
+- `runestone docs --ai-context state` lists the names on {{RUNESTONE_NETWORK_NAME}}. If the sibling's name is among them, that is the cause.
+- Call the sibling by a name only this project has: its container name (`<project>-<service>-1`), or an alias on the project's own network.
+
 Symptom: the route worked and then stopped.
 - `runestone status` — its first line says whether Runestone is running and usable.
 - Did another project register the same router name or the same hostname? Names are global to Traefik, not scoped per project. `runestone docs --ai-context state` lists every router ID, service ID and hostname registered with Traefik, by any project.
