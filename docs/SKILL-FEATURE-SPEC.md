@@ -116,12 +116,13 @@ Costs we refuse to pay: we do not overwrite a file we did not generate, we do no
 
 | Topic | Contents | Tier |
 | --- | --- | --- |
-| `compose` (default) | Today's brief verbatim, plus offline facts and the footer | Offline |
+| `compose` | Today's brief verbatim, plus offline facts and the footer. It was the default until 2026-10-14; see 7.2 | Offline |
 | `service` | The second path of 2.1: when it applies, the exact command, the field rules of 5.2, and the certificate requirement | Offline |
 | `state` | Covered domains, certificate validity, registered services and routes, names taken by other projects, container state | **Online** |
 | `troubleshoot` | Symptom to cause: 404, 502, TLS warning, and "works in the browser, fails from another container" | Offline |
 | `overview` | What Runestone is, how to choose between the two paths, the topic index, and the guardrail list | Offline |
 | `all` | `overview`, `compose`, `service`, `state`, `troubleshoot`, in that order, separated by `---`. **A CLI value only**, with no MCP equivalent — see 11.2 | Online |
+| `guide` (default since 2026-10-14) | `overview`, `compose`, `service`, in that order, separated by `---`. The same content the MCP `runestone_integration_guide` tool returns, from the same order constant | Offline |
 
 `certs`, `dns` and `commands` are deliberately **not** separate topics. Certificate rules only mean something at the moment of choosing a hostname, so they belong in `service` and `compose`. DNS only matters as the cause of a symptom, so it belongs in `troubleshoot`. The command inventory *is* `overview`. Every additional topic costs the agent a round trip.
 
@@ -130,6 +131,8 @@ Costs we refuse to pay: we do not overwrite a file we did not generate, we do no
 `all` concatenates in the order above, which is deliberately not the manifest's own order: `overview` comes first because it explains how to choose between the two integration paths, and reading the specifics before that choice is backwards.
 
 **Discovery is solved by a footer, not by changing a default.** Every topic ends with the same generated block listing the other topic names and the literal command lines. A bare `runestone docs --ai-context` therefore teaches the agent that `state` exists on the very first call.
+
+**Revised on 2026-10-14: the footer was not enough, and the default changed.** Read-only probe agents given nothing but the CLI showed why. The compose topic tells a project with no Compose file to "create compose.yml", and the only pointer to the other path sat at the end, after the agent had read instructions it would act on. The cold-start agent with a host dev server avoided the wrong path only because it happened to read `docs --help` first. A bare `--ai-context` now prints the `guide` composite, so the choice comes before either path; 7.2 records why this does not break the compatibility it protected.
 
 ### 5.2 The fact source rule
 
@@ -221,6 +224,10 @@ It lives under `src/services/` because it composes other services. **It does not
 An unrecognized topic sets `process.exitCode = 1`, writes nothing to stdout, and lists the valid topics on stderr. `process.exitCode` rather than `process.exit(1)` is deliberate and pre-existing: it lets buffered stdout flush.
 
 ### 7.2 Backward compatibility
+
+**Revised on 2026-10-14: a bare `--ai-context` prints the `guide` composite** (`overview`, `compose`, `service`). This is the correction section 11.2 made for MCP in C4, now made for the CLI, which had kept the old shape. The compatibility constraint below still holds, because the guide contains the compose topic in full: a prompt written for the old behaviour receives everything it received before, plus the choice between the two paths that it was missing. The golden test still passes with its assertions unchanged except the one line, "Optional HTTP entrypoint name", whose sentence was deliberately rewritten because it offered an HTTP router the HTTP-to-HTTPS redirect makes useless. `renderAiPromptContext` still renders the compose topic alone.
+
+The original text of this section follows, kept as the record of the decision it revises.
 
 **A bare `--ai-context` continues to mean the `compose` topic.** The footer and the offline facts are *appended* to it.
 
@@ -489,7 +496,7 @@ stdout carries protocol frames and nothing else.
 
 ## 13. Compatibility and Migration
 
-- A bare `runestone docs --ai-context` behaves as before, with content appended (section 7.2).
+- A bare `runestone docs --ai-context` behaves as before, with content appended (section 7.2). Revised on 2026-10-14: it prints the guide, which contains the former output in full.
 - `tool-docs/ai-prompt-context.tmp.md` is removed and its content becomes the `compose` topic. `renderAiPromptContext()` keeps its signature as a thin wrapper for one release.
 - `src/utils/tool-docs.ts` must be **deleted** when `src/utils/tool-docs/` is created. Leaving both would silently keep the old renderer live, because module resolution prefers the file.
 - `README.md` currently links `runestone-cli/tool-docs/ai-prompt-context.tmp.md`. That link resolves on GitHub but is already broken in the npm copy, and the file is removed here. `scripts/sync-readme.js` rewrites six specific link patterns and needs a rule for every new documentation link.

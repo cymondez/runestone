@@ -114,9 +114,11 @@ runestone certs remove <domain>
 
 ## Service 管理
 
+`runestone service` は、Docker の外にあって Runestone のホスト名で開きたいものを公開するためのものです: ホストの開発サーバー、起動済みのプロセス、外部 URL。ここにあるのは自分で追加したルートで、Runestone が提供するサービスではありません。そちらは `runestone status` で確認します。Docker 内のプロジェクトは Traefik ラベルを使います。
+
 ### Service の追加
 
-Routed service を追加し、対応する Traefik の動的設定を作成します。
+ルートを追加し、対応する Traefik の動的設定を作成します。
 必須引数が不足している、または不正な場合、Runestone は対話モードで不足分を入力します。
 
 ```bash
@@ -125,7 +127,7 @@ runestone service add <service name> --route <domain> --url <url with port> --gr
 
 ### Service 一覧
 
-設定済みの routed services を表示します。
+`service add` で追加したルートを表示します。
 
 ```bash
 runestone service list
@@ -133,7 +135,7 @@ runestone service list
 
 ### Service の削除
 
-Routed service を削除し、対応する Traefik の動的設定も削除します。
+ルートを削除し、対応する Traefik の動的設定も削除します。
 
 ```bash
 runestone service remove <service name>
@@ -157,7 +159,7 @@ runestone skill install
 runestone docs --ai-context
 ```
 
-他のトピックは引数で指定します — `service`、`state`、`troubleshoot`、`overview`。どのトピックも末尾で他のトピックを一覧するので、引数なしで実行しただけのエージェントも残りを自分で見つけられます。
+引数なしでは完全なガイドを出力します。まず 2 つの接続方法の選び方、次に両方の手順です。一部だけなら引数で指定します — このマシンの現在の状態は `state`、ルートが動かないときは `troubleshoot`、すべてなら `all`。`runestone docs --help` で全トピックを確認できます。
 
 あるいは Runestone を読み取り専用の MCP サーバーとして接続します:
 

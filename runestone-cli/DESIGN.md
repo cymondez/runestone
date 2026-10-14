@@ -157,7 +157,7 @@ Runestone CLI 需支援管理注入到 Runestone 開發環境的 SSH keys。
 
 `runestone docs` 用於提供文件入口。
 
-`runestone docs --ai-context [topic]` 輸出 agent 接入專案所需的資訊。主題為 `compose`（預設）、`service`、`state`、`troubleshoot`、`overview`。無參數時等同 `compose`，此為相容性要求。
+`runestone docs --ai-context [topic]` 輸出 agent 接入專案所需的資訊。主題為 `guide`（預設）、`compose`、`service`、`state`、`troubleshoot`、`overview`、`all`。無參數時輸出 `guide`：overview → compose → service，先說怎麼在兩條接入路徑之間選擇，再列出兩條路徑；它完整包含 `compose` 主題，所以為舊行為寫的 prompt 拿到的內容只多不少（相容性處理見 `docs/SKILL-FEATURE-SPEC.md` §7.2）。MCP 的 `runestone_integration_guide` 回傳同一份內容。
 
 離線主題內容需包含：
 
