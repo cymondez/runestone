@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import {
   DEFAULT_TOPIC,
   TOPICS,
@@ -47,27 +48,38 @@ function stubBlocks() {
 }
 
 describe('tool-docs renderer', () => {
-  it('keeps the pre-refactor output as a contiguous prefix of the compose topic', () => {
-    // The fixture was produced from tool-docs/ai-prompt-context.tmp.md by the
-    // renderer this module replaced, using the same values as the golden
-    // integration test.
-    //
-    // A3 appends live facts and the topic footer to this topic, which is a
-    // deliberate compatibility decision: the golden integration test asserts
-    // with `toContain`, so adding text at the end satisfies every existing
-    // assertion while changing what an agent receives for the better. A prefix
-    // check is therefore the strongest claim still available, and it is the one
-    // that matters — it proves nothing in the original brief was reordered,
-    // reworded or dropped.
-    const expected = fs.readFileSync(
-      path.join(packageRoot, 'tests', 'fixtures', 'tool-docs', 'compose-topic.expected.md'),
-      'utf8'
-    );
+  it('gives a compose override that keeps the service on its own network', () => {
+    // This replaced a byte-for-byte prefix check against the pre-A1 brief. That
+    // check was a milestone property: it proved the refactor changed nothing,
+    // and this change has to change the brief, because one of its sentences was
+    // wrong. "Attach the exposed service to the runestone network", with a
+    // snippet listing only that network, drops the implicit default network
+    // once followed in an override, and the service loses its database.
+    // Measured with docker compose config on 2026-10-14: networks listed as
+    // [runestone] leave only runestone; [default, runestone] keep both.
+    const rendered = renderAiContext('compose', config(), stubBlocks());
+    const block = /```yaml\n([\s\S]*?)```/.exec(rendered);
+    expect(block).not.toBeNull();
 
+    const override = yaml.load((block as RegExpExecArray)[1]) as {
+      services: Record<string, { networks: string[]; labels: string[] }>;
+      networks: Record<string, { external: boolean; name: string }>;
+    };
+    const service = override.services['<compose-service>'];
+
+    expect(service.networks).toEqual(['default', 'runestone']);
+    expect(service.labels).toHaveLength(7);
+    expect(service.labels).toContain('traefik.enable=true');
+    expect(service.labels).toContain('traefik.http.routers.<router-id>.entrypoints=secure');
+    expect(service.labels).toContain('traefik.docker.network=mylab-network');
+    expect(override.networks.runestone).toEqual({ external: true, name: 'mylab-network' });
+  });
+
+  it('does not offer an HTTP router, because HTTP already redirects to HTTPS', () => {
     const rendered = renderAiContext('compose', config(), stubBlocks());
 
-    expect(rendered.startsWith(expected)).toBe(true);
-    expect(rendered.length).toBeGreaterThan(expected.length);
+    expect(rendered).not.toContain('Optional HTTP entrypoint');
+    expect(rendered).toContain('HTTP entrypoint `plain` already redirects every request to HTTPS');
   });
 
   it('renders the corpus with LF endings, whoever checked it out', () => {
@@ -297,11 +309,59 @@ describe('the corpus gives "service" one meaning per term', () => {
     }
   });
 
-  it.each(['overview', 'service', 'troubleshoot', 'state'])('does not use the ambiguous phrasings in %s', (id) => {
+  it.each(['overview', 'compose', 'service', 'troubleshoot', 'state'])('does not use the ambiguous phrasings in %s', (id) => {
     const rendered = renderAiContext(id, config(), stubBlocks());
 
     expect(rendered).not.toMatch(/routed service/i);
     expect(rendered).not.toMatch(/\bService path\b/);
     expect(rendered).not.toMatch(/Add a Traefik service/);
+  });
+});
+
+describe('the corpus tells an agent how to verify, and what not to treat as read-only', () => {
+  // Each of these was a sentence an agent following the text literally would
+  // have got wrong. Found by read-only probe agents on 2026-10-14.
+  const troubleshoot = renderAiContext('troubleshoot', config(), stubBlocks());
+  const service = renderAiContext('service', config(), stubBlocks());
+  const overview = renderAiContext('overview', config(), stubBlocks());
+
+  it('says an unrouted hostname gets a 200 page, not a 404', () => {
+    // docker/traefik/dynamic/traefik.dynamic.yml routes every unrouted
+    // *.HOST_DOMAIN to the catch-all, which serves "Service not found!" as 200.
+    for (const topic of [troubleshoot, service, renderAiContext('compose', config(), stubBlocks())]) {
+      expect(topic).toContain('Service not found!');
+    }
+    expect(troubleshoot).toContain('look at the page, not the status code');
+  });
+
+  it('covers a dev server refusing an unknown hostname', () => {
+    for (const topic of [troubleshoot, service]) {
+      expect(topic).toContain('server.allowedHosts');
+      expect(topic).toContain('Invalid Host header');
+    }
+  });
+
+  it('does not list doctor as read-only, because it offers to install things', () => {
+    const readOnly = (text: string) => text.slice(text.indexOf('Read-only'), text.indexOf('\n\n', text.indexOf('Read-only') + 10));
+
+    expect(readOnly(troubleshoot)).not.toContain('doctor');
+    expect(readOnly(overview)).not.toContain('doctor');
+    expect(troubleshoot).toContain('Ask the user to run it');
+  });
+
+  it('tells an agent how to run service add without a terminal', () => {
+    expect(service).toContain('Running it without a terminal');
+    expect(service).toContain('Pass the name, --route and --url on the command line, all three.');
+  });
+
+  it('tells the agent to choose the hostname rather than stop to ask', () => {
+    for (const topic of [overview, service, renderAiContext('compose', config(), stubBlocks())]) {
+      expect(topic).toMatch(/do not stop to ask|Do not stop to ask/);
+    }
+  });
+
+  it('names the Windows curl failure so it is not mistaken for an untrusted CA', () => {
+    expect(troubleshoot).toContain('CRYPT_E_NO_REVOCATION_CHECK');
+    expect(troubleshoot).toContain('--ssl-no-revoke');
   });
 });

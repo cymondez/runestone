@@ -58,6 +58,24 @@ export function renderDomains(snapshot: AgentContextSnapshot): string {
   return bullets(lines);
 }
 
+/**
+ * Every hostname named by a `Host(...)` matcher in a router rule. `HostRegexp`
+ * matchers, such as Runestone's own catch-all, name no single hostname and are
+ * left out.
+ */
+export function routedHostnames(routers: Array<{ rule: string | null }>): string[] {
+  const names = new Set<string>();
+  for (const router of routers) {
+    for (const host of (router.rule ?? '').matchAll(/\bHost\(([^)]*)\)/g)) {
+      for (const quoted of host[1].matchAll(/`([^`]+)`/g)) {
+        names.add(quoted[1].toLowerCase());
+      }
+    }
+  }
+
+  return [...names].sort();
+}
+
 /** The names an agent must not collide with. Collisions are global to Traefik. */
 export function renderUsedNames(snapshot: AgentContextSnapshot): string {
   const lines: string[] = [];
@@ -75,6 +93,19 @@ export function renderUsedNames(snapshot: AgentContextSnapshot): string {
       routers.length > 0
         ? `Traefik router IDs already registered, including by other projects: ${routers.join(', ')}`
         : 'Traefik reports no registered routers.'
+    );
+    // The router IDs alone did not say which hostnames other projects use, and
+    // a Traefik service ID collides just as a router ID does. Both were already
+    // in the snapshot; they were only not printed.
+    const services = snapshot.traefik.value.services.map((service) => service.name);
+    if (services.length > 0) {
+      lines.push(`Traefik service IDs already registered, including by other projects: ${services.join(', ')}`);
+    }
+    const hostnames = routedHostnames(snapshot.traefik.value.routers);
+    lines.push(
+      hostnames.length > 0
+        ? `Hostnames already routed, including by other projects: ${hostnames.join(', ')}`
+        : 'No hostname is routed by any project yet.'
     );
   } else if (snapshot.traefik.reason === 'unavailable') {
     lines.push(

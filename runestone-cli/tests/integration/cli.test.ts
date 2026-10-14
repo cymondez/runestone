@@ -244,7 +244,9 @@ describe('runestone CLI integration', () => {
       expect(result.stdout).toContain('External Docker network: mylab-network');
       expect(result.stdout).toContain('Host domain suffix: example.test');
       expect(result.stdout).toContain('HTTPS entrypoint name: secure');
-      expect(result.stdout).toContain('Optional HTTP entrypoint name: plain');
+      // The old line offered an 'optional HTTP entrypoint', but HTTP already
+      // redirects to HTTPS: an HTTP router is never what the project needs.
+      expect(result.stdout).toContain('HTTP entrypoint `plain` already redirects every request to HTTPS');
       expect(result.stdout).toContain('traefik.http.routers.<router-id>.entrypoints=secure');
       expect(result.stdout).toContain('traefik.http.routers.<router-id>.rule=Host(`<host-prefix>.example.test`)');
       expect(result.stdout).toContain('traefik.docker.network=mylab-network');

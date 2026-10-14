@@ -14,6 +14,7 @@ import {
   renderDomains,
   renderRuntime,
   renderUsedNames,
+  routedHostnames,
   renderWarnings
 } from '../../../src/services/agent-context/render';
 import { composeService } from '../../../src/services/docker-compose';
@@ -242,6 +243,27 @@ describe('the live snapshot', () => {
     expect(snapshot.probeMode).toBe('live');
     expect(snapshot.traefik.ok).toBe(true);
     expect(renderUsedNames(snapshot)).toContain('other@docker');
+  });
+
+  it('also reports the Traefik service IDs and the hostnames other projects route', async () => {
+    // Router IDs alone did not say which hostnames were taken, so an agent
+    // could pick a router ID that was free and a hostname that was not.
+    const snapshot = await buildLiveSnapshot(config(), liveDeps());
+    const text = renderUsedNames(snapshot);
+
+    expect(text).toContain('Traefik service IDs already registered, including by other projects: mine@file');
+    expect(text).toContain('Hostnames already routed, including by other projects: api.example.test');
+  });
+
+  it('reads hostnames from Host matchers only, not from HostRegexp', () => {
+    expect(
+      routedHostnames([
+        { rule: 'Host(`A.example.test`) && PathPrefix(`/api`)' },
+        { rule: 'Host(`b.example.test`, `c.example.test`)' },
+        { rule: 'HostRegexp(`^.+.example.test$`)' },
+        { rule: null }
+      ])
+    ).toEqual(['a.example.test', 'b.example.test', 'c.example.test']);
   });
 
   it('normalises an absent Traefik rule to null so the shape survives JSON', async () => {

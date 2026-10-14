@@ -30,32 +30,43 @@ The Runestone container has to be able to reach your app. If the app listens on 
 
   runestone service add web --route web.{{RUNESTONE_HOST_DOMAIN}} --url http://host.docker.internal:3000
 
-Runestone detects a loopback host in --url and offers to rewrite it, but do not rely on the prompt when you are constructing the command non-interactively.
-
 Certificates:
-A domain with no certificate covering it still routes, but the browser shows a TLS warning. `service add` checks coverage and offers to create the certificate for you. Coverage is by wildcard: a certificate for `example.test` covers `api.example.test` but not `a.b.example.test`, and the base domain must have at least two labels.
+A domain with no certificate covering it still routes, but the browser shows a TLS warning. When no certificate covers the hostname, `service add` asks whether to create one. Coverage is by wildcard: a certificate for `example.test` covers `api.example.test` but not `a.b.example.test`, and the base domain must have at least two labels.
+
+Running it without a terminal:
+`service add` asks its questions in a terminal. From a non-interactive shell, which is how an agent runs commands, it cannot ask, so it stops with an error at the first question. Leave it nothing to ask:
+- Pass the name, --route and --url on the command line, all three.
+- Use a hostname a certificate already covers; `runestone docs --ai-context state` lists them. Otherwise run `runestone certs create <base-domain>` first.
+- Use `host.docker.internal` in --url, never `localhost` or `127.0.0.1`. Given a loopback host, `service add` asks whether to rewrite it.
 
 Do not:
 - Start a reverse proxy or a mail catcher of your own for the app. Runestone already runs Traefik and Mailpit; an app on the host sends mail to Mailpit at `{{RUNESTONE_SMTP_FROM_HOST}}`.
 - Add Traefik labels for this path. They do nothing without a container.
 - Write into Runestone's `configuration/services/` directory by hand. `service add` generates those files and `service remove` deletes them; a hand-written file there will be overwritten or orphaned.
-- Guess the name, the hostname, or the port. Read them from this project, and if the port is not discoverable, ask the user.
+- Guess the port. Read it from this project, and if it is not discoverable, ask the user.
 - Run `runestone certs install`, `runestone dns enable` or `runestone dns disable` yourself. See the overview topic for why.
 
 Inspect this project to determine:
 - Whether the app runs in Docker at all. If it does, use the compose topic instead.
 - The port it actually listens on, from its dev script, its config, or its `.env`.
-- A hostname prefix that reflects the project, and a route name that matches it.
+
+Choose these yourself and state them in your report; do not stop to ask:
+- Hostname prefix: the project's name, from its package manifest or its directory name.
+- Route name: the same value. First check that `runestone docs --ai-context state` does not list either.
 
 Verify afterwards:
-- `runestone service list` shows the new entry with its route and URL.
-- The expected URL is `https://<domain>`.
+- `runestone service list` shows the new entry with its hostname and URL.
+- `runestone docs --ai-context state` lists `<name>@file` among the Traefik router IDs.
+- With the app running, request `https://<domain>` and check that the response comes from the app. A hostname under {{RUNESTONE_HOST_DOMAIN}} with no route gets Runestone's own "Service not found!" page with HTTP status 200, so the status code alone proves nothing. With curl on Windows, add `--ssl-no-revoke`.
+- A page saying "Blocked request" or "Invalid Host header" comes from the dev server, which refuses hostnames it does not know: Vite allows only localhost and IP addresses by default, webpack-dev-server only localhost and its own host. Add the hostname to the dev server's allowed hosts: Vite `server.allowedHosts`, webpack-dev-server `devServer.allowedHosts`.
+- A 502 means Runestone cannot reach the app. On a Linux Docker Engine, as opposed to Docker Desktop, `host.docker.internal` is the Docker bridge address, which a server listening only on 127.0.0.1 or localhost does not answer: make the dev server listen on 0.0.0.0 (for Vite, `vite --host`).
 
 Report:
 - The command you ran.
 - Route name, hostname, target URL.
 - Whether a certificate already covered the domain.
-- Anything you had to assume.
+- Any change the dev server needed, such as its allowed hosts.
+- Anything you had to assume, including the hostname you chose.
 
 Hostnames available on this machine:
 {{BLOCK:DOMAINS}}

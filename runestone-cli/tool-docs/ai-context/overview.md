@@ -82,7 +82,10 @@ and let the user run them.
 
 Read-only, no confirmation needed:
 `runestone status`, `runestone service list`, `runestone certs list`,
-`runestone dns status`, `runestone doctor`, `runestone docs --ai-context`.
+`runestone dns status`, `runestone docs --ai-context`.
+
+`runestone doctor` checks the host environment, but in a terminal it offers to
+install what is missing, so ask the user to run it.
 
 Project-integration writes, fine to run as part of the task you were given:
 `runestone service add`, `runestone service remove`, `runestone certs create`.
@@ -93,7 +96,8 @@ Project-integration writes, fine to run as part of the task you were given:
 - Never add a reverse proxy or a mail catcher of your own (see the table above), and never edit Runestone's own Compose file or the generated files under its `configuration/` directory.
 - Traefik router IDs and Traefik service IDs are global, not scoped per project. Check for a collision before choosing one.
 - A hostname with no certificate covering it still routes, but the browser warns. Coverage is by wildcard and one level deep only.
-- Do not assume the Compose service, the port, the hostname, or whether `COMPOSE_PROJECT_NAME` is set. Read them from this project, and ask when a value is not discoverable.
+- Do not assume the Compose service or the port. Read them from this project, and ask when one is not discoverable.
+- Do choose the hostname: default its prefix to the project's name, check it against `runestone docs --ai-context state`, and say in your report that you chose it. Do not stop to ask.
 
 ## Anything to flag on this machine
 
