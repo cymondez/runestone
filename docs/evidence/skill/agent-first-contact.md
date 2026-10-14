@@ -59,7 +59,7 @@ The follow-up commit `a118051` fixed: the footer not listing `guide` and `all`, 
 
 ## Follow-up measurements (2026-10-14, after `e2c5e95`)
 
-Three of the open gaps needed a measurement before deciding whether to change anything. Nothing below has been implemented.
+Three of the open gaps needed a measurement before deciding whether to change anything. All three were then implemented: the root CA check in `0f29ba3`, the unresolvable-domain report in `23ea9a6`, and the shared-network names in `384b836`.
 
 | Question | How | Result |
 | --- | --- | --- |
