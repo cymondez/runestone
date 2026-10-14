@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `runestone --help` now says what Runestone already runs for every project, Traefik and Mailpit, and groups the commands into the ones that connect a project, the ones that check, and the ones that affect every project on the machine.
+- `runestone doctor --help` no longer says "repair": doctor only installs something after asking.
+
 ## 2.1.0 - 2026-09-09
 
 **Agent support.** Runestone can now tell an AI coding agent how to connect a project to it, so you no longer have to explain it in every prompt. See [docs/AI-AGENTS.md](../docs/AI-AGENTS.md).

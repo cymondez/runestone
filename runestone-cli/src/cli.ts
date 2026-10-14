@@ -35,7 +35,15 @@ export function createProgram(): Command {
     .addCommand(createDocsCommand())
     .addCommand(createSkillCommand())
     .addCommand(createMcpCommand())
-    .addCommand(createStatusCommand());
+    .addCommand(createStatusCommand())
+    // The root help is the first thing an AI agent reads. Grouping says which
+    // commands connect a project and which change every project on the machine.
+    .groupCommands([
+      { title: t('cli.group.connect'), names: ['docs', 'service', 'certs', 'skill', 'mcp'] },
+      { title: t('cli.group.check'), names: ['status', 'doctor'] },
+      { title: t('cli.group.run'), names: ['up', 'stop', 'keys'] },
+      { title: t('cli.group.machine'), names: ['setup', 'down', 'dns'] }
+    ]);
 }
 
 export function run(argv = process.argv): void {

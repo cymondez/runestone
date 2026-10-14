@@ -44,6 +44,34 @@ describe('runestone CLI integration', () => {
     expect(result.stdout).toContain('keys');
   });
 
+  it('says what Runestone is and groups the commands by who should run them', () => {
+    // The root help is the first thing an AI agent reads. Before this it said
+    // only "cross-platform CLI tool" and listed every command flat, so an agent
+    // could not tell that Traefik and Mailpit already exist, nor which commands
+    // change every project on the machine.
+    const result = runCli(['--help']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Traefik');
+    expect(result.stdout).toContain('Mailpit');
+    expect(result.stdout).toContain('runestone docs --ai-context');
+    for (const title of [
+      'Connect a project:',
+      'Check:',
+      'Run the environment (affects every project; leave to the user):',
+      'Configure the machine (affects every project; leave to the user):'
+    ]) {
+      expect(result.stdout).toContain(title);
+    }
+    expect(result.stdout).not.toContain('Commands:');
+
+    // Every command is listed exactly once: grouping must neither drop one nor
+    // print it twice.
+    for (const name of ['setup', 'up', 'stop', 'down', 'certs', 'keys', 'service', 'dns', 'doctor', 'docs', 'skill', 'mcp', 'status']) {
+      expect(result.stdout.match(new RegExp(`^  ${name}\\b`, 'gm'))).toHaveLength(1);
+    }
+  });
+
   it('prints package version', () => {
     const result = runCli(['--version']);
     const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { version: string };
@@ -484,6 +512,8 @@ describe('runestone CLI integration', () => {
 
     const doctor = runCli(['doctor', '--help'], { RUNESTONE_LANG: 'zh-TW' });
     expect(doctor.status).toBe(0);
-    expect(doctor.stdout).toContain('檢查並修復 Runestone 主機環境');
+    // Not "check and repair" any more: doctor installs nothing without asking,
+    // and an agent reading "repair" took it for a command that changes things.
+    expect(doctor.stdout).toContain('檢查主機環境；缺少的工具會先詢問再安裝');
   });
 });
