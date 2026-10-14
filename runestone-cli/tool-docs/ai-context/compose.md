@@ -11,7 +11,8 @@ Runestone provides:
 - Optional HTTP entrypoint name: {{RUNESTONE_HTTP_ENTRYPOINT_NAME}}
 
 Do not:
-- Add a Traefik service.
+- Add a Traefik, nginx-proxy, Caddy or other reverse-proxy service, or publish ports 80 or 443. Runestone's Traefik already serves every project.
+- Add a Mailpit, MailHog, smtp4dev or other mail-catcher service. Point the app's SMTP settings at Runestone's Mailpit instead: `{{RUNESTONE_SMTP_FROM_NETWORK}}` from a container on the `{{RUNESTONE_NETWORK_NAME}}` network, as listed in the overview topic.
 - Edit Runestone's own compose file.
 - Assume service name, app port, router ID, service ID, hostname, or COMPOSE_PROJECT_NAME.
 

@@ -252,3 +252,34 @@ describe('the overview topic names the commands an agent must not run', () => {
     expect(findTopic('service')).toBeDefined();
   });
 });
+
+describe('the corpus says what Runestone already provides', () => {
+  // Agents that did not know Traefik and Mailpit were already running added
+  // their own to the project. The overview is the first topic of the guide, so
+  // it is where an agent learns this before it writes anything.
+  const overview = renderAiContext('overview', config(), stubBlocks());
+
+  it('names Traefik and Mailpit as provided, with what not to add instead', () => {
+    expect(overview).toContain('Runestone already provides these');
+    for (const name of ['nginx-proxy', 'Caddy', 'MailHog', 'smtp4dev']) {
+      expect(overview).toContain(name);
+    }
+    expect(overview).toContain('https://mailpit.example.test');
+    expect(overview).toContain('https://traefik.example.test');
+  });
+
+  it('gives the Mailpit address for each place a sender can run', () => {
+    expect(overview).toContain('`localhost:1025`');
+    expect(overview).toContain('`mylab:1025`');
+    expect(overview).toContain('`host.docker.internal:1025`');
+    // host.docker.internal did not resolve in ordinary containers on a machine
+    // measured for this change, so the address is never offered without the
+    // line that makes it resolve.
+    expect(overview).toContain('host.docker.internal:host-gateway');
+  });
+
+  it('tells both integration paths not to add a proxy or a mail catcher', () => {
+    expect(renderAiContext('compose', config(), stubBlocks())).toContain('Add a Mailpit, MailHog, smtp4dev');
+    expect(renderAiContext('service', config(), stubBlocks())).toContain('Start a reverse proxy or a mail catcher of your own');
+  });
+});

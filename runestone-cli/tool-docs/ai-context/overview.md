@@ -16,6 +16,25 @@ This machine:
 - HTTPS entrypoint name: {{RUNESTONE_HTTPS_ENTRYPOINT_NAME}}
 - HTTP entrypoint name: {{RUNESTONE_HTTP_ENTRYPOINT_NAME}}
 
+## Runestone already provides these: do not add your own
+
+Every project on this machine shares one of each. A project connects to them; it
+never runs its own copy.
+
+| Provided | How a project uses it |
+| --- | --- |
+| Traefik: HTTPS on ports 80 and 443 for every `*.{{RUNESTONE_HOST_DOMAIN}}` hostname | Through one of the two paths below. Do not add Traefik, nginx-proxy, Caddy or any other reverse proxy, and do not publish ports 80 or 443 |
+| Mailpit: catches every mail sent to it and shows it at {{RUNESTONE_MAILPIT_URL}} | Point the project's SMTP settings at it, using the addresses below. Do not add Mailpit, MailHog, smtp4dev, MailCatcher or any other mail catcher |
+| Locally trusted certificates | Traefik terminates TLS, so the project serves plain HTTP and needs no certificate of its own. When no certificate covers a hostname, `runestone certs create <base-domain>` makes one |
+| Traefik dashboard | {{RUNESTONE_TRAEFIK_URL}} shows every router and service registered, by every project |
+
+Mailpit's SMTP address depends on where the sender runs. It needs no username, no
+password and no TLS:
+
+- From a process on the host: `{{RUNESTONE_SMTP_FROM_HOST}}`
+- From a container on the `{{RUNESTONE_NETWORK_NAME}}` network, which every container exposed through Traefik labels joins: `{{RUNESTONE_SMTP_FROM_NETWORK}}`
+- From any other container: add `extra_hosts: ["host.docker.internal:host-gateway"]` to that service, then use `{{RUNESTONE_SMTP_FROM_CONTAINERS}}`. Do not assume `host.docker.internal` resolves inside a container without that line; on some machines it does not
+
 ## There are exactly two ways to connect a project
 
 Choose by asking one question: **does the thing being exposed run in a
@@ -61,7 +80,7 @@ Project-integration writes, fine to run as part of the task you were given:
 ## Rules that hold on both paths
 
 - Use the **internal** container port, never the host-published one. `"8080:3000"` means the port Traefik needs is 3000.
-- Never add a Traefik service of your own, and never edit Runestone's own Compose file or the generated files under its `configuration/` directory.
+- Never add a reverse proxy or a mail catcher of your own (see the table above), and never edit Runestone's own Compose file or the generated files under its `configuration/` directory.
 - Router and service names are global to Traefik, not scoped per project. Check for a collision before choosing one.
 - A hostname with no certificate covering it still routes, but the browser warns. Coverage is by wildcard and one level deep only.
 - Do not assume the service name, the port, the hostname, or whether `COMPOSE_PROJECT_NAME` is set. Read them from this project, and ask when a value is not discoverable.

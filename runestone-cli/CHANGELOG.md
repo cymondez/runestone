@@ -6,6 +6,8 @@
 
 - `runestone --help` now says what Runestone already runs for every project, Traefik and Mailpit, and groups the commands into the ones that connect a project, the ones that check, and the ones that affect every project on the machine.
 - `runestone doctor --help` no longer says "repair": doctor only installs something after asking.
+- The agent guidance and the installed skill now say that Runestone already runs Traefik and Mailpit, tell the agent not to add its own reverse proxy or mail catcher, and give the Mailpit SMTP address to use from the host, from a container on the Runestone network, and from any other container. Run `runestone skill install` again to update an installed skill.
+- `runestone up` prints the Mailpit address as `https://`.
 
 ## 2.1.0 - 2026-09-09
 

@@ -236,3 +236,15 @@ describe('the generated skill matches the Agent Skills specification', () => {
     }
   });
 });
+
+describe('the skill is found by an agent about to add its own proxy or mail catcher', () => {
+  it('names them in the description, which is all a runtime reads before activating', () => {
+    const [skill] = TARGETS[0].render({ topics: Object.fromEntries(TOPICS.map((topic) => [topic.id, ''])), hostDomain: 'example.test' });
+    const description = /\ndescription: (.*)\n/.exec(skill.content)?.[1] ?? '';
+
+    for (const word of ['Traefik', 'Mailpit', 'nginx-proxy', 'MailHog', 'mail catcher', 'reverse proxy']) {
+      expect(description).toContain(word);
+    }
+    expect(skill.content).toContain('Never add your own reverse proxy');
+  });
+});

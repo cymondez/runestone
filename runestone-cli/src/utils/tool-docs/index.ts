@@ -7,6 +7,7 @@
  * and nothing else.
  */
 
+import { mailpitUiUrl, smtpEndpoints, traefikDashboardUrl } from '../endpoints';
 import { RunestoneEnv } from '../env-loader';
 import { readTopicAsset } from './assets';
 import { DEFAULT_TOPIC, TOPICS, findTopic } from './manifest';
@@ -18,18 +19,28 @@ export { ALL_TOPIC, ALL_TOPIC_ORDER, DEFAULT_TOPIC, TOPICS, findTopic, selectabl
 export type { TopicDefinition, TopicTier } from './manifest';
 
 /**
- * The four scalars the corpus may reference. They are the ones the previous
- * template used, under the new delimiter; every one comes from `.env` and so
+ * The scalars the corpus may reference. Every one comes from `.env` and so
  * changes only when the user re-runs `setup`. That is what makes them safe to
  * substitute into a file installed in someone's repository, where a live fact
  * would be a lie within minutes (spec 6.2).
+ *
+ * The endpoint scalars are derived through `utils/endpoints` rather than
+ * spelled out in the assets, so the corpus, `status` and `up` cannot disagree
+ * about where Traefik and Mailpit are.
  */
 function scalarsOf(config: RunestoneEnv): Record<string, string> {
+  const smtp = smtpEndpoints(config);
+
   return {
     RUNESTONE_NETWORK_NAME: config.NETWORK_NAME,
     RUNESTONE_HOST_DOMAIN: config.HOST_DOMAIN,
     RUNESTONE_HTTPS_ENTRYPOINT_NAME: config.WEB_SECURE_ENTRYPOINT_NAME,
-    RUNESTONE_HTTP_ENTRYPOINT_NAME: config.WEB_ENTRYPOINT_NAME
+    RUNESTONE_HTTP_ENTRYPOINT_NAME: config.WEB_ENTRYPOINT_NAME,
+    RUNESTONE_TRAEFIK_URL: traefikDashboardUrl(config.HOST_DOMAIN),
+    RUNESTONE_MAILPIT_URL: mailpitUiUrl(config.HOST_DOMAIN),
+    RUNESTONE_SMTP_FROM_HOST: smtp.fromHost,
+    RUNESTONE_SMTP_FROM_NETWORK: smtp.fromRunestoneNetwork,
+    RUNESTONE_SMTP_FROM_CONTAINERS: smtp.fromOtherContainers
   };
 }
 

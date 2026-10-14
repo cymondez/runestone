@@ -36,6 +36,7 @@ Certificates:
 A domain with no certificate covering it still routes, but the browser shows a TLS warning. `service add` checks coverage and offers to create the certificate for you. Coverage is by wildcard: a certificate for `example.test` covers `api.example.test` but not `a.b.example.test`, and the base domain must have at least two labels.
 
 Do not:
+- Start a reverse proxy or a mail catcher of your own for the app. Runestone already runs Traefik and Mailpit; an app on the host sends mail to Mailpit at `{{RUNESTONE_SMTP_FROM_HOST}}`.
 - Add Traefik labels for this path. They do nothing without a container.
 - Write into Runestone's `configuration/services/` directory by hand. `service add` generates those files and `service remove` deletes them; a hand-written file there will be overwritten or orphaned.
 - Guess the service name, the hostname, or the port. Read them from this project, and if the port is not discoverable, ask the user.

@@ -32,8 +32,10 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: 'runestone_integration_guide',
     description:
-      'How to connect this project to Runestone: the two integration paths, which one applies, the exact field ' +
-      'rules, and the commands you must leave to the user. Start here before editing any configuration.',
+      'How to connect this project to Runestone, which already runs Traefik and Mailpit for every project on this ' +
+      'machine: the two integration paths, which one applies, the exact field rules, the Mailpit SMTP addresses, and the ' +
+      'commands you must leave to the user. Start here before editing any configuration, and before adding a reverse ' +
+      'proxy or a mail catcher.',
     inputSchema: {
       $schema: 'http://json-schema.org/draft-07/schema#',
       type: 'object',

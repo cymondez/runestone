@@ -8,6 +8,7 @@ import { sshManager } from '../services/ssh-manager';
 import { volumeService } from '../services/docker-volume';
 import { dockerChecker } from '../utils/docker-checker';
 import { envLoader, RunestoneEnv } from '../utils/env-loader';
+import { mailpitUiUrl, traefikDashboardUrl } from '../utils/endpoints';
 import { ensureProjectFiles } from '../utils/project-files';
 import { logger } from '../utils/logger';
 import { runSetup } from './setup';
@@ -94,8 +95,8 @@ export function createUpCommand(): Command {
           }
         }
 
-        logger.success(`runestone is ready at https://traefik.${config.HOST_DOMAIN}`);
-        logger.info(`Mailpit: http://mailpit.${config.HOST_DOMAIN}`);
+        logger.success(`runestone is ready at ${traefikDashboardUrl(config.HOST_DOMAIN)}`);
+        logger.info(`Mailpit: ${mailpitUiUrl(config.HOST_DOMAIN)}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to start environment: ${message}`);

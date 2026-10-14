@@ -69,10 +69,12 @@ const SKILL_NAME = 'runestone';
  * to match the parent directory; both are asserted by a test.
  */
 const SKILL_DESCRIPTION =
-  'Connect a project to Runestone, the local development environment that gives projects real HTTPS on a local domain ' +
-  'through Traefik. Use when adding Runestone support to a project, choosing a local hostname, writing Traefik labels or ' +
-  'a compose.override.yml for it, exposing a host dev server or an external URL through it, or diagnosing a 404, a 502, ' +
-  'a certificate warning or a URL that works in the browser but not from another container.';
+  'Connect a project to Runestone, the local development environment that already runs Traefik (real HTTPS on local ' +
+  'domains) and Mailpit (an SMTP mail catcher) for every project on this machine. Use when adding Runestone support to ' +
+  'a project, choosing a local hostname, writing Traefik labels or a compose.override.yml, exposing a host dev server or ' +
+  'an external URL, setting up email sending in development, or about to add a reverse proxy (Traefik, nginx-proxy, ' +
+  'Caddy) or a mail catcher (Mailpit, MailHog, smtp4dev), which Runestone already provides. Also for diagnosing a 404, ' +
+  'a 502, a certificate warning or a URL that works in the browser but not from another container.';
 
 function frontmatter(version: number): string {
   return [
@@ -96,7 +98,10 @@ function skillBody(context: RenderContext): string {
     '',
     '# Runestone',
     '',
-    'Runestone is already installed and configured on this machine. Setting it up is not your job.',
+    'Runestone already runs Traefik and Mailpit for every project on this machine. Never add your own reverse proxy or',
+    'mail catcher; connect the project to these. [overview](references/overview.md) lists the Mailpit SMTP addresses.',
+    '',
+    'Runestone is already installed and configured. Setting it up is not your job.',
     '',
     `Local domains end in \`${context.hostDomain}\`.`,
     '',
