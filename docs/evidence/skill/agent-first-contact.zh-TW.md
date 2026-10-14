@@ -51,8 +51,26 @@
 收尾 commit `a118051` 已處理：footer 沒列 `guide` 與 `all`、三個主題對 hostname 來源說法不一、「不要停下來問」與「commit 前要問」的先後、Vite `allowedHosts` 放得太晚。以下是新範圍，沒有在這條支線處理：
 
 - 語料與 `status` 都沒說 host 端怎麼解析 Runestone 網域（實測是公共 DNS 回 127.0.0.1），也沒有「CA 是否已被 host 信任」的事實；三個探測都另外用 `nslookup` 或 `curl` 自己查。
-- `dns status` 警告 DNS UI 沒有驗證，但 `status` 的 problems 與 `state` 的「Nothing to flag」都沒提。
+- ~~`dns status` 警告 DNS UI 沒有驗證，但 `status` 的 problems 與 `state` 的「Nothing to flag」都沒提。~~ 已在 `e2c5e95` 修正。
 - 專案的服務加入共用的 Runestone 網路後，它的 Compose 服務名稱（例如 `api`）會在所有專案共用的網路上成為別名；若別的專案也在那個網路上放了同名的 `db`，名稱解析可能撞到。
-- 不帶參數的 guide 約 20 KB：footer 印三次、可用 hostname 與已佔用名稱兩個區塊各印兩次。
-- troubleshoot 主題結尾的「Container state was not checked.」讀起來像失敗，其實只是該主題不查容器。
+- ~~不帶參數的 guide 約 20 KB：footer 印三次、可用 hostname 與已佔用名稱兩個區塊各印兩次。~~ 已在 `e2c5e95` 修正：`--offline` 下 guide 從 21,924 降到 19,770 bytes，`all` 從 31,249 降到 26,786。剩下的是內容，不是重複。
+- ~~troubleshoot 主題結尾的「Container state was not checked.」讀起來像失敗，其實只是該主題不查容器。~~ 已在 `e2c5e95` 修正。
 - `host.docker.internal` 在 Runestone DNS 開啟時解析不到（見上表）的成因與是否該由 DNS 功能處理，已另開任務調查。
+
+## 後續實測（2026-10-14，`e2c5e95` 之後）
+
+有三個缺口要先實測才能決定要不要改。以下都還沒有實作。
+
+| 問題 | 做法 | 結果 |
+| --- | --- | --- |
+| host 怎麼解析 Runestone 網域？ | 在 host 上用 Node 的 `dns.lookup`（走 getaddrinfo，會讀 hosts 檔） | `traefik.local.developers-homelab.net`、它底下沒有路由的名稱、`mysite.traefik.me` 都是 127.0.0.1（2、15、334 ms）。不存在的網域 15 ms 回 `ENOTFOUND` |
+| host 解析不到時 `status` 怎麼說？ | 用現有的 Traefik 探測打一個解析不到的名稱 | 失敗訊息是 `getaddrinfo ENOTFOUND`，所以 `status` 會報，但歸在「Traefik API 沒有回應」底下，給的修法（開 dashboard、`up --force-recreate`）對 DNS 失敗是錯的 |
+| CLI 能不能判斷 host 是否信任 Runestone 的 CA？ | `tls.getCACertificates('system')`（Node 22.22.3 有）與 `~/.runestone/certs/rootCA.pem` 比對 SHA-256 指紋 | 在系統信任庫裡：true。對照組 Node 內建清單：false。讀系統信任庫花 0.5 ms，不需要 Docker 也不需要 Traefik |
+| 這個答案和 TLS client 看到的一致嗎？ | 對 Traefik dashboard 發 `https.get`，`rejectUnauthorized: true`，`ca` 先設為系統信任庫，再設為內建清單 | 系統信任庫：HTTP 200。對照組內建清單：`UNABLE_TO_VERIFY_LEAF_SIGNATURE` |
+| 同時在兩個網路上的服務，解析兄弟服務名稱時會不會拿到別的專案的容器？ | 只用暫時網路與 `--rm` 容器，不碰真的共用網路：專案網路上有自己的 `db`，共用網路上有別的專案的 `db`，`api` 兩個都接；每種情況 `dig db @127.0.0.11` 十次 | 對照組（`api` 只接自己的網路）：永遠是自己的 `db`。兩個都接、兩組都讓共用網路先建立：**共用網路名稱排序在前時，十次全部回別的專案的 `db`；排在後面時，十次全部回自己的**。接上的順序不影響結果，網路 ID 的順序也不影響。libc（`getent`）與 `dig` 一致 |
+
+最後一列的意義，以及它沒有證明的事：
+
+- 真的共用網路是 `runestone-network`，Compose 專案的網路是 `<project>_default`。專案名稱排在 `runestone-network` 之後（例如 s 到 z 開頭）時，一個同時存在於共用網路上的名稱會解析到別的專案的容器。這台機器上的 `vllm_default` 與三個 `webhub-*` 網路就屬於這種。
+- Compose 會把每個服務自己的名稱註冊成它所接上每個網路的別名，所以共用網路上的名稱就是其他專案對外接上的服務名：`api`、`web`、`app`、`frontend`。資料庫很少在其中。實際會發生的失敗是：對外接上的前端呼叫 `http://api:...`，結果打到別的專案的 `api`。
+- 只在一台機器、一個 Docker Desktop 版本上量過。排序是 Docker 的實作，不是文件承諾的契約，所以指引應該說要檢查什麼，而不是承諾某個順序。
