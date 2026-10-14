@@ -31,7 +31,7 @@ import {
 } from '../service-manager';
 import { listDomainCertificates } from '../cert-manager';
 import { RunestoneEnv } from '../../utils/env-loader';
-import { TOPICS, renderAiContext, topicIds } from '../../utils/tool-docs';
+import { GUIDE_TOPIC_ORDER, TOPICS, renderAiContext, topicIds } from '../../utils/tool-docs';
 import { TraefikSnapshot } from '../traefik-api';
 
 export interface NameVerdict {
@@ -73,7 +73,7 @@ function messageOf(error: unknown): string {
  * these two paths"; splitting it off demanded a guess before supplying the
  * basis for the guess.
  */
-const GUIDE_TOPICS: readonly string[] = ['overview', 'compose', 'service'];
+const GUIDE_TOPICS: readonly string[] = GUIDE_TOPIC_ORDER;
 const TROUBLESHOOT_TOPICS: readonly string[] = ['troubleshoot'];
 
 function renderTopics(ids: readonly string[], config: RunestoneEnv, snapshot: AgentContextSnapshot): string {

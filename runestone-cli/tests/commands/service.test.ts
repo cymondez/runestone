@@ -58,7 +58,12 @@ describe('service command', () => {
   let logSpy: jest.SpyInstance<void, Parameters<typeof console.log>>;
   let warnSpy: jest.SpyInstance<void, Parameters<typeof console.warn>>;
 
+  const originalIsTTY = process.stdin.isTTY;
+
   beforeEach(() => {
+    // These tests drive the interactive prompts, which only run in a terminal.
+    // Jest's stdin is not one; the no-terminal path has its own tests below.
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-service-command-'));
     process.env.RUNESTONE_TOOL_STATE_PATH = path.join(tempDir, 'runestone.config.json');
     process.env.RUNESTONE_LANG = 'en';
@@ -83,6 +88,7 @@ describe('service command', () => {
   });
 
   afterEach(() => {
+    Object.defineProperty(process.stdin, 'isTTY', { value: originalIsTTY, configurable: true });
     logSpy.mockRestore();
     warnSpy.mockRestore();
     delete process.env.RUNESTONE_TOOL_STATE_PATH;
@@ -314,6 +320,85 @@ describe('service command', () => {
     expect(output).toContain('`runestone status`');
     expect(output).toContain('`runestone docs --ai-context state`');
     expect(output).not.toContain('Group Name');
+  });
+
+  describe('without a terminal, as an AI agent runs it', () => {
+    // Every prompt opens a terminal on stdin, so in an agent's shell `service
+    // add` crashed with ERR_TTY_INIT_FAILED. It now stops where the question
+    // would have been asked, writes nothing, and says what would answer it.
+    let exitSpy: jest.SpyInstance;
+    let errorSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      Object.defineProperty(process.stdin, 'isTTY', { value: undefined, configurable: true });
+      exitSpy = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+      errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
+    function errors(): string {
+      return errorSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    }
+
+    function written(): boolean {
+      return fs.existsSync(path.join(tempDir, 'configuration', 'services', 'api.service.yml'));
+    }
+
+    it('adds a route without asking anything when every value is given and covered', async () => {
+      await createProgram().parseAsync([
+        'node', 'runestone', 'service', 'add', 'api', '--route', 'api.example.test', '--url', 'http://host.docker.internal:3000'
+      ]);
+
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(written()).toBe(true);
+      expect(confirmMock).not.toHaveBeenCalled();
+    });
+
+    it('stops at a missing certificate and names the command that creates it', async () => {
+      await createProgram().parseAsync([
+        'node', 'runestone', 'service', 'add', 'api', '--route', 'api.other.test', '--url', 'http://host.docker.internal:3000'
+      ]);
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errors()).toContain('There is no terminal to answer this question');
+      expect(errors()).toContain('runestone certs create other.test');
+      expect(confirmMock).not.toHaveBeenCalled();
+      expect(fs.existsSync(path.join(tempDir, 'configuration', 'services', 'api.service.yml'))).toBe(false);
+    });
+
+    it('stops at a loopback URL and says to use host.docker.internal', async () => {
+      await createProgram().parseAsync([
+        'node', 'runestone', 'service', 'add', 'api', '--route', 'api.example.test', '--url', 'http://localhost:3000'
+      ]);
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errors()).toContain('use host.docker.internal');
+      expect(written()).toBe(false);
+    });
+
+    it('stops at a missing value and says to give all three on the command line', async () => {
+      await createProgram().parseAsync(['node', 'runestone', 'service', 'add', 'api']);
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errors()).toContain('--route');
+      expect(errors()).toContain('--url');
+      expect(textMock).not.toHaveBeenCalled();
+      expect(written()).toBe(false);
+    });
+
+    it('asks for --force instead of a confirmation before removing', async () => {
+      await createProgram().parseAsync([
+        'node', 'runestone', 'service', 'add', 'api', '--route', 'api.example.test', '--url', 'http://host.docker.internal:3000'
+      ]);
+      await createProgram().parseAsync(['node', 'runestone', 'service', 'rm', 'api']);
+
+      expect(errors()).toContain('add --force to confirm');
+      expect(written()).toBe(true);
+    });
   });
 
   it('keeps an empty list empty with --no-header, for scripts', async () => {

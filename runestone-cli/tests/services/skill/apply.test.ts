@@ -248,3 +248,17 @@ describe('the skill is found by an agent about to add its own proxy or mail catc
     expect(skill.content).toContain('Never add your own reverse proxy');
   });
 });
+
+describe('the skill body is a procedure, not only a reference', () => {
+  it('lists the steps in order and says what to do when the CLI is not found', () => {
+    const [skill] = TARGETS[0].render({ topics: Object.fromEntries(TOPICS.map((topic) => [topic.id, ''])), hostDomain: 'example.test' });
+    const body = skill.content;
+
+    const order = ['1. Choose the integration path', '2. Run `runestone docs --ai-context state`', '3. Choose the hostname', '4. Write the Compose override', '5. Verify', '6. Report'];
+    const positions = order.map((step) => body.indexOf(step));
+    expect(positions.every((position) => position > 0)).toBe(true);
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    expect(body).toContain('If the `runestone` command is not found');
+    expect(body).toContain('do not stop to ask');
+  });
+});

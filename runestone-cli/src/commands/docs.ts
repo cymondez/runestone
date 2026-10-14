@@ -6,9 +6,9 @@ import { buildLiveSnapshot, buildOfflineSnapshot } from '../services/agent-conte
 import { envLoader } from '../utils/env-loader';
 import {
   ALL_TOPIC,
-  ALL_TOPIC_ORDER,
-  DEFAULT_TOPIC,
+  GUIDE_TOPIC,
   TOPICS,
+  compositeTopicOrder,
   findTopic,
   renderAiContext,
   selectableTopicIds
@@ -29,9 +29,14 @@ interface DocsOptions {
 
 const README_URL = 'https://github.com/cymondez/runestone#readme';
 
+/**
+ * A bare `--ai-context` is the guide: the choice between the two integration
+ * paths, then both paths. It used to be the compose topic alone, and an agent
+ * with a host dev server was told to create a compose.yml.
+ */
 function resolveTopic(value: boolean | string): string | undefined {
-  const id = typeof value === 'string' ? value.trim() : DEFAULT_TOPIC;
-  if (id === ALL_TOPIC) {
+  const id = typeof value === 'string' ? value.trim() : GUIDE_TOPIC;
+  if (compositeTopicOrder(id)) {
     return id;
   }
 
@@ -50,14 +55,12 @@ function resolveTopic(value: boolean | string): string | undefined {
  * corpus itself, which is English by decision 1.
  */
 function topicHelp(): string {
-  const rows = TOPICS.map((topic) => {
-    const marks = [
-      ...(topic.id === DEFAULT_TOPIC ? [t('docs.topic.default')] : []),
-      ...(topic.tier === 'online' ? [t('docs.topic.online')] : [])
-    ];
+  const rows = [`  ${GUIDE_TOPIC.padEnd(14)}${t('docs.topic.guide')} (${t('docs.topic.default')})`];
+  rows.push(...TOPICS.map((topic) => {
+    const marks = topic.tier === 'online' ? [t('docs.topic.online')] : [];
 
     return `  ${topic.id.padEnd(14)}${t(`docs.topic.${topic.id}` as never)}${marks.length ? ` (${marks.join(', ')})` : ''}`;
-  });
+  }));
 
   rows.push(`  ${ALL_TOPIC.padEnd(14)}${t('docs.topic.all')} (${t('docs.topic.online')})`);
 
@@ -72,6 +75,14 @@ export function createDocsCommand(): Command {
     .addHelpText('after', `\n${topicHelp()}`)
     .action(async (options: DocsOptions) => {
       if (!options.aiContext) {
+        // The prompt below opens a terminal on stdin, and an agent's shell is
+        // not one: it crashed with ERR_TTY_INIT_FAILED and never mentioned
+        // --ai-context. With nobody to ask, say where to go instead.
+        if (!process.stdin.isTTY) {
+          process.stdout.write(`${t('docs.nonInteractive', { url: README_URL })}\n`);
+          return;
+        }
+
         const locale = resolveLocale();
         const shouldOpen = await p.confirm({
           message: formatMessage(locale, 'docs.openReadme.prompt'),
@@ -119,22 +130,25 @@ export function createDocsCommand(): Command {
       // never waits on a cold daemon. `--offline` forces file-only, which is
       // what makes the online topic deterministic for a test or an air-gapped
       // machine.
-      // `all` includes the online topic, so it probes too — and findTopic
-      // returns undefined for it, which would otherwise silently downgrade
-      // it to offline and render the state topic as "not checked".
-      const isOnline = topic === ALL_TOPIC || findTopic(topic)?.tier === 'online';
+      // A composite is online when any of its topics is: `all` includes the
+      // state topic and probes, the guide does not. findTopic returns
+      // undefined for a composite, which would otherwise silently downgrade
+      // `all` to offline and render the state topic as "not checked".
+      const parts = compositeTopicOrder(topic);
+      const isOnline = parts
+        ? parts.some((id) => findTopic(id)?.tier === 'online')
+        : findTopic(topic)?.tier === 'online';
       const wantsLive = isOnline && !options.offline;
       const snapshot = wantsLive ? await buildLiveSnapshot(config) : buildOfflineSnapshot(config);
 
       // `process.exitCode` rather than `process.exit()` so buffered stdout
       // flushes — the output is meant to be piped.
       const blocks = contextBlocks(snapshot);
-      const body =
-        topic === ALL_TOPIC
-          ? // ALL_TOPIC_ORDER, not the manifest's order: overview explains how
-            // to choose between the two paths, so it comes first.
-            ALL_TOPIC_ORDER.map((id) => renderAiContext(id, config, blocks)).join('\n\n---\n\n')
-          : renderAiContext(topic, config, blocks);
+      // A composite's own order, not the manifest's: overview explains how to
+      // choose between the two paths, so it comes first.
+      const body = parts
+        ? parts.map((id) => renderAiContext(id, config, blocks)).join('\n\n---\n\n')
+        : renderAiContext(topic, config, blocks);
 
       process.stdout.write(body);
     });

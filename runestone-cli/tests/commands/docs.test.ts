@@ -156,10 +156,42 @@ describe('docs --ai-context', () => {
     expect(traefikMock).not.toHaveBeenCalled();
   });
 
-  it('treats a bare --ai-context as the compose topic', async () => {
+  it('treats a bare --ai-context as the guide: the choice first, then both paths', async () => {
+    // It used to be the compose topic alone, which told a project with no
+    // container to create a compose.yml. The guide still contains the compose
+    // topic in full, so a prompt written for the old behaviour loses nothing.
     await run('--ai-context');
 
-    expect(output()).toContain('# Runestone AI Compose Context');
+    const text = output();
+    expect(text.indexOf('# Runestone: Overview For An Agent')).toBe(0);
+    expect(text.indexOf('# Runestone AI Compose Context')).toBeGreaterThan(0);
+    expect(text.indexOf('# Runestone: Routing Something That Is Not In Docker')).toBeGreaterThan(
+      text.indexOf('# Runestone AI Compose Context')
+    );
     expect(psMock).not.toHaveBeenCalled();
+    expect(traefikMock).not.toHaveBeenCalled();
+  });
+
+  it('renders the same guide for --ai-context guide', async () => {
+    await run('--ai-context');
+    const bare = output();
+    stdout.mockClear();
+
+    await run('--ai-context', 'guide');
+
+    expect(output()).toBe(bare);
+  });
+
+  it('points an agent at --ai-context instead of prompting when there is no terminal', async () => {
+    // The prompt opened a terminal on stdin and crashed in an agent's shell
+    // with ERR_TTY_INIT_FAILED, never mentioning --ai-context. Jest's stdin is
+    // not a terminal, so this runs the path an agent takes.
+    expect(process.stdin.isTTY).toBeFalsy();
+
+    await run();
+
+    expect(output()).toContain('runestone docs --ai-context');
+    expect(output()).toContain('https://github.com/cymondez/runestone#readme');
+    expect(process.exitCode).toBeUndefined();
   });
 });

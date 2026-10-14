@@ -3,6 +3,10 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import {
   DEFAULT_TOPIC,
+  GUIDE_TOPIC,
+  GUIDE_TOPIC_ORDER,
+  compositeTopicOrder,
+  selectableTopicIds,
   TOPICS,
   TemplateError,
   UnknownTopicError,
@@ -363,5 +367,25 @@ describe('the corpus tells an agent how to verify, and what not to treat as read
   it('names the Windows curl failure so it is not mistaken for an untrusted CA', () => {
     expect(troubleshoot).toContain('CRYPT_E_NO_REVOCATION_CHECK');
     expect(troubleshoot).toContain('--ssl-no-revoke');
+  });
+});
+
+describe('the guide a bare --ai-context prints', () => {
+  it('is overview, compose and service, offline, overview first', () => {
+    expect(GUIDE_TOPIC_ORDER).toEqual(['overview', 'compose', 'service']);
+    for (const id of GUIDE_TOPIC_ORDER) {
+      expect(findTopic(id)?.tier).toBe('offline');
+    }
+    expect(compositeTopicOrder(GUIDE_TOPIC)).toBe(GUIDE_TOPIC_ORDER);
+    expect(selectableTopicIds()).toContain(GUIDE_TOPIC);
+  });
+
+  it('starts with the steps, before either path', () => {
+    const overview = renderAiContext('overview', config(), stubBlocks());
+
+    expect(overview.indexOf('How to connect a project, step by step')).toBeLessThan(
+      overview.indexOf('There are exactly two ways to connect a project')
+    );
+    expect(overview).toContain('If the `runestone` command is not found');
   });
 });

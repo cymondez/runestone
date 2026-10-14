@@ -16,6 +16,19 @@ This machine:
 - HTTPS entrypoint name: {{RUNESTONE_HTTPS_ENTRYPOINT_NAME}}
 - HTTP entrypoint name: {{RUNESTONE_HTTP_ENTRYPOINT_NAME}}
 
+## How to connect a project, step by step
+
+1. Read the whole guide: `runestone docs --ai-context` prints this overview followed by both integration paths.
+2. Look at the project and choose the path, by the question under "There are exactly two ways to connect a project" below.
+3. Run `runestone docs --ai-context state`. It lists the hostnames a certificate covers, and the names and hostnames already taken by any project.
+4. Choose the hostname and the name yourself, from the project's name, and check them against step 3.
+5. Write the Compose override, or run `runestone service add` with every value on the command line.
+6. Verify with the checks at the end of the compose or the service topic, then report what you changed, the URL, and what you assumed.
+
+If the `runestone` command is not found, you are probably inside a container or a
+sandbox that cannot see the host. Ask the user to run the Runestone commands on
+the host.
+
 ## Runestone already provides these: do not add your own
 
 Every project on this machine shares one of each. A project connects to them; it

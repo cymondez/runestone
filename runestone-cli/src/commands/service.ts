@@ -140,7 +140,21 @@ function optionLabel(option: SelectOption, state: 'active' | 'inactive' | 'selec
   return `${dim('○')} ${dim(option.label)}${hint}`;
 }
 
+/**
+ * An agent's shell is not a terminal, and every prompt here opens one on stdin:
+ * it crashed with ERR_TTY_INIT_FAILED instead of asking. Fail where the
+ * question would have been asked, before anything is written, and say what
+ * would have answered it. The prompt rules in AGENTS.md ask for the fix to come
+ * with the error; with no prompt to return to, this message is where it goes.
+ */
+function assertTerminal(question: string, fix?: string): void {
+  if (!process.stdin.isTTY) {
+    throw new Error(t('service.nonInteractive', { question, fix: fix ?? t('service.nonInteractive.fixArguments') }));
+  }
+}
+
 async function promptText(message: string, initialValue = '', frame?: PromptFrame): Promise<string> {
+  assertTerminal(message);
   if (process.env.JEST_WORKER_ID) {
     const result = await p.text({ message, initialValue, frame } as Parameters<typeof p.text>[0] & { frame?: PromptFrame });
     if (p.isCancel(result)) {
@@ -175,7 +189,8 @@ async function promptText(message: string, initialValue = '', frame?: PromptFram
   return String(result);
 }
 
-async function promptConfirm(message: string, initialValue = true): Promise<boolean> {
+async function promptConfirm(message: string, initialValue = true, fix?: string): Promise<boolean> {
+  assertTerminal(message, fix);
   const result = await p.confirm({
     message,
     initialValue,
@@ -190,7 +205,14 @@ async function promptConfirm(message: string, initialValue = true): Promise<bool
   return Boolean(result);
 }
 
-async function promptSelect(message: string, options: SelectOption[], initialValue?: string, frame?: PromptFrame): Promise<string> {
+async function promptSelect(
+  message: string,
+  options: SelectOption[],
+  initialValue?: string,
+  frame?: PromptFrame,
+  fix?: string
+): Promise<string> {
+  assertTerminal(message, fix);
   if (process.env.JEST_WORKER_ID) {
     const result = await p.select({ message, options, initialValue, frame } as Parameters<typeof p.select>[0] & { frame?: PromptFrame });
     if (p.isCancel(result)) {
@@ -242,7 +264,8 @@ async function maybeReplaceLoopbackServiceUrl(url: string): Promise<string> {
 
   const replace = await promptConfirm(
     t('service.loopback.prompt', { url }),
-    true
+    true,
+    t('service.nonInteractive.fixLoopback')
   );
   return replace ? replaceServiceUrlHost(url, 'host.docker.internal') : url;
 }
@@ -352,7 +375,8 @@ async function promptForRouteBaseDomain(config: RunestoneEnv, route: string, des
       { value: ROUTE_MANUAL_VALUE, label: t('service.routeBase.option.manual') }
     ],
     ROUTE_MANUAL_VALUE,
-    { description }
+    { description },
+    t('service.nonInteractive.fixRoute')
   );
 
   if (selected === ROUTE_MANUAL_VALUE) {
@@ -559,7 +583,9 @@ async function createService(config: RunestoneEnv, input: RunestoneServiceRecord
       t('service.certificate.createWildcard.prompt', {
         route: input.route,
         wildcard: `*.${certificateBaseDomainForRoute(input.route)}`
-      })
+      }),
+      true,
+      t('service.nonInteractive.fixCertificate', { base: certificateBaseDomainForRoute(input.route) })
     )
   );
   addServiceRecord(input);
@@ -633,7 +659,9 @@ async function handleModify(name: string): Promise<void> {
         t('service.certificate.createWildcard.prompt', {
           route: adjusted.route,
           wildcard: `*.${certificateBaseDomainForRoute(adjusted.route)}`
-        })
+        }),
+        true,
+        t('service.nonInteractive.fixCertificate', { base: certificateBaseDomainForRoute(adjusted.route) })
       )
     );
     updateServiceRecord(adjusted);
@@ -682,7 +710,7 @@ async function handleRemove(name: string, options: RemoveOptions): Promise<void>
     return;
   }
 
-  if (!options.force && !(await promptConfirm(t('service.remove.prompt', { name: normalized }), false))) {
+  if (!options.force && !(await promptConfirm(t('service.remove.prompt', { name: normalized }), false, t('service.nonInteractive.fixForce')))) {
     logger.warn(t('service.remove.cancelled'));
     return;
   }
@@ -747,7 +775,7 @@ async function handleGroupClean(groupName: string, options: GroupCleanOptions): 
     logger.warn(t('service.group.warn.empty', { group: displayGroupName(group) }));
     return;
   }
-  if (!options.force && !(await promptConfirm(t('service.group.clean.prompt', { group: displayGroupName(group) }), false))) {
+  if (!options.force && !(await promptConfirm(t('service.group.clean.prompt', { group: displayGroupName(group) }), false, t('service.nonInteractive.fixForce')))) {
     logger.warn(t('service.group.clean.cancelled'));
     return;
   }

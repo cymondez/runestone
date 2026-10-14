@@ -5,6 +5,7 @@
 ### Added
 
 - `runestone status --json` prints the status report as JSON, for scripts and AI agents.
+- `runestone docs --ai-context guide` prints the whole guide for connecting a project; it is also what `--ai-context` prints with no topic.
 
 ### Changed
 
@@ -15,10 +16,13 @@
 - `runestone up` prints the Mailpit address as `https://`.
 - `runestone service --help` now says what the command is for, putting a host dev server or an external URL on a Runestone hostname, and that it does not list what Runestone itself provides. `runestone service list` with nothing added says where to look instead of printing only the column headings.
 - `runestone service` will be renamed `runestone route` in 3.0. `runestone service` will keep working.
+- `runestone docs --ai-context` without a topic now prints the whole guide: how to choose between the two ways of connecting a project, then both of them. It still contains everything it printed before.
+- The agent guidance and the installed skill now walk an agent through the steps in order, and tell it what to do when the `runestone` command is not found.
 
 ### Fixed
 
 - `runestone dns status` no longer prints the dns service's state twice.
+- `runestone docs`, `runestone service add` and `runestone doctor` no longer crash when run without a terminal, as AI agents run them. `runestone docs` points to `--ai-context`; `service add` and `doctor` stop where they would have asked a question and say what to do instead.
 - The agent guidance for Docker projects no longer cuts the exposed service off from the project's other services, such as its database: its example `compose.override.yml` keeps the project's own network.
 - The agent guidance no longer says an unrouted hostname gets a 404. Runestone answers it with its "Service not found!" page and status 200, so the guidance now checks the page rather than the status code, and covers dev servers that refuse unknown hostnames, such as Vite and webpack-dev-server.
 - `runestone docs --ai-context state` now also lists the hostnames and Traefik service IDs other projects use, not only their router IDs.
