@@ -380,7 +380,12 @@ describe('who is allowed to reach the snapshot module', () => {
       // installer they may — and for collision checking must — use the live
       // builder. The answer is consumed immediately and never written down.
       path.join('src', 'services', 'mcp', 'server.ts'),
-      path.join('src', 'services', 'mcp', 'tools.ts')
+      path.join('src', 'services', 'mcp', 'tools.ts'),
+      // `runestone status` answers whether Runestone can be used right now, for
+      // a person or an agent trying to find out what is wrong. It uses the live
+      // builder, keeps the container probe at its thirty-second default because
+      // someone is waiting on the answer, and writes nothing down.
+      path.join('src', 'services', 'status-report.ts')
     ];
 
     const srcDir = path.resolve(__dirname, '..', '..', '..', 'src');

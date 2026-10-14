@@ -2,14 +2,23 @@
 
 ## Unreleased
 
+### Added
+
+- `runestone status --json` prints the status report as JSON, for scripts and AI agents.
+
 ### Changed
 
+- `runestone status` now starts with whether Runestone can be used right now, shows the Traefik and Mailpit addresses every project can use, container DNS, certificates and routes, and ends with what needs attention and the command that fixes each problem. Networks and volumes are reported as existing or missing instead of running or stopped.
 - `runestone --help` now says what Runestone already runs for every project, Traefik and Mailpit, and groups the commands into the ones that connect a project, the ones that check, and the ones that affect every project on the machine.
 - `runestone doctor --help` no longer says "repair": doctor only installs something after asking.
 - The agent guidance and the installed skill now say that Runestone already runs Traefik and Mailpit, tell the agent not to add its own reverse proxy or mail catcher, and give the Mailpit SMTP address to use from the host, from a container on the Runestone network, and from any other container. Run `runestone skill install` again to update an installed skill.
 - `runestone up` prints the Mailpit address as `https://`.
 - `runestone service --help` now says what the command is for, putting a host dev server or an external URL on a Runestone hostname, and that it does not list what Runestone itself provides. `runestone service list` with nothing added says where to look instead of printing only the column headings.
 - `runestone service` will be renamed `runestone route` in 3.0. `runestone service` will keep working.
+
+### Fixed
+
+- `runestone dns status` no longer prints the dns service's state twice.
 
 ## 2.1.0 - 2026-09-09
 

@@ -76,7 +76,7 @@ describe('runestone CLI integration', () => {
     // "service" read as "the services Runestone provides". It is the routes the
     // user adds for things outside Docker, so the help says both halves.
     const root = runCli(['--help']);
-    expect(root.stdout).toContain('Put a host dev server or external URL on a Runestone hostname');
+    expect(root.stdout).toContain('Put a host dev server or URL on a Runestone hostname');
 
     const service = runCli(['service', '--help']);
     expect(service.status).toBe(0);
@@ -138,7 +138,6 @@ describe('runestone CLI integration', () => {
     const commands = [
       ['setup'],
       ['doctor'],
-      ['status'],
       ['certs'],
       ['certs', 'create'],
       ['keys'],
@@ -165,6 +164,13 @@ describe('runestone CLI integration', () => {
     expect(docs.status).toBe(0);
     expect(docs.stdout).toContain('Options:');
     expect(docs.stdout).toContain('--ai-context');
+
+    // `status` gained --json, so a script or an agent can read the verdict
+    // without parsing the text report.
+    const status = runCli(['status', '--help']);
+    expect(status.status).toBe(0);
+    expect(status.stdout).toContain('Options:');
+    expect(status.stdout).toContain('--json');
 
     const up = runCli(['up', '--help']);
     expect(up.status).toBe(0);

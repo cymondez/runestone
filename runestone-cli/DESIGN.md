@@ -59,7 +59,7 @@ runestone up
 | 情境 | 命令 | 結果 |
 | --- | --- | --- |
 | 啟動環境 | `runestone up` | 啟動 Runestone services，並顯示 Traefik / Mailpit URL。 |
-| 查看狀態 | `runestone status` | 顯示 containers、SSH keys、network、volume 狀態。 |
+| 查看狀態 | `runestone status` | 第一行說明 Runestone 現在能不能用，接著列出它提供的 Traefik／Mailpit 位址、containers、network、volume、DNS、憑證與路由、SSH keys，最後列出需要處理的問題與處理方式。 |
 | 暫停環境 | `runestone stop` | 停止 services，保留設定與資料。 |
 | 關閉環境 | `runestone down` | 移除 services，可選擇清理 network、volume、image。 |
 | 檢查主機 | `runestone doctor` | 檢查 Docker、Compose、憑證信任工具是否可用。 |
@@ -101,7 +101,7 @@ Runestone CLI 需支援啟動、停止、移除與狀態檢查。
 | SSH key 注入 | 啟動時自動注入常見 SSH private keys；並提供手動新增方式。 |
 | 停止 | 停止 services，保留設定、憑證、network 與 volume。 |
 | 移除 | 移除 services；可由使用者選擇是否移除 network、volume、image。 |
-| 狀態 | 顯示 containers、SSH keys、network、volume 的目前狀態。 |
+| 狀態 | 先給結論（可以使用、需要處理、已停止、連不到 Docker、尚未設定），再列出各項目前狀態；每個問題附上會修好它的指令。`--json` 輸出同一份報告給 script 與 AI agent。network 與 volume 以「存在／不存在」表示，不用「running」。 |
 
 ### 6.3 憑證管理
 
@@ -208,6 +208,7 @@ runestone down --remove-network
 runestone down --remove-volumes
 runestone down --purge
 runestone status
+runestone status --json
 runestone certs install
 runestone certs create <domain>
 runestone certs list
@@ -321,7 +322,7 @@ Runestone 會處理 SSH private keys 與本地 CA，因此需符合：
 - 使用者可透過 npm 安裝並取得 `runestone` 命令。
 - 第一次執行 `runestone up` 時，若尚未設定會自動進入 setup。
 - setup 後可成功啟動 Runestone 開發環境。
-- `status` 可顯示 containers、network、volume、SSH keys。
+- `status` 第一行給出結論，並可顯示 containers、network、volume、SSH keys、Runestone 提供的端點與需要處理的問題；`--json` 輸出同一份報告。
 - `stop` 可停止 services 並保留資料。
 - `down` 可移除 services，並可選擇清理 network、volume、image。
 - certificate commands 可安裝 root CA、建立、列出與移除 domain certificates。
