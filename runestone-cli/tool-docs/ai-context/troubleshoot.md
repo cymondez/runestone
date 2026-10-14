@@ -15,6 +15,12 @@ Read-only commands, safe to run without asking:
 `runestone doctor` checks the host environment, but in a terminal it offers to
 install what is missing. Ask the user to run it.
 
+Symptom: the browser cannot find the hostname at all, a DNS error rather than a page.
+This machine does not resolve the Runestone domain, so no request reaches
+Traefik. `runestone status` says so, with the fix for this domain.
+- The default domain and names under `traefik.me` resolve through public DNS, so they fail on a machine whose DNS does not answer public names.
+- A domain of your own resolves only if the user's DNS or hosts file points it at 127.0.0.1. The hosts file is machine-wide and needs elevation; ask the user to change it, do not change it yourself.
+
 Symptom: a "Service not found!" page, or a 404.
 There is no route for that hostname. Either the router was never registered, or
 its rule does not match the hostname you opened. Runestone answers every

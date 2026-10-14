@@ -16,6 +16,14 @@ This machine:
 - HTTPS entrypoint name: {{RUNESTONE_HTTPS_ENTRYPOINT_NAME}}
 - HTTP entrypoint name: {{RUNESTONE_HTTP_ENTRYPOINT_NAME}}
 
+Hostnames under `{{RUNESTONE_HOST_DOMAIN}}` are meant to resolve to 127.0.0.1 on
+this machine, where Traefik listens on ports 80 and 443. The default domain,
+`local.developers-homelab.net`, and names under `traefik.me` do this through
+public DNS; a domain of your own does it only if the user's DNS or hosts file
+says so. `runestone status` reports it when this machine cannot resolve the
+domain. Inside a container 127.0.0.1 is the container itself; the troubleshoot
+topic covers that.
+
 ## How to connect a project, step by step
 
 1. Read the whole guide: `runestone docs --ai-context` prints this overview followed by both integration paths.

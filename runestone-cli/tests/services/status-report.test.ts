@@ -280,3 +280,56 @@ describe('the status report and the root CA', () => {
     expect(report.verdict).toBe('ready');
   });
 });
+
+describe('the status report when this machine cannot resolve the domain', () => {
+  beforeEach(() => {
+    process.env.RUNESTONE_LANG = 'en';
+  });
+
+  afterEach(() => {
+    delete process.env.RUNESTONE_LANG;
+  });
+
+  const unresolved = (host: string) =>
+    snapshot({ traefik: { ok: false, reason: 'unavailable', message: `getaddrinfo ENOTFOUND traefik.${host}` } });
+
+  it('says the domain does not resolve, instead of blaming Traefik', async () => {
+    // Measured: the Traefik probe resolves the hostname first and fails with
+    // ENOTFOUND. "Open the dashboard" is the wrong fix for that.
+    const report = await buildStatusReport(config(), deps({}, unresolved('example.test')));
+
+    const text = report.problems.map((problem) => problem.text).join('\n');
+    expect(text).toContain('cannot resolve traefik.example.test');
+    expect(text).not.toContain("Traefik's API did not answer");
+    expect(report.problems[0].fix).toContain('127.0.0.1');
+    expect(report.problems[0].fix).toContain('hosts file');
+  });
+
+  it('points at DNS rather than the hosts file for a domain public DNS already answers', async () => {
+    const report = await buildStatusReport(
+      config({ HOST_DOMAIN: 'local.developers-homelab.net' }),
+      deps({}, unresolved('local.developers-homelab.net'))
+    );
+
+    expect(report.problems[0].fix).toContain("this machine's DNS answers public names");
+  });
+
+  it('reports it even when Runestone is stopped, since the domain is unusable either way', async () => {
+    const report = await buildStatusReport(
+      config(),
+      deps({}, { ...unresolved('example.test'), containers: { ok: true, value: [] } })
+    );
+
+    expect(report.verdict).toBe('stopped');
+    expect(report.problems.map((problem) => problem.text).join('\n')).toContain('cannot resolve');
+  });
+
+  it('still blames Traefik for a failure that is not about resolving', async () => {
+    const report = await buildStatusReport(
+      config(),
+      deps({}, snapshot({ traefik: { ok: false, reason: 'unavailable', message: 'Traefik API request timed out' } }))
+    );
+
+    expect(report.problems[0].text).toContain("Traefik's API did not answer");
+  });
+});

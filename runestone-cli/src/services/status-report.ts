@@ -22,7 +22,7 @@ import { certificateBaseDomainForRoute } from './service-manager';
 import { sshManager } from './ssh-manager';
 import { t } from '../i18n';
 import { SmtpEndpoints, mailpitUiUrl, smtpEndpoints, traefikDashboardUrl } from '../utils/endpoints';
-import { RunestoneEnv, envLoader } from '../utils/env-loader';
+import { DEFAULT_ENV, RunestoneEnv, envLoader } from '../utils/env-loader';
 import { DnsOwnershipState, toolState } from '../utils/tool-state';
 import { packageVersion } from '../utils/version';
 
@@ -101,6 +101,14 @@ export const defaultStatusReportDependencies: StatusReportDependencies = {
   now: () => new Date(),
   cliVersion: () => packageVersion()
 };
+
+/**
+ * Domains whose public DNS already answers 127.0.0.1 for every name under
+ * them (docs/DOMAINS.md, kinds 1 and 2). For these, failing to resolve means
+ * this machine's DNS is not answering; for any other domain, the user has to
+ * point it at 127.0.0.1 themselves.
+ */
+const PUBLIC_LOOPBACK_DOMAINS: readonly string[] = [DEFAULT_ENV.HOST_DOMAIN, 'traefik.me'];
 
 function messageOf(probe: { ok: false; message?: string }): string {
   return probe.message ?? 'unknown error';
@@ -187,7 +195,21 @@ export async function buildStatusReport(
     problems.push({ text: t('status.problem.networkMissing', { network: config.NETWORK_NAME }), fix: 'runestone up' });
   }
 
-  if (runestoneRunning && !snapshot.traefik.ok) {
+  // The Traefik probe resolves the hostname first, so a host that cannot
+  // resolve the domain shows up here as ENOTFOUND (measured 2026-10-14). That
+  // is not Traefik failing, and "open the dashboard" is the wrong fix for it.
+  // It is reported whether or not Runestone runs: the domain is unusable on
+  // this machine either way.
+  const traefikError = !snapshot.traefik.ok && snapshot.traefik.reason === 'unavailable' ? messageOf(snapshot.traefik) : undefined;
+  if (traefikError && /ENOTFOUND|EAI_AGAIN/.test(traefikError)) {
+    const domain = config.HOST_DOMAIN;
+    problems.push({
+      text: t('status.problem.hostUnresolved', { host: new URL(traefikUrl).host, message: traefikError }),
+      fix: PUBLIC_LOOPBACK_DOMAINS.some((base) => domain === base || domain.endsWith(`.${base}`))
+        ? t('status.fix.hostUnresolvedDefault', { domain })
+        : t('status.fix.hostUnresolvedOwn', { domain })
+    });
+  } else if (runestoneRunning && !snapshot.traefik.ok) {
     problems.push({
       text: t('status.problem.traefikUnreachable', { url: traefikUrl, message: messageOf(snapshot.traefik) }),
       fix: t('status.fix.traefikUnreachable', { url: traefikUrl })

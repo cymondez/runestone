@@ -438,3 +438,14 @@ describe('several topics rendered as one document', () => {
     expect(renderAiContextSequence(['service'], config(), blocks())).toBe(renderAiContext('service', config(), blocks()));
   });
 });
+
+describe('the corpus says how the host resolves Runestone hostnames', () => {
+  it('states it in the overview and gives the DNS failure its own symptom', () => {
+    // All three re-run probes resolved the domain by hand with nslookup,
+    // because nothing said how it resolves (docs/DOMAINS.md does).
+    expect(renderAiContext('overview', config(), stubBlocks())).toContain('are meant to resolve to 127.0.0.1 on\nthis machine');
+    const troubleshoot = renderAiContext('troubleshoot', config(), stubBlocks());
+    expect(troubleshoot).toContain('the browser cannot find the hostname at all');
+    expect(troubleshoot).toContain('do not change it yourself');
+  });
+});
