@@ -29,7 +29,7 @@ topic covers that.
 1. Read the whole guide: `runestone docs --ai-context` prints this overview followed by both integration paths.
 2. Look at the project and choose the path, by the question under "There are exactly two ways to connect a project" below.
 3. Run `runestone docs --ai-context state`. It lists the hostnames a certificate covers, and the names and hostnames already taken by any project.
-4. Choose the hostname and the name yourself, from the project's name, and check them against step 3.
+4. Choose the hostname and the name yourself, from the project's directory name, and check them with `runestone service check <name> --route <hostname>`. It says whether each is free across every project, and which certificate to create if none covers the hostname. It changes nothing.
 5. Write the Compose override, or run `runestone service add` with every value on the command line.
 6. Verify with the checks at the end of the compose or the service topic, then report what you changed, the URL, and what you assumed.
 
@@ -102,8 +102,8 @@ and let the user run them.
 ## Commands that are safe
 
 Read-only, no confirmation needed:
-`runestone status`, `runestone service list`, `runestone certs list`,
-`runestone dns status`, `runestone docs --ai-context`.
+`runestone status`, `runestone service check`, `runestone service list`,
+`runestone certs list`, `runestone dns status`, `runestone docs --ai-context`.
 
 `runestone doctor` checks the host environment, but in a terminal it offers to
 install what is missing, so ask the user to run it.

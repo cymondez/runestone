@@ -29,6 +29,8 @@ import {
 import { listDomainCertificates } from '../services/cert-manager';
 import { readTraefikSnapshot, traefikApiBaseUrl } from '../services/traefik-api';
 import { envLoader, RunestoneEnv } from '../utils/env-loader';
+import { CheckNameResult, checkName } from '../services/agent-context/check-name';
+import { buildLiveSnapshot, buildOfflineSnapshot } from '../services/agent-context/snapshot';
 import { logger } from '../utils/logger';
 import { toolState, RunestoneServiceRecord } from '../utils/tool-state';
 import { createCommand } from '../utils/command';
@@ -47,6 +49,12 @@ interface ListOptions {
 
 interface RemoveOptions {
   force?: boolean;
+}
+
+interface CheckOptions {
+  route?: string;
+  offline?: boolean;
+  json?: boolean;
 }
 
 interface GroupCleanOptions {
@@ -827,6 +835,68 @@ async function handleGroupMove(name: string | undefined, groupName: string | und
   logger.success(t('service.group.success.moved', { name: normalized, group: displayGroupName(group) }));
 }
 
+/**
+ * Whether a name and a hostname are free, without asking anything and without
+ * writing anything: the question an agent has to answer before `service add`
+ * or before writing Traefik labels. The same check the MCP tool runs.
+ *
+ * Exit 0 when everything asked about is free, 1 when something is not, so a
+ * script can branch on it; the reason is always printed.
+ */
+async function handleCheck(name: string | undefined, options: CheckOptions): Promise<void> {
+  if (name === undefined && options.route === undefined) {
+    logger.error(t('service.check.nothingToCheck'));
+    process.exitCode = 1;
+    return;
+  }
+
+  const config = envLoader.load();
+  const snapshot = options.offline ? buildOfflineSnapshot(config) : await buildLiveSnapshot(config);
+  const result = checkName({ serviceName: name, route: options.route }, config, snapshot);
+  const free = (result.serviceName?.available ?? true) && (result.route?.available ?? true);
+
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  } else {
+    printCheck(result);
+  }
+
+  if (!free) {
+    process.exitCode = 1;
+  }
+}
+
+function printCheck(result: CheckNameResult): void {
+  // Everything goes to stdout, the verdicts included: an agent usually reads
+  // stdout alone.
+  if (result.serviceName) {
+    const { value, available, reason } = result.serviceName;
+    console.log(
+      available
+        ? `${green('[ok]')} ${t('service.check.nameFree', { name: value })}`
+        : `${red('[taken]')} ${t('service.check.nameTaken', { name: value, reason: reason ?? '' })}`
+    );
+  }
+
+  if (result.route) {
+    const { value, normalized, available, reason, coveringCertificate, certificateCommand } = result.route;
+    const host = normalized ?? value;
+    if (!available) {
+      console.log(`${red('[taken]')} ${t('service.check.routeTaken', { route: host, reason: reason ?? '' })}`);
+    } else if (coveringCertificate) {
+      console.log(`${green('[ok]')} ${t('service.check.routeFree', { route: host, certificate: coveringCertificate })}`);
+    } else {
+      console.log(
+        `${yellow('[warn]')} ${t('service.check.routeUncovered', { route: host, command: certificateCommand ?? 'runestone certs list' })}`
+      );
+    }
+  }
+
+  if (result.caveat) {
+    console.log(`${yellow('[warn]')} ${result.caveat}`);
+  }
+}
+
 async function wrapAsync(action: () => Promise<void> | void, message: string): Promise<void> {
   try {
     await action();
@@ -866,6 +936,15 @@ export function createServiceCommand(): Command {
       .description(t('commands.service.repair.description'))
       .argument('<name>', t('arguments.serviceName'))
       .action((name: string) => wrapAsync(() => handleRepair(name), t('service.failure.repair'))));
+
+  command
+    .addCommand(createCommand('check')
+      .description(t('commands.service.check.description'))
+      .argument('[name]', t('arguments.serviceName'))
+      .option('--route <domain>', t('options.route.description'))
+      .option('--offline', t('options.offline.description'))
+      .option('--json', t('options.json.description'))
+      .action((name: string | undefined, options: CheckOptions) => wrapAsync(() => handleCheck(name, options), t('service.failure.check'))));
 
   command
     .addCommand(createCommand('list')

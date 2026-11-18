@@ -398,6 +398,9 @@ describe('who is allowed to reach the snapshot module', () => {
     // which means seeing this list change in a diff.
     const allowed = [
       path.join('src', 'commands', 'docs.ts'),
+      // `service check` answers "is this name free right now" with the same
+      // live check as the MCP tool, and writes nothing down.
+      path.join('src', 'commands', 'service.ts'),
       // The MCP tools answer questions about right now, so unlike the
       // installer they may — and for collision checking must — use the live
       // builder. The answer is consumed immediately and never written down.

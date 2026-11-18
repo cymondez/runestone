@@ -53,7 +53,7 @@ Inspect this project to determine:
 
 Choose these yourself and state them in your report; do not stop to ask:
 - Hostname prefix: the project's directory name.
-- Route name: the same value. First check that `runestone docs --ai-context state` does not list either.
+- Route name: the same value. Check both first with `runestone service check <name> --route <hostname>`; it changes nothing, and exits 1 when either is taken.
 
 Verify afterwards:
 - `runestone service list` shows the new entry with its hostname and URL.

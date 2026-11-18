@@ -27,7 +27,7 @@ You must inspect this project to determine:
 
 Choose these yourself and state them in your report; do not stop to ask:
 - Hostname prefix: the Compose project name, which is the project's directory name unless the Compose file's top-level `name:` or `COMPOSE_PROJECT_NAME` sets another.
-- Traefik router ID and Traefik service ID: the hostname prefix, for both. First check that `runestone docs --ai-context state` does not list it; Traefik shares these names across every project on the machine.
+- Traefik router ID and Traefik service ID: the hostname prefix, for both. Check the ID and the hostname first with `runestone service check <router-id> --route <host-prefix>.{{RUNESTONE_HOST_DOMAIN}}`; Traefik shares these names across every project on the machine. It changes nothing.
 
 The override to write. Replace every <placeholder>:
 

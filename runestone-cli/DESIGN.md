@@ -219,6 +219,8 @@ runestone keys add <path>
 runestone service add [name] --route <domain> --url <url>
 runestone service modify <name>
 runestone service repair <name>
+runestone service check [name] --route <domain>
+runestone service check [name] --route <domain> --json
 runestone service list
 runestone service list --no-header
 runestone service remove <name>

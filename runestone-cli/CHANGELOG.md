@@ -6,6 +6,7 @@
 
 - `runestone status --json` prints the status report as JSON, for scripts and AI agents.
 - `runestone docs --ai-context guide` prints the whole guide for connecting a project; it is also what `--ai-context` prints with no topic.
+- `runestone service check <name> --route <hostname>` says whether a name and a hostname are free across every project on this machine, and which certificate to create when none covers the hostname. It changes nothing, and exits 1 when either is taken. `--json` prints the result for scripts and AI agents.
 
 ### Changed
 

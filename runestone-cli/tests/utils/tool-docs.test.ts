@@ -459,3 +459,11 @@ describe('the corpus warns about names on the shared network', () => {
     expect(renderAiContext('troubleshoot', config(), stubBlocks())).toContain("reaches another project's service");
   });
 });
+
+describe('the corpus points at service check for names', () => {
+  it('tells both paths and the overview to check a name before using it', () => {
+    for (const id of ['overview', 'compose', 'service']) {
+      expect(renderAiContext(id, config(), stubBlocks())).toContain('runestone service check');
+    }
+  });
+});
