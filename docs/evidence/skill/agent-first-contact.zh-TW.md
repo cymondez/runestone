@@ -74,3 +74,17 @@
 - 真的共用網路是 `runestone-network`，Compose 專案的網路是 `<project>_default`。專案名稱排在 `runestone-network` 之後（例如 s 到 z 開頭）時，一個同時存在於共用網路上的名稱會解析到別的專案的容器。這台機器上的 `vllm_default` 與三個 `webhub-*` 網路就屬於這種。
 - Compose 會把每個服務自己的名稱註冊成它所接上每個網路的別名，所以共用網路上的名稱就是其他專案對外接上的服務名：`api`、`web`、`app`、`frontend`。資料庫很少在其中。實際會發生的失敗是：對外接上的前端呼叫 `http://api:...`，結果打到別的專案的 `api`。
 - 只在一台機器、一個 Docker Desktop 版本上量過。排序是 Docker 的實作，不是文件承諾的契約，所以指引應該說要檢查什麼，而不是承諾某個順序。
+
+## 沒有路由的 hostname 回 404（2026-11-18）
+
+「實作期間的一次性實測」表中記錄沒有路由的 hostname 回 200。那是映像裡的 nginx 對 `/` 直接回頁面，不是 error-page middleware。`docker/catchall/nginx.conf` 現在對每個路徑都回 404 加上頁面，收在映像 `cymondez/runestone:5.3`。
+
+用 5.2 映像開兩個暫時容器量測，`--providers.docker=false`、用別的 port，兩者只差掛載的 `nginx.conf`；以 `curl -k --resolve` 打一個沒有路由的名稱：
+
+| 路徑 | 5.2 的 nginx.conf（對照組） | 新的 nginx.conf |
+| --- | --- | --- |
+| `/` | 200，頁面 | 404，頁面 |
+| `/index.html` | 200，頁面 | 404，頁面 |
+| `/some/path` | 404，頁面 | 404，頁面 |
+
+error-page middleware 保留原本的狀態碼，並且即使它抓 `/index.html` 時拿到的是 404，也照樣用那個 body，所以 `up` 不會覆寫的既有 `traefik.dynamic.yml` 仍然正常運作。

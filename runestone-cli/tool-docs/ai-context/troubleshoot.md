@@ -24,9 +24,9 @@ Traefik. `runestone status` says so, with the fix for this domain.
 Symptom: a "Service not found!" page, or a 404.
 There is no route for that hostname. Either the router was never registered, or
 its rule does not match the hostname you opened. Runestone answers every
-hostname under {{RUNESTONE_HOST_DOMAIN}} that has no route with its own "Service
-not found!" page and HTTP status 200, so look at the page, not the status code.
-A hostname outside {{RUNESTONE_HOST_DOMAIN}} gets Traefik's plain 404 instead.
+hostname under {{RUNESTONE_HOST_DOMAIN}} that has no route with its own
+"Service not found!" page and HTTP status 404. A hostname outside
+{{RUNESTONE_HOST_DOMAIN}} gets Traefik's plain 404 page instead.
 - Compose path: is the container running, is it attached to {{RUNESTONE_NETWORK_NAME}}, and does it carry `traefik.enable=true`? A container that is not on that network is invisible to Traefik even with correct labels.
 - `service add` path: does `runestone service list` show the route?
 - Check the hostname for a typo against the rule. `runestone docs --ai-context state` lists every hostname that has a route.

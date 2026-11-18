@@ -91,7 +91,7 @@ Recreating the containers restarts the user's running stack. Ask the user to run
 Verify afterwards:
 - `docker compose config` shows the Compose service on both `default` and `runestone`, with every label above.
 - Once the project's containers are recreated (`docker compose up -d`), `runestone docs --ai-context state` lists `<router-id>@docker` among the Traefik router IDs.
-- Request `https://<host-prefix>.{{RUNESTONE_HOST_DOMAIN}}` and check that the response comes from the app. A hostname under {{RUNESTONE_HOST_DOMAIN}} with no route gets Runestone's own "Service not found!" page with HTTP status 200, so the status code alone proves nothing. With curl on Windows, add `--ssl-no-revoke`.
+- Request `https://<host-prefix>.{{RUNESTONE_HOST_DOMAIN}}` and check that the response comes from the app. A hostname under {{RUNESTONE_HOST_DOMAIN}} with no route gets Runestone's own "Service not found!" page with HTTP status 404. With curl on Windows, add `--ssl-no-revoke`.
 
 Final answer should report:
 - File changed.

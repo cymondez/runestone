@@ -58,7 +58,7 @@ Choose these yourself and state them in your report; do not stop to ask:
 Verify afterwards:
 - `runestone service list` shows the new entry with its hostname and URL.
 - `runestone docs --ai-context state` lists `<name>@file` among the Traefik router IDs.
-- With the app running, request `https://<domain>` and check that the response comes from the app. A hostname under {{RUNESTONE_HOST_DOMAIN}} with no route gets Runestone's own "Service not found!" page with HTTP status 200, so the status code alone proves nothing. With curl on Windows, add `--ssl-no-revoke`.
+- With the app running, request `https://<domain>` and check that the response comes from the app. A hostname under {{RUNESTONE_HOST_DOMAIN}} with no route gets Runestone's own "Service not found!" page with HTTP status 404. With curl on Windows, add `--ssl-no-revoke`.
 - A page saying "Blocked request" or "Invalid Host header" comes from the dev server, which refuses hostnames it does not know: Vite allows only localhost and IP addresses by default, webpack-dev-server only localhost and its own host. Add the hostname to the dev server's allowed hosts: Vite `server.allowedHosts`, webpack-dev-server `devServer.allowedHosts`.
 - A 502 means Runestone cannot reach the app. On a Linux Docker Engine, as opposed to Docker Desktop, `host.docker.internal` is the Docker bridge address, which a server listening only on 127.0.0.1 or localhost does not answer: make the dev server listen on 0.0.0.0 (for Vite, `vite --host`).
 

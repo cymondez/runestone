@@ -32,7 +32,8 @@
 - `runestone docs --ai-context` with no topic, and with `all`, no longer repeats the topic list and the hostname lists once per topic.
 - `runestone docs`, `runestone service add` and `runestone doctor` no longer crash when run without a terminal, as AI agents run them. `runestone docs` points to `--ai-context`; `service add` and `doctor` stop where they would have asked a question and say what to do instead.
 - The agent guidance for Docker projects no longer cuts the exposed service off from the project's other services, such as its database: its example `compose.override.yml` keeps the project's own network.
-- The agent guidance no longer says an unrouted hostname gets a 404. Runestone answers it with its "Service not found!" page and status 200, so the guidance now checks the page rather than the status code, and covers dev servers that refuse unknown hostnames, such as Vite and webpack-dev-server.
+- A hostname under the Runestone domain that has no route now answers with status 404 as well as the "Service not found!" page. It used to answer 200, so a check of the status code took it for a running app. Run `runestone up` to get the new image.
+- The agent guidance now has the agent check that a response comes from its app, and covers dev servers that refuse unknown hostnames, such as Vite and webpack-dev-server.
 - `runestone docs --ai-context state` now also lists the hostnames and Traefik service IDs other projects use, not only their router IDs.
 - `runestone docs --ai-context state` now lists the names already on the shared Runestone network, and the guidance for Docker projects explains how a service attached to it can reach another project's container when both use the same name, and how to avoid it.
 - The agent guidance no longer lists `runestone doctor` as read-only, explains how to run `runestone service add` without a terminal, and has the agent choose a hostname from the project's name instead of stopping to ask.

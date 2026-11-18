@@ -122,7 +122,7 @@ function skillBody(context: RenderContext): string {
     '4. Write the Compose override, or run `runestone service add` with the name, `--route` and `--url` all on the',
     '   command line: without a terminal it cannot ask for anything.',
     '5. Verify with the checks at the end of the reference you followed. Look at the response, not only its status:',
-    '   an unrouted hostname gets Runestone\'s "Service not found!" page with status 200.',
+    '   an unrouted hostname gets Runestone\'s "Service not found!" page with status 404.',
     '6. Report what you changed, the URL, and anything you assumed.',
     '',
     'If the `runestone` command is not found, you are probably inside a container or a sandbox that cannot see the',

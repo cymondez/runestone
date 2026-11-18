@@ -74,3 +74,17 @@ What follows for the last row, and what this does not show:
 - The real shared network is `runestone-network` and a Compose project's network is `<project>_default`. A project whose name sorts after `runestone-network`, such as anything starting with s to z, resolves a name that also exists on the shared network to the other project's container. On this machine that already includes `vllm_default` and the three `webhub-*` networks.
 - Compose registers every service's own name as an alias on each network it joins, so the names on the shared network are those of the services other projects expose: `api`, `web`, `app`, `frontend`. A database is rarely among them. The realistic failure is an exposed frontend calling `http://api:...` and reaching another project's `api`.
 - Measured on one Docker Desktop version on one machine. The ordering is Docker's implementation, not a documented contract, so guidance should say what to check rather than promise an order.
+
+## Unrouted hostnames answer 404 (2026-11-18)
+
+The table under "One-time measurements" records an unrouted hostname answering 200. That was the image's nginx serving the page itself for `/`, not the error-page middleware. `docker/catchall/nginx.conf` now answers every path with 404 and the page, in image `cymondez/runestone:5.3`.
+
+Measured with two temporary containers of the 5.2 image, `--providers.docker=false`, on other ports, differing only in the mounted `nginx.conf`; `curl -k --resolve` against an unrouted name:
+
+| Path | 5.2 nginx.conf (control) | New nginx.conf |
+| --- | --- | --- |
+| `/` | 200, page | 404, page |
+| `/index.html` | 200, page | 404, page |
+| `/some/path` | 404, page | 404, page |
+
+The error-page middleware keeps the original status and uses the body of its `/index.html` fetch even when that fetch itself answers 404, so an existing `traefik.dynamic.yml`, which `up` does not overwrite, keeps working.

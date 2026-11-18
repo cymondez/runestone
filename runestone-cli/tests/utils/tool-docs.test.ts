@@ -332,13 +332,14 @@ describe('the corpus tells an agent how to verify, and what not to treat as read
   const service = renderAiContext('service', config(), stubBlocks());
   const overview = renderAiContext('overview', config(), stubBlocks());
 
-  it('says an unrouted hostname gets a 200 page, not a 404', () => {
+  it('says an unrouted hostname gets the "Service not found!" page with a 404', () => {
     // docker/traefik/dynamic/traefik.dynamic.yml routes every unrouted
-    // *.HOST_DOMAIN to the catch-all, which serves "Service not found!" as 200.
+    // *.HOST_DOMAIN to the catch-all; docker/catchall/nginx.conf answers every
+    // path there with 404 and the "Service not found!" page.
     for (const topic of [troubleshoot, service, renderAiContext('compose', config(), stubBlocks())]) {
-      expect(topic).toContain('Service not found!');
+      expect(topic).toMatch(/"Service not found!" page (?:and|with) HTTP status 404/);
+      expect(topic).not.toContain('status 200');
     }
-    expect(troubleshoot).toContain('look at the page, not the status code');
   });
 
   it('covers a dev server refusing an unknown hostname', () => {
