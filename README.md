@@ -54,6 +54,14 @@ The first time you run it, an interactive setup wizard will appear. To change se
 runestone up
 ```
 
+### Check Status
+
+`runestone status` starts with whether Runestone can be used right now, lists the Traefik and Mailpit addresses every project can use, and ends with anything that needs attention and the command that fixes it. `--json` prints the same report for scripts and AI agents.
+
+```bash
+runestone status
+```
+
 ### Stop Or Shut Down
 
 Note: If Runestone was not stopped before shutting down your system, it will start automatically on the next boot.
@@ -139,6 +147,23 @@ Removes a route and deletes its matching dynamic Traefik configuration.
 
 ```bash
 runestone service remove <service name>
+```
+
+### Check A Name
+
+Says whether a name and a hostname are still free across every project on this machine. It changes nothing.
+
+```bash
+runestone service check <service name> --route <domain>
+```
+
+## Shared Resources
+
+Declare the backing services on this machine that projects should use instead of adding their own, such as one Postgres or Redis. AI agents see them in the guidance. Runestone only records them: it does not start or check them, and a resource has no password field.
+
+```bash
+runestone resource add <name> --kind <kind> --host <host:port> --container <host:port>
+runestone resource list
 ```
 
 ## Project Integration

@@ -54,6 +54,14 @@ runestone doctor
 runestone up
 ```
 
+### 状態の確認
+
+`runestone status` は、まず Runestone が今使える状態かどうかを示し、すべてのプロジェクトが使える Traefik と Mailpit のアドレスを表示し、最後に対応が必要な問題とその修正コマンドを表示します。`--json` は同じレポートをスクリプトや AI エージェント向けに JSON で出力します。
+
+```bash
+runestone status
+```
+
 ### 停止または終了
 
 注意: システムのシャットダウン前に Runestone を停止していない場合、次回ブート時に自動的に起動します。
@@ -139,6 +147,23 @@ runestone service list
 
 ```bash
 runestone service remove <service name>
+```
+
+### 名前の確認
+
+名前とホスト名が、このマシンのすべてのプロジェクトでまだ使われていないかを確認します。何も変更しません。
+
+```bash
+runestone service check <service name> --route <domain>
+```
+
+## 共有リソース
+
+このマシンで各プロジェクトが自前で追加せずに共有すべきバックエンドサービス（たとえば 1 つの Postgres や Redis）を宣言します。AI エージェントはガイダンスの中でそれらを確認できます。Runestone は記録するだけで、起動も確認もしません。リソースにパスワード欄はありません。
+
+```bash
+runestone resource add <name> --kind <kind> --host <host:port> --container <host:port>
+runestone resource list
 ```
 
 ## プロジェクト統合

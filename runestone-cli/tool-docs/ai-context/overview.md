@@ -105,12 +105,14 @@ and let the user run them.
 | `runestone setup` | Rewrites Runestone's configuration for every project on the machine |
 | `runestone down` | Removes the environment; with flags, its volumes and images too |
 | `runestone up`, `runestone stop` | Changes what is running for every project |
+| `runestone resource add`, `modify`, `remove` | The list is the user's own statement of what runs on this machine, for every project |
 
 ## Commands that are safe
 
 Read-only, no confirmation needed:
 `runestone status`, `runestone service check`, `runestone service list`,
-`runestone certs list`, `runestone dns status`, `runestone docs --ai-context`.
+`runestone resource list`, `runestone certs list`, `runestone dns status`,
+`runestone docs --ai-context`.
 
 `runestone doctor` checks the host environment, but in a terminal it offers to
 install what is missing, so ask the user to run it.

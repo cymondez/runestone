@@ -264,6 +264,17 @@ describe('the overview topic names the commands an agent must not run', () => {
     expect(topic).toContain(command);
   });
 
+  it('leaves the shared resource list to the user, and lists reading it as safe', () => {
+    // The list is the user telling agents what runs on this machine; an agent
+    // that adds to it would be telling itself.
+    const mustNot = topic.slice(topic.indexOf('## Commands you must not run'), topic.indexOf('## Commands that are safe'));
+    const safe = topic.slice(topic.indexOf('## Commands that are safe'), topic.indexOf('Project-integration writes'));
+
+    expect(mustNot).toContain('runestone resource add');
+    expect(safe).toContain('runestone resource list');
+    expect(safe).not.toContain('resource add');
+  });
+
   it('states the two integration paths and how to choose between them', () => {
     expect(topic).toContain('runestone service add');
     expect(topic).toContain('Traefik labels');

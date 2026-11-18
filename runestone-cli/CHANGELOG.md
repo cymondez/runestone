@@ -6,7 +6,7 @@
 
 - `runestone status --json` prints the status report as JSON, for scripts and AI agents.
 - `runestone docs --ai-context guide` prints the whole guide for connecting a project; it is also what `--ai-context` prints with no topic.
-- `runestone resource add`, `list`, `modify` and `remove` declare the shared services on this machine that projects should use instead of adding their own, such as one Postgres or Redis. Each has an address for processes on the host and one for containers. AI agents see them in `runestone docs --ai-context` and over MCP, and `runestone status` lists them. Runestone does not start or check them, and a resource has no password field.
+- `runestone resource add`, `list`, `modify` and `remove` declare the shared services on this machine that projects should use instead of adding their own, such as one Postgres or Redis. Each has an address for processes on the host and one for containers. AI agents see them in `runestone docs --ai-context` and over MCP, and are told to leave the list to you; `runestone status` lists them. Runestone does not start or check them, and a resource has no password field.
 - `runestone service check <name> --route <hostname>` says whether a name and a hostname are free across every project on this machine, and which certificate to create when none covers the hostname. It changes nothing, and exits 1 when either is taken. `--json` prints the result for scripts and AI agents.
 
 ### Changed

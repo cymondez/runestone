@@ -14,7 +14,7 @@ Runestone 可以自己把「怎麼把這個專案接上來」講給 AI coding ag
 
 **兩條接入路徑該走哪一條。** 跑在 Docker 裡的專案用 Traefik labels 接。跑在 host 上的 dev server、已經在跑的行程、或外部 URL，要用 `runestone service add` 接 —— 那是你自己加上的路由，不是 Runestone 提供的服務。選錯會安靜地失敗：沒有容器的專案掛 labels 完全無效，而 file provider 的項目指向 `localhost` 時會連到 Runestone 容器自己，不是你的機器。
 
-**這台機器的事實。** 哪些 hostname 有憑證覆蓋，以及哪些 router 與 service 名稱已經被註冊 —— 包含被其他專案註冊的，那在你的專案裡完全看不到。
+**這台機器的事實。** 哪些 hostname 有憑證覆蓋，以及哪些 router 與 service 名稱已經被註冊 —— 包含被其他專案註冊的，那在你的專案裡完全看不到。agent 會用 `runestone service check` 檢查它選的名稱與 hostname，這個指令不會改動任何東西。你用 `runestone resource add` 宣告的共用資源（例如所有專案共用的同一個 Postgres）也會列出來，agent 會使用它們，而不是自己再加一個。
 
 ## 三種用法
 
@@ -114,6 +114,7 @@ Claude Code 使用者注意：專案層級的 `.mcp.json` 在互動式 session �
 | `runestone setup` | 會重寫所有專案共用的設定 |
 | `runestone down` | 移除環境，加上旗標連資料一起 |
 | `runestone up`、`runestone stop` | 改變所有專案的執行狀態 |
+| `runestone resource add`、`modify`、`remove` | 這份清單是你對「這台機器上跑著什麼」的陳述，影響所有專案 |
 
 它會在接專案的過程中執行 `runestone service add`、`runestone service remove` 與 `runestone certs create`，也會在需要查東西時執行 `runestone status` 之類的唯讀指令。
 

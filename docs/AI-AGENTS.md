@@ -28,7 +28,11 @@ rather than your machine.
 
 **Facts about this machine.** Which hostnames a certificate covers, and which
 router and service names are already registered — including by other projects,
-which is not visible from your project at all.
+which is not visible from your project at all. The agent checks the name and
+hostname it chose with `runestone service check`, which changes nothing. The
+shared resources you declared with `runestone resource add`, such as one
+Postgres for every project, are listed too, so the agent uses them rather than
+adding its own.
 
 ## Three ways to use it
 
@@ -159,6 +163,7 @@ they change things beyond the project it is working on:
 | `runestone setup` | Rewrites the configuration every project shares |
 | `runestone down` | Removes the environment, and with flags its data too |
 | `runestone up`, `runestone stop` | Changes what is running for every project |
+| `runestone resource add`, `modify`, `remove` | The list is your statement of what runs on this machine, for every project |
 
 It will run `runestone service add`, `runestone service remove` and
 `runestone certs create` as part of connecting your project, and read-only
