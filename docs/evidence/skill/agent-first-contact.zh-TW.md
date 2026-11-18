@@ -55,7 +55,7 @@
 - 專案的服務加入共用的 Runestone 網路後，它的 Compose 服務名稱（例如 `api`）會在所有專案共用的網路上成為別名；若別的專案也在那個網路上放了同名的 `db`，名稱解析可能撞到。
 - ~~不帶參數的 guide 約 20 KB：footer 印三次、可用 hostname 與已佔用名稱兩個區塊各印兩次。~~ 已在 `e2c5e95` 修正：`--offline` 下 guide 從 21,924 降到 19,770 bytes，`all` 從 31,249 降到 26,786。剩下的是內容，不是重複。
 - ~~troubleshoot 主題結尾的「Container state was not checked.」讀起來像失敗，其實只是該主題不查容器。~~ 已在 `e2c5e95` 修正。
-- `host.docker.internal` 在 Runestone DNS 開啟時解析不到（見上表）的成因與是否該由 DNS 功能處理，已另開任務調查。
+- ~~`host.docker.internal` 在 Runestone DNS 開啟時解析不到（見上表）的成因與是否該由 DNS 功能處理，已另開任務調查。~~ dns 服務現在以 Target IP 回答它，收在映像 `cymondez/runestone-dns:1.1`；見 DNS-FEATURE-SPEC 8.3。
 
 ## 後續實測（2026-10-14，`e2c5e95` 之後）
 

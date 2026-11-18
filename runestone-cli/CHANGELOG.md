@@ -23,6 +23,7 @@
 
 ### Fixed
 
+- With container DNS on, containers can resolve `host.docker.internal` again. It answers with the same address as before the feature was turned on. Run `runestone up` to get the new image.
 - `runestone dns status` no longer prints the dns service's state twice.
 - `runestone skill status` no longer reports an installed skill as edited after you create a certificate or add a route. The installed files no longer contain this machine's certificates, routes or warnings; they point to `runestone docs --ai-context state` instead.
 - `runestone skill install --force` and `runestone skill remove --force` now say what they do. They used to read the same as `--yes`.

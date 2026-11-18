@@ -55,7 +55,7 @@ The follow-up commit `a118051` fixed: the footer not listing `guide` and `all`, 
 - Once a project's service joins the shared Runestone network, its Compose service name (such as `api`) becomes an alias on a network every project shares; if another project puts a `db` on it too, name resolution could collide.
 - ~~The bare guide is about 20 KB: the footer is printed three times, and the hostname and taken-name blocks twice each.~~ Fixed in `e2c5e95`: with `--offline`, the guide went from 21,924 to 19,770 bytes and `all` from 31,249 to 26,786. What remains is content, not repetition.
 - ~~The troubleshoot topic ends with "Container state was not checked.", which reads like a failure but only means that topic does not query containers.~~ Fixed in `e2c5e95`.
-- Why `host.docker.internal` does not resolve with Runestone DNS enabled (table above), and whether the DNS feature should handle it, has been split into its own task.
+- ~~Why `host.docker.internal` does not resolve with Runestone DNS enabled (table above), and whether the DNS feature should handle it, has been split into its own task.~~ The dns service now answers it with the Target IP, in image `cymondez/runestone-dns:1.1`; see DNS-FEATURE-SPEC 8.3.
 
 ## Follow-up measurements (2026-10-14, after `e2c5e95`)
 

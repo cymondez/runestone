@@ -32,7 +32,7 @@ export const COMPOSE_SERVICES = {
  * CLI version decide.
  */
 export const RUNESTONE_IMAGE = 'cymondez/runestone:5.3';
-export const DNS_IMAGE = 'cymondez/runestone-dns:1.0';
+export const DNS_IMAGE = 'cymondez/runestone-dns:1.1';
 
 /**
  * The dns service sits behind this Compose profile, so it is invisible to any
