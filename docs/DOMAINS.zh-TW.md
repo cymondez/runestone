@@ -57,6 +57,8 @@ Runestone 會碰到三種不同性質的 domain，它們的行為差異很容易
 
 代價只集中在第 2 種，而且是實實在在的：container 再也不能用 `10-0-0-5.traefik.me` 去連 `10.0.0.5`，因為整個 zone 現在都答成 Runestone 主機。要保留位址解碼的用法，就把 `traefik.me.crt` 與 `traefik.me.key` 從 certs 目錄移掉，或在 `dns/custom.conf` 裡寫自己的規則——那個檔案 Runestone 永遠不會覆寫。
 
+有一個名稱不是來自任何憑證，但也會被回答：`host.docker.internal`，答成 Target IP。依定義那就是這個名稱自己的 IPv4 位址，所以它的意義沒有改變。這一條存在的原因是：Docker Desktop 用它自己的 resolver 回答這個名稱，而 DNS 功能開啟後 container 就不再問那個 resolver；少了這一條，所有指南用來連回主機的那個名稱，在每個 container 裡都是 NXDOMAIN。
+
 ## 只支援 IPv4，以及為什麼
 
 **這是一開始就下的範圍決策，不是實作剛好長成這樣。**

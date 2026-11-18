@@ -121,13 +121,15 @@ export function printDnsStatus(report: DnsStatusReport): void {
   } else if (!report.service) {
     line(t('dns.status.service.absent'));
   } else {
+    // The state is said once, coloured in place. It used to be printed twice,
+    // as a prefix and again inside the sentence: "running runestone-dns is running".
     const running = report.service.state === 'running';
     line(
-      `${running ? green('running') : red(report.service.state)} ${t('dns.status.service.state', {
+      t('dns.status.service.state', {
         name: report.service.name,
-        state: report.service.state,
+        state: running ? green(report.service.state) : red(report.service.state),
         status: report.service.status
-      })}`
+      })
     );
   }
 

@@ -24,7 +24,7 @@
  * told about. It is not the CLI version: a patch release that does not touch
  * the corpus should not mark every installation stale.
  */
-export const SKILL_TEMPLATE_VERSION = 1;
+export const SKILL_TEMPLATE_VERSION = 2;
 
 /** Marks a whole file as generated. Every file Runestone writes carries it. */
 export const FILE_MARKER = 'runestone:generated';

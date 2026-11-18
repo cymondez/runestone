@@ -54,6 +54,14 @@ The first time you run it, an interactive setup wizard will appear. To change se
 runestone up
 ```
 
+### Check Status
+
+`runestone status` starts with whether Runestone can be used right now, lists the Traefik and Mailpit addresses every project can use, and ends with anything that needs attention and the command that fixes it. `--json` prints the same report for scripts and AI agents.
+
+```bash
+runestone status
+```
+
 ### Stop Or Shut Down
 
 Note: If Runestone was not stopped before shutting down your system, it will start automatically on the next boot.
@@ -114,9 +122,11 @@ runestone certs remove <domain>
 
 ## Service Management
 
+`runestone service` is for something that is not in Docker and that you want on a Runestone hostname: a dev server on the host, a process that is already running, or an external URL. These are routes you add yourself, not the services Runestone provides; `runestone status` shows those. A project that runs in Docker uses Traefik labels instead.
+
 ### Add Service
 
-Adds a routed service and creates the matching dynamic Traefik configuration.
+Adds a route and creates the matching dynamic Traefik configuration.
 When required arguments are missing or invalid, Runestone enters interactive mode to complete them.
 
 ```bash
@@ -125,7 +135,7 @@ runestone service add <service name> --route <domain> --url <url with port> --gr
 
 ### List Services
 
-Shows configured routed services.
+Shows the routes added with `service add`.
 
 ```bash
 runestone service list
@@ -133,10 +143,27 @@ runestone service list
 
 ### Remove Service
 
-Removes a routed service and deletes its matching dynamic Traefik configuration.
+Removes a route and deletes its matching dynamic Traefik configuration.
 
 ```bash
 runestone service remove <service name>
+```
+
+### Check A Name
+
+Says whether a name and a hostname are still free across every project on this machine. It changes nothing.
+
+```bash
+runestone service check <service name> --route <domain>
+```
+
+## Shared Resources
+
+Declare the backing services on this machine that projects should use instead of adding their own, such as one Postgres or Redis. AI agents see them in the guidance. Runestone only records them: it does not start or check them, and a resource has no password field.
+
+```bash
+runestone resource add <name> --kind <kind> --host <host:port> --container <host:port>
+runestone resource list
 ```
 
 ## Project Integration
@@ -157,7 +184,7 @@ Or print the guidance and paste it yourself:
 runestone docs --ai-context
 ```
 
-Add a topic — `service`, `state`, `troubleshoot` or `overview` — for the rest. Every topic ends with the list of the others, so an agent that runs the bare command finds them on its own.
+With no topic it prints the whole guide: how to choose between the two ways of connecting a project, then both of them. Add a topic for one part — `state` for this machine's live facts, `troubleshoot` when a route does not work, `all` for everything — and `runestone docs --help` lists them all.
 
 Or connect Runestone as a read-only MCP server:
 

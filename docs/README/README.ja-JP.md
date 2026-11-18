@@ -54,6 +54,14 @@ runestone doctor
 runestone up
 ```
 
+### 状態の確認
+
+`runestone status` は、まず Runestone が今使える状態かどうかを示し、すべてのプロジェクトが使える Traefik と Mailpit のアドレスを表示し、最後に対応が必要な問題とその修正コマンドを表示します。`--json` は同じレポートをスクリプトや AI エージェント向けに JSON で出力します。
+
+```bash
+runestone status
+```
+
 ### 停止または終了
 
 注意: システムのシャットダウン前に Runestone を停止していない場合、次回ブート時に自動的に起動します。
@@ -114,9 +122,11 @@ runestone certs remove <domain>
 
 ## Service 管理
 
+`runestone service` は、Docker の外にあって Runestone のホスト名で開きたいものを公開するためのものです: ホストの開発サーバー、起動済みのプロセス、外部 URL。ここにあるのは自分で追加したルートで、Runestone が提供するサービスではありません。そちらは `runestone status` で確認します。Docker 内のプロジェクトは Traefik ラベルを使います。
+
 ### Service の追加
 
-Routed service を追加し、対応する Traefik の動的設定を作成します。
+ルートを追加し、対応する Traefik の動的設定を作成します。
 必須引数が不足している、または不正な場合、Runestone は対話モードで不足分を入力します。
 
 ```bash
@@ -125,7 +135,7 @@ runestone service add <service name> --route <domain> --url <url with port> --gr
 
 ### Service 一覧
 
-設定済みの routed services を表示します。
+`service add` で追加したルートを表示します。
 
 ```bash
 runestone service list
@@ -133,10 +143,27 @@ runestone service list
 
 ### Service の削除
 
-Routed service を削除し、対応する Traefik の動的設定も削除します。
+ルートを削除し、対応する Traefik の動的設定も削除します。
 
 ```bash
 runestone service remove <service name>
+```
+
+### 名前の確認
+
+名前とホスト名が、このマシンのすべてのプロジェクトでまだ使われていないかを確認します。何も変更しません。
+
+```bash
+runestone service check <service name> --route <domain>
+```
+
+## 共有リソース
+
+このマシンで各プロジェクトが自前で追加せずに共有すべきバックエンドサービス（たとえば 1 つの Postgres や Redis）を宣言します。AI エージェントはガイダンスの中でそれらを確認できます。Runestone は記録するだけで、起動も確認もしません。リソースにパスワード欄はありません。
+
+```bash
+runestone resource add <name> --kind <kind> --host <host:port> --container <host:port>
+runestone resource list
 ```
 
 ## プロジェクト統合
@@ -157,7 +184,7 @@ runestone skill install
 runestone docs --ai-context
 ```
 
-他のトピックは引数で指定します — `service`、`state`、`troubleshoot`、`overview`。どのトピックも末尾で他のトピックを一覧するので、引数なしで実行しただけのエージェントも残りを自分で見つけられます。
+引数なしでは完全なガイドを出力します。まず 2 つの接続方法の選び方、次に両方の手順です。一部だけなら引数で指定します — このマシンの現在の状態は `state`、ルートが動かないときは `troubleshoot`、すべてなら `all`。`runestone docs --help` で全トピックを確認できます。
 
 あるいは Runestone を読み取り専用の MCP サーバーとして接続します:
 

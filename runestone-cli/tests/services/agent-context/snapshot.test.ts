@@ -12,8 +12,10 @@ import {
 import {
   renderDnsState,
   renderDomains,
+  renderResources,
   renderRuntime,
   renderUsedNames,
+  routedHostnames,
   renderWarnings
 } from '../../../src/services/agent-context/render';
 import { composeService } from '../../../src/services/docker-compose';
@@ -58,6 +60,7 @@ function deps(
   return {
     listCertificates: () => certificates,
     listServices: () => services,
+    listResources: () => [],
     now: () => new Date('2026-09-07T00:00:00.000Z')
   };
 }
@@ -167,7 +170,7 @@ describe('the offline snapshot', () => {
 
     expect(snapshot.services).toEqual([]);
     expect(snapshot.warnings.join(' ')).not.toContain('routed service');
-    expect(renderUsedNames(snapshot)).toContain('No routed services are registered');
+    expect(renderUsedNames(snapshot)).toContain('No routes have been added with `runestone service add`');
   });
 
   it('collects the names and routes an agent must not collide with', () => {
@@ -230,6 +233,10 @@ describe('the live snapshot', () => {
       ...deps([certificate()], [service()]),
       listContainers: () => containers,
       readTraefik: async () => traefik,
+      listNetworkMembers: () => [
+        { container: 'runestone', project: 'runestone', service: 'runestone' },
+        { container: 'other-api-1', project: 'other', service: 'api' }
+      ],
       ...overrides
     };
   }
@@ -242,6 +249,36 @@ describe('the live snapshot', () => {
     expect(snapshot.probeMode).toBe('live');
     expect(snapshot.traefik.ok).toBe(true);
     expect(renderUsedNames(snapshot)).toContain('other@docker');
+  });
+
+  it('says the @provider suffix is not part of the name a label uses', async () => {
+    // Traefik reports `other@docker`; a label writes `other`. An agent comparing
+    // the two as printed concludes the name is free. service-manager compares
+    // the part before the @, and the list now says so.
+    const text = renderUsedNames(await buildLiveSnapshot(config(), liveDeps()));
+
+    expect(text).toContain('uses the part before the `@`');
+  });
+
+  it('also reports the Traefik service IDs and the hostnames other projects route', async () => {
+    // Router IDs alone did not say which hostnames were taken, so an agent
+    // could pick a router ID that was free and a hostname that was not.
+    const snapshot = await buildLiveSnapshot(config(), liveDeps());
+    const text = renderUsedNames(snapshot);
+
+    expect(text).toContain('Traefik service IDs already registered, including by other projects: mine@file');
+    expect(text).toContain('Hostnames already routed, including by other projects: api.example.test');
+  });
+
+  it('reads hostnames from Host matchers only, not from HostRegexp', () => {
+    expect(
+      routedHostnames([
+        { rule: 'Host(`A.example.test`) && PathPrefix(`/api`)' },
+        { rule: 'Host(`b.example.test`, `c.example.test`)' },
+        { rule: 'HostRegexp(`^.+.example.test$`)' },
+        { rule: null }
+      ])
+    ).toEqual(['a.example.test', 'b.example.test', 'c.example.test']);
   });
 
   it('normalises an absent Traefik rule to null so the shape survives JSON', async () => {
@@ -372,15 +409,19 @@ describe('who is allowed to reach the snapshot module', () => {
     // which means seeing this list change in a diff.
     const allowed = [
       path.join('src', 'commands', 'docs.ts'),
-      // Renders the corpus for installation. It uses the offline builder only:
-      // an installed file outlives the moment it was written, so a live fact
-      // baked into one would be a lie within minutes.
-      path.join('src', 'commands', 'skill.ts'),
+      // `service check` answers "is this name free right now" with the same
+      // live check as the MCP tool, and writes nothing down.
+      path.join('src', 'commands', 'service.ts'),
       // The MCP tools answer questions about right now, so unlike the
       // installer they may — and for collision checking must — use the live
       // builder. The answer is consumed immediately and never written down.
       path.join('src', 'services', 'mcp', 'server.ts'),
-      path.join('src', 'services', 'mcp', 'tools.ts')
+      path.join('src', 'services', 'mcp', 'tools.ts'),
+      // `runestone status` answers whether Runestone can be used right now, for
+      // a person or an agent trying to find out what is wrong. It uses the live
+      // builder, keeps the container probe at its thirty-second default because
+      // someone is waiting on the answer, and writes nothing down.
+      path.join('src', 'services', 'status-report.ts')
     ];
 
     const srcDir = path.resolve(__dirname, '..', '..', '..', 'src');
@@ -403,17 +444,124 @@ describe('who is allowed to reach the snapshot module', () => {
     expect(importers).toEqual(allowed.sort());
   });
 
-  it('does not let the installer reach the live builder', () => {
-    // The comment in the allowlist above is a claim; this is the assertion.
-    // An installed file carries offline scalars and tells the agent to run the
-    // state topic for anything live, which is the whole reason to install a
-    // skill rather than paste a blob of context.
+  it('does not let the installer read machine state at all', () => {
+    // It used the offline builder until 2.2.0. Offline is not the same as
+    // stable: certificates, routes and the trust store change after install,
+    // and the installed copy then differed from a fresh render, which skill
+    // status reported as a user edit. An installed file carries .env scalars
+    // and points at the state topic for everything else.
     const source = fs.readFileSync(
       path.resolve(__dirname, '..', '..', '..', 'src', 'commands', 'skill.ts'),
       'utf8'
     );
 
-    expect(source).toContain('buildOfflineSnapshot');
-    expect(source).not.toContain('buildLiveSnapshot');
+    expect(source).not.toMatch(/agent-context/);
+    expect(source).toContain('installedFactPointers');
+  });
+});
+
+describe('warnings an agent sees in the state topic', () => {
+  it('warns about a DNS web UI without authentication, from .env alone', () => {
+    const open = buildOfflineSnapshot(
+      config({ DNS_ENABLE: 'true', DNS_UI_ENABLE: 'true', DNS_UI_USER: '', DNS_UI_PASS: '' }),
+      deps([certificate()], [])
+    );
+    const closed = buildOfflineSnapshot(
+      config({ DNS_ENABLE: 'true', DNS_UI_ENABLE: 'true', DNS_UI_USER: 'me', DNS_UI_PASS: 'secret' }),
+      deps([certificate()], [])
+    );
+
+    expect(open.warnings.join(' ')).toContain('has no authentication');
+    expect(renderWarnings(open)).not.toBe('Nothing to flag.');
+    expect(closed.warnings.join(' ')).not.toContain('has no authentication');
+  });
+
+  it('says why container state is unknown in an offline topic, not just that it is', () => {
+    expect(renderRuntime(buildOfflineSnapshot(config(), deps([], [])))).toContain('`runestone status`');
+  });
+});
+
+describe('the root CA in the agent context', () => {
+  it('warns when the system trust store lacks it, and says who runs the fix', () => {
+    const snapshot = buildOfflineSnapshot(config(), { ...deps([certificate()], []), caTrust: () => 'not-trusted' });
+
+    expect(snapshot.caTrust).toBe('not-trusted');
+    expect(snapshot.warnings.join(' ')).toContain('runestone certs install');
+    expect(snapshot.warnings.join(' ')).toContain('do not run it yourself');
+  });
+
+  it('says nothing when it is trusted, or when there is no root CA yet', () => {
+    for (const caTrust of ['trusted', 'no-root-ca', 'unknown'] as const) {
+      const snapshot = buildOfflineSnapshot(config(), { ...deps([certificate()], []), caTrust: () => caTrust });
+      expect(snapshot.warnings.join(' ')).not.toContain('root CA');
+    }
+  });
+});
+
+describe('names on the shared network', () => {
+  // Measured on 2026-10-14 with temporary networks: a service on its own
+  // network and the shared one resolved a sibling's name to another project's
+  // container whenever the shared network's name sorted first.
+  const base = {
+    ...deps([certificate()], []),
+    listContainers: () => [{ Id: '1', Name: 'runestone', State: 'running', Status: 'Up', Service: 'runestone' }],
+    readTraefik: async () => ({ routers: [], services: [] })
+  };
+
+  it('lists every name a container on it answers to, in the state topic', async () => {
+    const snapshot = await buildLiveSnapshot(config(), {
+      ...base,
+      listNetworkMembers: () => [
+        { container: 'other-api-1', project: 'other', service: 'api' },
+        { container: 'plain', project: null, service: null }
+      ]
+    });
+
+    const text = renderUsedNames(snapshot);
+    // testEnv fixes NETWORK_NAME at runestone-network whatever PREFIX is.
+    expect(text).toContain('Names already on the shared `runestone-network` network');
+    expect(text).toContain('api, other-api-1, plain');
+  });
+
+  it('says the names are unknown when they could not be listed, not that there are none', async () => {
+    const snapshot = await buildLiveSnapshot(config(), {
+      ...base,
+      listNetworkMembers: () => {
+        throw new Error('timed out');
+      }
+    });
+
+    expect(renderUsedNames(snapshot)).toContain('could not be listed (timed out)');
+  });
+
+  it('is not asked offline, nor when Docker did not answer', async () => {
+    const listNetworkMembers = jest.fn(() => []);
+    buildOfflineSnapshot(config(), { ...base, listNetworkMembers });
+    await buildLiveSnapshot(config(), {
+      ...base,
+      listContainers: () => {
+        throw new Error('Cannot connect to the Docker daemon');
+      },
+      listNetworkMembers
+    });
+
+    expect(listNetworkMembers).not.toHaveBeenCalled();
+  });
+});
+
+describe('shared resources in the agent context', () => {
+  const pg = { name: 'shared-pg', kind: 'postgres', hostAccess: 'localhost:5432', containerAccess: 'host.docker.internal:5432', notes: 'One database per project.' };
+
+  it('lists each with both addresses, and the line that makes host.docker.internal resolve', () => {
+    const snapshot = buildOfflineSnapshot(config(), { ...deps([certificate()], []), listResources: () => [pg] });
+    const text = renderResources(snapshot);
+
+    expect(text).toContain('shared-pg (postgres): from a process on the host `localhost:5432`; from a container `host.docker.internal:5432`.');
+    expect(text).toContain('host.docker.internal:host-gateway');
+    expect(text).toContain('not verified');
+  });
+
+  it('tells the agent to ask before adding its own when none is declared', () => {
+    expect(renderResources(buildOfflineSnapshot(config(), deps([certificate()], [])))).toContain('ask the user whether one already runs');
   });
 });

@@ -129,7 +129,7 @@ describe('generated compose file', () => {
     });
 
     it('pins the image and tag literally, so no environment variable can redirect it', () => {
-      expect(dns().image).toBe('cymondez/runestone-dns:1.0');
+      expect(dns().image).toBe('cymondez/runestone-dns:1.1');
       expect(dns().image).not.toContain('$');
     });
 

@@ -162,16 +162,7 @@ describe('runestone CLI actual execution integration', () => {
   let dockerLog: string;
   let env: NodeJS.ProcessEnv;
 
-  beforeAll(() => {
-    const build = spawnSync(node, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'), '--project', 'tsconfig.json'], {
-      cwd: root,
-      encoding: 'utf8'
-    });
-
-    if (build.status !== 0) {
-      throw new Error(build.stderr || build.stdout);
-    }
-  });
+  // dist/ is compiled once by tests/helpers/build-cli.js (jest globalSetup).
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-cli-exec-'));

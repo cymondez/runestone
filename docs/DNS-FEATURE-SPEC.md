@@ -360,7 +360,9 @@ Generation rules:
 - `managed.conf`: the entrypoint scans the read-only `/ssl` mount for `*.crt`, excluding `rootCA.crt` by name, and reads every `DNS:` entry out of each certificate's subjectAltName. Each name is lowercased, a leading `*.` is removed, anything that is not a valid domain is skipped and reported, duplicates are collapsed, and one `address=/<domain>/<DNS_HOST_IP>` line is emitted per remaining name. Every line written is logged. dnsmasq's `address=/domain/ip` covers both the domain and all of its subdomains (verified), which is why stripping the wildcard loses nothing.
 
   **The names come from the certificate, never from its filename.** A file can be renamed, and it can carry names that have nothing to do with what it is called; the filename is not what Traefik will serve. A certificate whose names cannot be read is skipped and reported — it never falls back to the filename, because falling back to an unreliable source is worse than a mapping that is visibly missing. Reading the certificate requires `openssl` in the image.
-- `dnsmasq.conf`: rendered by the entrypoint from environment variables, containing `no-resolv`, the `server=` list expanded from `DNS_UPSTREAM`, and includes of `managed.conf` and `custom.conf`.
+- `dnsmasq.conf`: rendered by the entrypoint from environment variables, containing `no-resolv`, the `server=` list expanded from `DNS_UPSTREAM`, `address=/host.docker.internal/<DNS_HOST_IP>`, and includes of `managed.conf` and `custom.conf`.
+
+  **`host.docker.internal` is answered here.** Docker Desktop answers that name from its own resolver, and once the daemon's `dns` array puts this service first, containers stop asking it: measured on 2026-10-14, the name was NXDOMAIN in containers on the default bridge, the Runestone network and another user-defined network. The answer is the Target IP, which by definition (section 4) is that name's IPv4 address, so the name keeps meaning what it meant. It is in `dnsmasq.conf` and not in `managed.conf` because it comes from the environment rather than from a certificate, and the CLI compares `managed.conf` line for line with the certificates (`readMappingState`). Image `cymondez/runestone-dns:1.1`.
 - `custom.conf`: the CLI must ensure this file exists before starting the dns service (**bind-mounting a file that does not exist makes Docker create a directory instead**), containing explanatory comments.
 
 When regeneration happens:
@@ -754,6 +756,7 @@ On each platform verify: enable → a new container's resolv.conf lists the Targ
 
 - Both `linux/amd64` and `linux/arm64` start successfully, and dnsmasq answers on both 53/tcp and 53/udp.
 - Mapping generation rules (verified with a fixture `/ssl` directory of real certificates): one `address=` line per `DNS:` name, names taken from the certificate rather than the filename, `rootCA.crt` excluded by name even when it carries names, invalid domains excluded, unparseable files skipped, duplicates collapsed, and a clean start when the directory is empty.
+- `host.docker.internal` is answered with the Target IP, and appears in `dnsmasq.conf` but not in `managed.conf`.
 - **Tamper resistance**: after editing `/etc/dnsmasq.conf` and `/etc/dnsmasq.d/managed.conf` inside the container, restarting the container restores both, while `custom.conf` is left completely untouched by the same restart.
 - After a host reboot or Docker restart where `restart: unless-stopped` brings the container back, the configuration is still correct without any CLI command having run.
 - After editing `custom.conf` through webproc, dnsmasq is restarted and the new rules take effect.

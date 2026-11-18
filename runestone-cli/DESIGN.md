@@ -59,7 +59,7 @@ runestone up
 | 情境 | 命令 | 結果 |
 | --- | --- | --- |
 | 啟動環境 | `runestone up` | 啟動 Runestone services，並顯示 Traefik / Mailpit URL。 |
-| 查看狀態 | `runestone status` | 顯示 containers、SSH keys、network、volume 狀態。 |
+| 查看狀態 | `runestone status` | 第一行說明 Runestone 現在能不能用，接著列出它提供的 Traefik／Mailpit 位址、containers、network、volume、DNS、憑證與路由、SSH keys，最後列出需要處理的問題與處理方式。 |
 | 暫停環境 | `runestone stop` | 停止 services，保留設定與資料。 |
 | 關閉環境 | `runestone down` | 移除 services，可選擇清理 network、volume、image。 |
 | 檢查主機 | `runestone doctor` | 檢查 Docker、Compose、憑證信任工具是否可用。 |
@@ -101,7 +101,7 @@ Runestone CLI 需支援啟動、停止、移除與狀態檢查。
 | SSH key 注入 | 啟動時自動注入常見 SSH private keys；並提供手動新增方式。 |
 | 停止 | 停止 services，保留設定、憑證、network 與 volume。 |
 | 移除 | 移除 services；可由使用者選擇是否移除 network、volume、image。 |
-| 狀態 | 顯示 containers、SSH keys、network、volume 的目前狀態。 |
+| 狀態 | 先給結論（可以使用、需要處理、已停止、連不到 Docker、尚未設定），再列出各項目前狀態；每個問題附上會修好它的指令。`--json` 輸出同一份報告給 script 與 AI agent。network 與 volume 以「存在／不存在」表示，不用「running」。 |
 
 ### 6.3 憑證管理
 
@@ -157,7 +157,7 @@ Runestone CLI 需支援管理注入到 Runestone 開發環境的 SSH keys。
 
 `runestone docs` 用於提供文件入口。
 
-`runestone docs --ai-context [topic]` 輸出 agent 接入專案所需的資訊。主題為 `compose`（預設）、`service`、`state`、`troubleshoot`、`overview`。無參數時等同 `compose`，此為相容性要求。
+`runestone docs --ai-context [topic]` 輸出 agent 接入專案所需的資訊。主題為 `guide`（預設）、`compose`、`service`、`state`、`troubleshoot`、`overview`、`all`。無參數時輸出 `guide`：overview → compose → service，先說怎麼在兩條接入路徑之間選擇，再列出兩條路徑；它完整包含 `compose` 主題，所以為舊行為寫的 prompt 拿到的內容只多不少（相容性處理見 `docs/SKILL-FEATURE-SPEC.md` §7.2）。MCP 的 `runestone_integration_guide` 回傳同一份內容。
 
 離線主題內容需包含：
 
@@ -186,6 +186,10 @@ Runestone CLI 需支援管理注入到 Runestone 開發環境的 SSH keys。
 
 `runestone mcp serve` 以 stdio 提供唯讀 MCP server，`runestone mcp config` 印出各 client 的註冊區塊（不代為寫入）。MCP 不提供任何變更狀態的工具。
 
+`runestone service` 是使用者自己加上的路由：把不在 Docker 裡的東西（host 上的 dev server、已經在跑的程式、外部 URL）掛到 Runestone 網址。它不是 Runestone 自己提供的服務；Runestone 提供的 Traefik 與 Mailpit 由 `runestone status` 顯示。help 與語料需同時說明它是什麼與不是什麼，因為 agent 會把「service」讀成「Runestone 提供的服務」。
+
+2.x 維持 `service` 這個名稱；3.x 將改名為 `runestone route`，`service` 保留為 alias。2.x 的 help 與語料不提 `route`，以免 agent 去試一個還不存在的指令。
+
 ## 7. 命令範圍
 
 Runestone CLI 需提供下列命令：
@@ -204,6 +208,7 @@ runestone down --remove-network
 runestone down --remove-volumes
 runestone down --purge
 runestone status
+runestone status --json
 runestone certs install
 runestone certs create <domain>
 runestone certs list
@@ -211,6 +216,19 @@ runestone certs list --no-header
 runestone certs remove <domain>
 runestone keys ls
 runestone keys add <path>
+runestone service add [name] --route <domain> --url <url>
+runestone service modify <name>
+runestone service repair <name>
+runestone service check [name] --route <domain>
+runestone service check [name] --route <domain> --json
+runestone service list
+runestone service list --no-header
+runestone service remove <name>
+runestone service group list|clean|move
+runestone resource add [name] --kind <kind> --host <host:port> --container <host:port> [--notes <text>]
+runestone resource list [--json]
+runestone resource modify <name>
+runestone resource remove <name> [--force]
 runestone skill install [dir]
 runestone skill status [dir]
 runestone skill remove [dir]
@@ -228,9 +246,14 @@ runestone certs ls
 runestone certs rm <domain>
 runestone certs del <domain>
 runestone keys list
+runestone service m <name>
+runestone service ls
+runestone service rm <name>
 runestone skill rm <dir>
 runestone skill del <dir>
 ```
+
+`runestone service` 在 3.x 將改名為 `runestone route`，`service` 保留為 alias（見 6.6）。
 
 ## 8. 設定需求
 
@@ -305,7 +328,7 @@ Runestone 會處理 SSH private keys 與本地 CA，因此需符合：
 - 使用者可透過 npm 安裝並取得 `runestone` 命令。
 - 第一次執行 `runestone up` 時，若尚未設定會自動進入 setup。
 - setup 後可成功啟動 Runestone 開發環境。
-- `status` 可顯示 containers、network、volume、SSH keys。
+- `status` 第一行給出結論，並可顯示 containers、network、volume、SSH keys、Runestone 提供的端點與需要處理的問題；`--json` 輸出同一份報告。
 - `stop` 可停止 services 並保留資料。
 - `down` 可移除 services，並可選擇清理 network、volume、image。
 - certificate commands 可安裝 root CA、建立、列出與移除 domain certificates。

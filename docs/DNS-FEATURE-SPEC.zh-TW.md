@@ -360,7 +360,9 @@ Runestone 擁有的兩個設定檔 `/etc/dnsmasq.conf` 與 `/etc/dnsmasq.d/manag
 - `managed.conf`：entrypoint 掃描唯讀掛載的 `/ssl`，取 `*.crt`，依檔名排除 `rootCA.crt`，然後從每張憑證的 subjectAltName 讀出所有 `DNS:` 項目。每個名稱轉小寫、去掉開頭的 `*.`、不是合法 domain 的跳過並回報、重複的合併，剩下的每一個產生一條 `address=/<domain>/<DNS_HOST_IP>`，而且每寫一條就 log 一條。dnsmasq 的 `address=/domain/ip` 會同時涵蓋該 domain 與其所有子網域（實測確認），所以去掉萬用字元不會損失任何涵蓋範圍。
 
   **名稱來自憑證本身，絕不來自檔名。** 檔案可以被改名，也可以帶著與檔名毫無關係的名稱，而檔名並不是 Traefik 會拿去服務的東西。讀不到名稱的憑證一律跳過並回報，**不回退到檔名**——回退到一個不可靠的來源，比一條看得見的缺漏更糟。讀憑證需要 image 裡有 `openssl`。
-- `dnsmasq.conf`：entrypoint 依環境變數 render，包含 `no-resolv`、依 `DNS_UPSTREAM` 展開的 `server=` 清單，並 include `managed.conf` 與 `custom.conf`。
+- `dnsmasq.conf`：entrypoint 依環境變數 render，包含 `no-resolv`、依 `DNS_UPSTREAM` 展開的 `server=` 清單、`address=/host.docker.internal/<DNS_HOST_IP>`，並 include `managed.conf` 與 `custom.conf`。
+
+  **`host.docker.internal` 由這裡回答。** Docker Desktop 用它自己的 resolver 回答這個名稱；daemon 的 `dns` 陣列把本服務排到第一之後，container 就不再問它了。2026-10-14 實測：預設 bridge、Runestone 網路、另一個使用者自建網路上的 container 解析這個名稱都是 NXDOMAIN。回答的位址是 Target IP，依第 4 節的定義它就是這個名稱的 IPv4 位址，所以名稱的意義不變。它放在 `dnsmasq.conf` 而不是 `managed.conf`，因為它來自環境變數而不是憑證，而 CLI 會把 `managed.conf` 與憑證逐行比對（`readMappingState`）。映像 `cymondez/runestone-dns:1.1`。
 - `custom.conf`：CLI 必須在啟動 dns 服務前確保該檔存在（**bind-mount 一個不存在的檔案會被 Docker 建成目錄**），內容為說明註解。
 
 重新產生的時機：
@@ -754,6 +756,7 @@ DNS 相關共四題，順序固定，第二三四題僅在啟用時出現：
 
 - `linux/amd64` 與 `linux/arm64` 兩個平台都要能啟動，並確認 dnsmasq 同時回應 53/tcp 與 53/udp。
 - mapping 產生規則（用一份放真實憑證的 fixture `/ssl` 目錄驗證）：每個 `DNS:` 名稱產生一條 `address=`、名稱取自憑證而非檔名、`rootCA.crt` 即使帶有名稱仍依檔名排除、排除非法 domain、無法解析的檔案跳過、重複合併、目錄為空時仍能正常啟動。
+- `host.docker.internal` 以 Target IP 回答，而且只出現在 `dnsmasq.conf`，不在 `managed.conf`。
 - **防篡改**：在容器內手改 `/etc/dnsmasq.conf` 與 `/etc/dnsmasq.d/managed.conf` 後重啟容器，兩者內容都被還原；同一次重啟中 `custom.conf` 的內容完全未被覆寫。
 - 主機重開機／Docker 重啟後由 `restart: unless-stopped` 拉起時，設定同樣正確，且過程中未執行任何 CLI 命令。
 - webproc 修改 `custom.conf` 後，dnsmasq 有被重啟且新規則生效。

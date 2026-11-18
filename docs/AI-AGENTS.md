@@ -11,18 +11,28 @@ commands below produce nothing until `runestone setup` has been run.
 
 ## What the agent gets
 
-Two things it cannot work out on its own.
+Three things it cannot work out on its own.
+
+**What Runestone already runs.** Traefik and Mailpit are already running for
+every project on the machine. The guidance tells the agent not to add its own
+reverse proxy or mail catcher, and where to send the project's mail.
+`runestone status` shows the same addresses.
 
 **Which of the two integration paths applies.** A project that runs in Docker is
 connected with Traefik labels. A host dev server, an already-running process or
-an external URL is connected with `runestone service add`. Getting this wrong
+an external URL is connected with `runestone service add`: a route you add
+yourself, not a service Runestone provides. Getting this wrong
 fails quietly: labels on a project with no container are inert, and a
 file-provider entry pointing at `localhost` reaches the Runestone container
 rather than your machine.
 
 **Facts about this machine.** Which hostnames a certificate covers, and which
 router and service names are already registered — including by other projects,
-which is not visible from your project at all.
+which is not visible from your project at all. The agent checks the name and
+hostname it chose with `runestone service check`, which changes nothing. The
+shared resources you declared with `runestone resource add`, such as one
+Postgres for every project, are listed too, so the agent uses them rather than
+adding its own.
 
 ## Three ways to use it
 
@@ -32,17 +42,18 @@ which is not visible from your project at all.
 runestone docs --ai-context
 ```
 
-Prints the compose brief. Add a topic for the rest:
+Prints the whole guide: how to choose between the two ways of connecting a
+project, then both of them. Add a topic for one part:
 
 ```bash
-runestone docs --ai-context service        # not in Docker
 runestone docs --ai-context state          # live facts about this machine
-runestone docs --ai-context troubleshoot   # 404, 502, certificate warnings
-runestone docs --ai-context overview       # how to choose, and what not to run
+runestone docs --ai-context troubleshoot   # a route that does not work
+runestone docs --ai-context compose        # only the path for a project in Docker
+runestone docs --ai-context service        # only the path for something not in Docker
+runestone docs --ai-context all            # everything, including the live facts
 ```
 
-Every topic ends with the list of the others, so an agent that runs the bare
-command finds the rest by itself.
+`runestone docs --help` lists every topic.
 
 ### Install it into a project
 
@@ -152,6 +163,7 @@ they change things beyond the project it is working on:
 | `runestone setup` | Rewrites the configuration every project shares |
 | `runestone down` | Removes the environment, and with flags its data too |
 | `runestone up`, `runestone stop` | Changes what is running for every project |
+| `runestone resource add`, `modify`, `remove` | The list is your statement of what runs on this machine, for every project |
 
 It will run `runestone service add`, `runestone service remove` and
 `runestone certs create` as part of connecting your project, and read-only
@@ -161,6 +173,12 @@ commands such as `runestone status` whenever it needs to look something up.
 
 **The command prints nothing and exits with an error.** Runestone is not
 configured yet. Run `runestone setup`.
+
+**The agent reports "There is no terminal to answer this question".** It ran a
+command that wanted to ask you something, from a shell that has no terminal.
+The message says what to pass instead: `runestone service add`, for instance,
+needs the name, `--route` and `--url` on the command line, and a hostname a
+certificate already covers.
 
 **The installed guidance is out of date.** Upgrading Runestone does not rewrite
 files already in your repository. `runestone skill status` reports it, and

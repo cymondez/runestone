@@ -26,10 +26,9 @@ export interface TopicDefinition {
 }
 
 /**
- * `compose` is first and is the default, which is a compatibility
- * requirement rather than an editorial one: a bare `--ai-context` has meant
- * this topic since 1.0.1, and the README ships example prompts containing
- * that exact invocation (spec 7.2).
+ * `compose` is first because a bare `--ai-context` meant this topic from 1.0.1
+ * until the guide replaced it, and the README ships example prompts with that
+ * exact invocation (spec 7.2). The guide still contains it in full.
  */
 export const TOPICS: readonly TopicDefinition[] = [
   {
@@ -69,7 +68,27 @@ export const TOPICS: readonly TopicDefinition[] = [
   }
 ] as const;
 
+/**
+ * What `renderAiPromptContext` renders, kept for its callers. It is no longer
+ * what a bare `--ai-context` prints: that is `GUIDE_TOPIC`, below.
+ */
 export const DEFAULT_TOPIC = 'compose';
+
+/**
+ * What a bare `runestone docs --ai-context` prints, and what the MCP
+ * `runestone_integration_guide` tool returns: how to connect a project, with
+ * the choice between the two paths before either path. Not a manifest entry: it
+ * has no asset.
+ *
+ * A bare `--ai-context` used to mean the compose topic alone, which told a
+ * project with no container to "create compose.yml"; the choice lived only in
+ * the footer. MCP was corrected the same way in C4 (spec 11.2). The guide
+ * contains the compose topic in full, so a prompt written for the old
+ * behaviour receives everything it did before, plus the choice it was missing.
+ */
+export const GUIDE_TOPIC = 'guide';
+
+export const GUIDE_TOPIC_ORDER: readonly string[] = ['overview', 'compose', 'service'];
 
 /** Renders every topic in one go. Not a manifest entry: it has no asset. */
 export const ALL_TOPIC = 'all';
@@ -88,9 +107,18 @@ export function topicIds(): string[] {
   return TOPICS.map((topic) => topic.id);
 }
 
-/** Everything `--ai-context` accepts, `all` included. */
+/** Everything `--ai-context` accepts, `guide` and `all` included. */
 export function selectableTopicIds(): string[] {
-  return [...topicIds(), ALL_TOPIC];
+  return [GUIDE_TOPIC, ...topicIds(), ALL_TOPIC];
+}
+
+/** The topics a composite value renders, in order, or undefined for a single topic. */
+export function compositeTopicOrder(id: string): readonly string[] | undefined {
+  if (id === GUIDE_TOPIC) {
+    return GUIDE_TOPIC_ORDER;
+  }
+
+  return id === ALL_TOPIC ? ALL_TOPIC_ORDER : undefined;
 }
 
 export function findTopic(id: string): TopicDefinition | undefined {

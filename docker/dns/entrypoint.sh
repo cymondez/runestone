@@ -115,9 +115,20 @@ generate_dnsmasq_conf() {
         IFS=$old_ifs
 
         echo
+        echo "# Docker Desktop answers host.docker.internal from its own resolver, which"
+        echo "# containers stop asking once the daemon's dns setting puts this one first."
+        echo "# The answer is the Target IP, which is host.docker.internal's own IPv4"
+        echo "# address. It lives here rather than in managed.conf because it comes from"
+        echo "# the environment, not from a certificate, and the CLI compares managed.conf"
+        echo "# with the certificates."
+        echo "address=/host.docker.internal/$DNS_HOST_IP"
+
+        echo
         echo "conf-file=$MANAGED_CONF"
         echo "conf-file=$CUSTOM_CONF"
     } > "$DNSMASQ_CONF"
+
+    log "mapping host.docker.internal -> $DNS_HOST_IP"
 }
 
 generate_managed_conf() {
