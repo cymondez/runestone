@@ -81,6 +81,24 @@ function renderFooter(): string {
 const GUIDE_SUMMARY = 'How to connect a project: overview, compose and service in one go. What a bare `--ai-context` prints.';
 const ALL_SUMMARY = 'Every topic in one go, including the live state and troubleshooting.';
 
+/**
+ * Every fact block the corpus uses, rendered as a pointer instead of a value.
+ *
+ * For files installed into someone's repository. The values come from the
+ * certificate directory, the routes, the trust store and `.env`, and they
+ * change after the file is written: a certificate created or a route added
+ * afterwards made the installed copy differ from a fresh render, and
+ * `skill status` then reported the file as edited by the user. Only `.env`
+ * scalars are safe to write down (AGENTS.md, spec 6.2); everything else is
+ * one command away.
+ */
+export function installedFactPointers(): BlockRenderers {
+  const pointer = () =>
+    '- Not written into this installed file, because it changes. Run `runestone docs --ai-context state` for the current value.';
+
+  return { DOMAINS: pointer, USED_NAMES: pointer, RUNTIME: pointer, WARNINGS: pointer, DNS_STATE: pointer };
+}
+
 /** Blocks that need no machine state, so every render can supply them. */
 export function manifestBlocks(): BlockRenderers {
   return { FOOTER: renderFooter };

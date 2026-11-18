@@ -22,6 +22,8 @@
 ### Fixed
 
 - `runestone dns status` no longer prints the dns service's state twice.
+- `runestone skill status` no longer reports an installed skill as edited after you create a certificate or add a route. The installed files no longer contain this machine's certificates, routes or warnings; they point to `runestone docs --ai-context state` instead.
+- `runestone skill install --force` and `runestone skill remove --force` now say what they do. They used to read the same as `--yes`.
 - `runestone status` and `runestone docs --ai-context state` now report a DNS web UI that has no authentication, which only `runestone dns status` mentioned before.
 - When this machine cannot resolve the Runestone domain, `runestone status` now says so, with the fix for that kind of domain, instead of reporting that Traefik did not answer. The agent guidance explains how Runestone hostnames resolve on the host.
 - `runestone status` and the agent guidance now say whether this machine's system trust store holds Runestone's root CA, and point to `runestone certs install` when it does not. Before, nothing said why every hostname showed a certificate warning.

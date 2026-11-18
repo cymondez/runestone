@@ -398,10 +398,6 @@ describe('who is allowed to reach the snapshot module', () => {
     // which means seeing this list change in a diff.
     const allowed = [
       path.join('src', 'commands', 'docs.ts'),
-      // Renders the corpus for installation. It uses the offline builder only:
-      // an installed file outlives the moment it was written, so a live fact
-      // baked into one would be a lie within minutes.
-      path.join('src', 'commands', 'skill.ts'),
       // The MCP tools answer questions about right now, so unlike the
       // installer they may — and for collision checking must — use the live
       // builder. The answer is consumed immediately and never written down.
@@ -434,18 +430,19 @@ describe('who is allowed to reach the snapshot module', () => {
     expect(importers).toEqual(allowed.sort());
   });
 
-  it('does not let the installer reach the live builder', () => {
-    // The comment in the allowlist above is a claim; this is the assertion.
-    // An installed file carries offline scalars and tells the agent to run the
-    // state topic for anything live, which is the whole reason to install a
-    // skill rather than paste a blob of context.
+  it('does not let the installer read machine state at all', () => {
+    // It used the offline builder until 2.2.0. Offline is not the same as
+    // stable: certificates, routes and the trust store change after install,
+    // and the installed copy then differed from a fresh render, which skill
+    // status reported as a user edit. An installed file carries .env scalars
+    // and points at the state topic for everything else.
     const source = fs.readFileSync(
       path.resolve(__dirname, '..', '..', '..', 'src', 'commands', 'skill.ts'),
       'utf8'
     );
 
-    expect(source).toContain('buildOfflineSnapshot');
-    expect(source).not.toContain('buildLiveSnapshot');
+    expect(source).not.toMatch(/agent-context/);
+    expect(source).toContain('installedFactPointers');
   });
 });
 

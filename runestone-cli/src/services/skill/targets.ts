@@ -143,6 +143,23 @@ function skillBody(context: RenderContext): string {
   ].join('\n');
 }
 
+/**
+ * An online topic is nothing but live facts, so its installed copy says where
+ * to get them. The rendered topic began "Everything below was read at the
+ * moment this command ran. Do not copy it into a file", and was then written
+ * into a file.
+ */
+function liveTopicStub(topicId: string): string {
+  return [
+    `# Runestone: ${topicId}`,
+    '',
+    'This topic is the live state of this machine, so it is not stored in this file. Run:',
+    '',
+    `    runestone docs --ai-context ${topicId}`,
+    ''
+  ].join('\n');
+}
+
 function skillFiles(skillsDir: string, context: RenderContext, version: number): RenderedFile[] {
   const root = `${skillsDir}/${SKILL_NAME}`;
 
@@ -153,7 +170,7 @@ function skillFiles(skillsDir: string, context: RenderContext, version: number):
     },
     ...TOPICS.map((topic) => ({
       relativePath: `${root}/references/${topic.id}.md`,
-      content: `${fileMarker(version)}\n\n${context.topics[topic.id]}`
+      content: `${fileMarker(version)}\n\n${topic.tier === 'online' ? liveTopicStub(topic.id) : context.topics[topic.id]}`
     }))
   ];
 }

@@ -86,6 +86,18 @@ describe('runestone CLI integration', () => {
     expect(service.stdout).not.toContain('routed service');
   });
 
+  it('does not describe skill --force as skipping the confirmation, which is --yes', () => {
+    // They read the same in 2.1.0 while doing different things: --yes accepts
+    // the plan, --force changes it to rewrite or delete files Runestone did
+    // not generate.
+    const install = runCli(['skill', 'install', '--help']);
+    const remove = runCli(['skill', 'remove', '--help']);
+
+    expect(install.stdout).toMatch(/--force\s+Also rewrite files Runestone did not generate/);
+    expect(remove.stdout).toMatch(/--force\s+Also delete files Runestone did not generate/);
+    expect(install.stdout).toMatch(/-y, --yes\s+Skip confirmation prompts/);
+  });
+
   it('prints package version', () => {
     const result = runCli(['--version']);
     const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { version: string };
