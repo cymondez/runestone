@@ -20,16 +20,7 @@ function runCli(args: string[], extraEnv: NodeJS.ProcessEnv = {}) {
 }
 
 describe('runestone CLI integration', () => {
-  beforeAll(() => {
-    const build = spawnSync(node, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'), '--project', 'tsconfig.json'], {
-      cwd: root,
-      encoding: 'utf8'
-    });
-
-    if (build.status !== 0) {
-      throw new Error(build.stderr || build.stdout);
-    }
-  });
+  // dist/ is compiled once by tests/helpers/build-cli.js (jest globalSetup).
 
   it('prints top-level help with DESIGNE.md command set', () => {
     const result = runCli(['--help']);
