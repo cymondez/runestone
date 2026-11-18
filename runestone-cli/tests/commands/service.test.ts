@@ -1022,8 +1022,7 @@ describe('service command', () => {
     });
 
     function printed(): string {
-      return logSpy.mock.calls.map((call) => call.join(' ')).join('
-');
+      return logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
     }
 
     async function check(...args: string[]) {
