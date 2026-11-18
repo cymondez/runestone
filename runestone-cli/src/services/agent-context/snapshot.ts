@@ -15,6 +15,8 @@
  */
 
 import { CaTrust, checkCaTrust } from '../ca-trust';
+import { listResources } from '../resource-manager';
+import { RunestoneResourceRecord } from '../../utils/tool-state';
 import { CertificateListItem, listDomainCertificates } from '../cert-manager';
 import { DockerContainer, composeService } from '../docker-compose';
 import { NetworkMember, networkService } from '../docker-network';
@@ -93,6 +95,8 @@ export interface AgentContextSnapshot {
   /** Whether the system trust store holds Runestone's root CA. See ca-trust.ts. */
   caTrust: CaTrust;
   services: SnapshotService[];
+  /** Shared resources the user declared with `runestone resource add`. Declared, not verified. */
+  resources: RunestoneResourceRecord[];
   /** What an agent must not collide with. */
   usedNames: { serviceNames: string[]; routes: string[] };
   dns: { enabled: boolean };
@@ -117,6 +121,8 @@ export interface AgentContextSnapshot {
 export interface AgentContextDependencies {
   listCertificates: (runestoneDir: string) => CertificateListItem[];
   listServices: (config: RunestoneEnv) => ServiceListItem[];
+  /** Offline: reads the tool state. */
+  listResources: () => RunestoneResourceRecord[];
   /** Offline: reads the root CA file and the system store, spawns nothing. */
   caTrust: (runestoneDir: string) => CaTrust;
   now: () => Date;
@@ -141,6 +147,7 @@ export const defaultAgentContextDependencies: AgentContextDependencies = {
   listCertificates: (runestoneDir) => listDomainCertificates(runestoneDir),
   listServices: (config) => listServices(config),
   caTrust: (runestoneDir) => checkCaTrust(runestoneDir),
+  listResources: () => listResources(),
   now: () => new Date(),
   listContainers: (composePath) => composeService.ps(composePath, CONTAINER_PROBE_TIMEOUT_MS),
   readTraefik: (baseUrl) => readTraefikSnapshot(baseUrl),
@@ -262,7 +269,10 @@ export function buildOfflineSnapshot(
   config: RunestoneEnv,
   deps: Partial<AgentContextDependencies> = {}
 ): AgentContextSnapshot {
-  const { listCertificates, listServices: readServices, caTrust: readCaTrust, now } = { ...defaultAgentContextDependencies, ...deps };
+  const { listCertificates, listServices: readServices, caTrust: readCaTrust, listResources: readResources, now } = {
+    ...defaultAgentContextDependencies,
+    ...deps
+  };
 
   // A missing certificate directory is an ordinary state, not a failure, so
   // the probe collapses to an empty list rather than surfacing as a warning
@@ -275,6 +285,8 @@ export function buildOfflineSnapshot(
   const certificates = certificatesOf(certificateItems);
   const services = servicesOf(serviceItems, certificateItems);
   const caTrust = readCaTrust(config.PROJECT_DIR);
+  const rawResources = probe(() => readResources());
+  const resources = rawResources.ok ? rawResources.value : [];
   const warnings = warningsOf(config, certificates, services, caTrust);
 
   if (!rawCertificates.ok) {
@@ -294,6 +306,7 @@ export function buildOfflineSnapshot(
     certificates,
     caTrust,
     services,
+    resources,
     usedNames: {
       serviceNames: services.map((service) => service.name).sort(),
       routes: services.map((service) => service.route).sort()

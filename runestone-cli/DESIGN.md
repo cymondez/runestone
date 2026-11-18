@@ -225,6 +225,10 @@ runestone service list
 runestone service list --no-header
 runestone service remove <name>
 runestone service group list|clean|move
+runestone resource add [name] --kind <kind> --host <host:port> --container <host:port> [--notes <text>]
+runestone resource list [--json]
+runestone resource modify <name>
+runestone resource remove <name> [--force]
 runestone skill install [dir]
 runestone skill status [dir]
 runestone skill remove [dir]

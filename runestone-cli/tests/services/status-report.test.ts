@@ -36,6 +36,7 @@ function snapshot(overrides: Partial<AgentContextSnapshot> = {}): AgentContextSn
     certificates: [certificate()],
     caTrust: 'trusted',
     services: [],
+    resources: [],
     usedNames: { serviceNames: [], routes: [] },
     dns: { enabled: false },
     containers: { ok: true, value: [running('runestone')] },

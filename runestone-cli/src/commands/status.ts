@@ -126,6 +126,13 @@ function render(report: StatusReport): void {
       : t('status.routes.traefik', { count: String(report.traefikRouters.length) })}`);
     console.log(`  ${caTrustLine(report.caTrust)}`);
 
+    logger.info(t('status.section.resources'));
+    if (report.resources.length === 0) {
+      console.log(`  ${t('status.resources.none')}`);
+    } else {
+      printRows(report.resources.map((resource) => [resource.name, resource.kind, resource.hostAccess, resource.containerAccess]));
+    }
+
     logger.info(t('status.section.sshKeys'));
     if (report.sshKeys === null) {
       console.log(`  ${stateWord('unknown')}`);

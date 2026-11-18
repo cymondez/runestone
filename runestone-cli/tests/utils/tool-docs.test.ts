@@ -11,6 +11,7 @@ import {
   TemplateError,
   UnknownTopicError,
   findTopic,
+  installedFactPointers,
   renderAiContext,
   renderAiContextSequence,
   renderAiPromptContext,
@@ -48,7 +49,8 @@ function stubBlocks() {
     USED_NAMES: () => '- STUB_USED_NAMES',
     RUNTIME: () => '- STUB_RUNTIME',
     WARNINGS: () => '- STUB_WARNINGS',
-    DNS_STATE: () => '- STUB_DNS_STATE'
+    DNS_STATE: () => '- STUB_DNS_STATE',
+    RESOURCES: () => '- STUB_RESOURCES'
   };
 }
 
@@ -465,5 +467,17 @@ describe('the corpus points at service check for names', () => {
     for (const id of ['overview', 'compose', 'service']) {
       expect(renderAiContext(id, config(), stubBlocks())).toContain('runestone service check');
     }
+  });
+});
+
+describe('shared resources in the corpus', () => {
+  it('puts the declared resources in the overview and the state topic', () => {
+    expect(renderAiContext('overview', config(), stubBlocks())).toContain('## Shared resources the user declared');
+    expect(renderAiContext('overview', config(), stubBlocks())).toContain('STUB_RESOURCES');
+    expect(renderAiContext('state', config(), stubBlocks())).toContain('STUB_RESOURCES');
+  });
+
+  it('never writes them into an installed file', () => {
+    expect(Object.keys(installedFactPointers())).toContain('RESOURCES');
   });
 });

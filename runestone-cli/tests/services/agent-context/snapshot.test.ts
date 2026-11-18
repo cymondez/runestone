@@ -12,6 +12,7 @@ import {
 import {
   renderDnsState,
   renderDomains,
+  renderResources,
   renderRuntime,
   renderUsedNames,
   routedHostnames,
@@ -59,6 +60,7 @@ function deps(
   return {
     listCertificates: () => certificates,
     listServices: () => services,
+    listResources: () => [],
     now: () => new Date('2026-09-07T00:00:00.000Z')
   };
 }
@@ -535,5 +537,22 @@ describe('names on the shared network', () => {
     });
 
     expect(listNetworkMembers).not.toHaveBeenCalled();
+  });
+});
+
+describe('shared resources in the agent context', () => {
+  const pg = { name: 'shared-pg', kind: 'postgres', hostAccess: 'localhost:5432', containerAccess: 'host.docker.internal:5432', notes: 'One database per project.' };
+
+  it('lists each with both addresses, and the line that makes host.docker.internal resolve', () => {
+    const snapshot = buildOfflineSnapshot(config(), { ...deps([certificate()], []), listResources: () => [pg] });
+    const text = renderResources(snapshot);
+
+    expect(text).toContain('shared-pg (postgres): from a process on the host `localhost:5432`; from a container `host.docker.internal:5432`.');
+    expect(text).toContain('host.docker.internal:host-gateway');
+    expect(text).toContain('not verified');
+  });
+
+  it('tells the agent to ask before adding its own when none is declared', () => {
+    expect(renderResources(buildOfflineSnapshot(config(), deps([certificate()], [])))).toContain('ask the user whether one already runs');
   });
 });

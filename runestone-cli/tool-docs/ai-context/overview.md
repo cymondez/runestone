@@ -56,6 +56,13 @@ password and no TLS:
 - From a container on the `{{RUNESTONE_NETWORK_NAME}}` network, which every container exposed through Traefik labels joins: `{{RUNESTONE_SMTP_FROM_NETWORK}}`
 - From any other container: add `extra_hosts: ["host.docker.internal:host-gateway"]` to that service, then use `{{RUNESTONE_SMTP_FROM_CONTAINERS}}`. Do not assume `host.docker.internal` resolves inside a container without that line; on some machines it does not
 
+## Shared resources the user declared
+
+Backing services already running on this machine for every project to use. Use
+these rather than adding a database, a cache or an object store of your own:
+
+{{BLOCK:RESOURCES}}
+
 ## There are exactly two ways to connect a project
 
 Choose by asking one question: **does the thing being exposed run in a

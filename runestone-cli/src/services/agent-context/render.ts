@@ -217,8 +217,37 @@ function liveFactsTopic(): string | undefined {
  * than in the renderer because the renderer must not know what a certificate
  * is; it substitutes text and nothing else.
  */
+/**
+ * Shared resources the user declared, so an agent uses them instead of adding
+ * its own database or cache. Each gives the address from the host and from a
+ * container, because which one applies is where agents go wrong.
+ */
+export function renderResources(snapshot: AgentContextSnapshot): string {
+  if (snapshot.resources.length === 0) {
+    return bullets([
+      'None declared. If this project needs a database, a cache or another backing service, ask the user whether ' +
+        'one already runs on this machine before adding its own; `runestone resource add` is how the user records one.'
+    ]);
+  }
+
+  const lines = snapshot.resources.map(
+    (resource) =>
+      `${resource.name} (${resource.kind}): from a process on the host \`${resource.hostAccess}\`; ` +
+      `from a container \`${resource.containerAccess}\`.${resource.notes ? ` ${resource.notes}` : ''}`
+  );
+  if (snapshot.resources.some((resource) => resource.containerAccess.startsWith('host.docker.internal:'))) {
+    lines.push(
+      'A container reaches `host.docker.internal` only with `extra_hosts: ["host.docker.internal:host-gateway"]` on its service.'
+    );
+  }
+  lines.push('Declared by the user, not verified by Runestone. Credentials are not stored here; ask the user for them.');
+
+  return bullets(lines);
+}
+
 export function contextBlocks(snapshot: AgentContextSnapshot): BlockRenderers {
   return {
+    RESOURCES: () => renderResources(snapshot),
     DOMAINS: () => renderDomains(snapshot),
     USED_NAMES: () => renderUsedNames(snapshot),
     RUNTIME: () => renderRuntime(snapshot),

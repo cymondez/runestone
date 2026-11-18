@@ -68,6 +68,8 @@ export interface StatusReport {
   certificates: SnapshotCertificate[];
   /** Whether the system trust store holds Runestone's root CA. */
   caTrust: string;
+  /** Shared resources the user declared with `runestone resource add`. */
+  resources: Array<{ name: string; kind: string; hostAccess: string; containerAccess: string; notes: string | null }>;
   covered: { wildcards: string[]; names: string[] };
   /** Routes added with `runestone service add`. */
   routes: SnapshotService[];
@@ -149,6 +151,7 @@ function notConfigured(config: RunestoneEnv, deps: StatusReportDependencies): St
     dns: { enabled: isDnsEnabled(config), phase: null, preparedReason: null, serviceRunning: null },
     certificates: [],
     caTrust: 'unknown',
+    resources: [],
     covered: { wildcards: [], names: [] },
     routes: [],
     problems: [{ text: t('status.problem.notConfigured'), fix: 'runestone setup' }]
@@ -308,6 +311,7 @@ export async function buildStatusReport(
     },
     certificates: snapshot.certificates,
     caTrust: snapshot.caTrust,
+    resources: snapshot.resources,
     covered: { wildcards: snapshot.domains.wildcards, names: snapshot.domains.covered },
     routes: snapshot.services,
     problems

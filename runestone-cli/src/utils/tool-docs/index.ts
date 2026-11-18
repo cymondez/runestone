@@ -96,7 +96,7 @@ export function installedFactPointers(): BlockRenderers {
   const pointer = () =>
     '- Not written into this installed file, because it changes. Run `runestone docs --ai-context state` for the current value.';
 
-  return { DOMAINS: pointer, USED_NAMES: pointer, RUNTIME: pointer, WARNINGS: pointer, DNS_STATE: pointer };
+  return { DOMAINS: pointer, USED_NAMES: pointer, RUNTIME: pointer, WARNINGS: pointer, DNS_STATE: pointer, RESOURCES: pointer };
 }
 
 /** Blocks that need no machine state, so every render can supply them. */
