@@ -43,6 +43,12 @@ The route works. The dev server refuses a hostname it does not know: Vite allows
 only localhost and IP addresses by default, webpack-dev-server only localhost and
 its own host.
 - Add the Runestone hostname to the dev server's allowed hosts: Vite `server.allowedHosts`, webpack-dev-server `devServer.allowedHosts`.
+- Vite has checked the hostname since 6.0.9, 5.4.12 and 4.5.6. An older Vite accepts any hostname, so this symptom does not come from it.
+
+Symptom: a redirect loop, links or redirects to `http://`, or a login cookie that does not stick.
+The route works. Traefik ends HTTPS and reaches the app over plain HTTP, so an
+app that does not read `X-Forwarded-Proto` believes the request was HTTP.
+- Make the app trust the proxy headers Traefik sends: `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-For`. In Express, `app.set('trust proxy', 1)`.
 
 Symptom: the browser warns about the certificate.
 Nothing is broken in the routing. No certificate covers that hostname.

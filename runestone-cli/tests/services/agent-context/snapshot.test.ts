@@ -251,6 +251,15 @@ describe('the live snapshot', () => {
     expect(renderUsedNames(snapshot)).toContain('other@docker');
   });
 
+  it('says the @provider suffix is not part of the name a label uses', async () => {
+    // Traefik reports `other@docker`; a label writes `other`. An agent comparing
+    // the two as printed concludes the name is free. service-manager compares
+    // the part before the @, and the list now says so.
+    const text = renderUsedNames(await buildLiveSnapshot(config(), liveDeps()));
+
+    expect(text).toContain('uses the part before the `@`');
+  });
+
   it('also reports the Traefik service IDs and the hostnames other projects route', async () => {
     // Router IDs alone did not say which hostnames were taken, so an agent
     // could pick a router ID that was free and a hostname that was not.

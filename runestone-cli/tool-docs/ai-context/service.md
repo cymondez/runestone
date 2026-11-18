@@ -49,7 +49,8 @@ Do not:
 Inspect this project to determine:
 - Whether the app runs in Docker at all. If it does, use the compose topic instead.
 - The port it actually listens on, from its dev script, its config, or its `.env`.
-- Whether its dev server checks the Host header. Vite (`server.allowedHosts`) and webpack-dev-server (`devServer.allowedHosts`) refuse hostnames they do not know, so add the Runestone hostname there before you verify. That change carries this machine's host domain; ask the user before committing it.
+- Whether its dev server checks the Host header. Vite (`server.allowedHosts`, since 6.0.9, 5.4.12 and 4.5.6) and webpack-dev-server (`devServer.allowedHosts`) refuse hostnames they do not know, so add the Runestone hostname there before you verify. That change carries this machine's host domain; ask the user before committing it.
+- Whether the dev server keeps its port. Vite moves to the next free port when its own is taken, and the route then reaches nothing, or another app. Start it with `--strictPort` (or set `server.strictPort: true`) so it exits instead.
 
 Choose these yourself and state them in your report; do not stop to ask:
 - Hostname prefix: the project's directory name.

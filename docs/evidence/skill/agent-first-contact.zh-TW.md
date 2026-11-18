@@ -88,3 +88,14 @@
 | `/some/path` | 404，頁面 | 404，頁面 |
 
 error-page middleware 保留原本的狀態碼，並且即使它抓 `/index.html` 時拿到的是 404，也照樣用那個 body，所以 `up` 不會覆寫的既有 `traefik.dynamic.yml` 仍然正常運作。
+
+## Traefik 送給 app 的標頭（2026-11-18）
+
+一個暫時的 Runestone 容器（5.2 映像、`--providers.docker=false`、用別的 port），以 file provider 路由到一段會回傳請求標頭的 nginx 設定。用 `curl -k --resolve` 打那條路由：
+
+| 請求 | app 收到的 |
+| --- | --- |
+| 一般請求 | `X-Forwarded-Proto: https`、`X-Forwarded-Host: <hostname>:<port>`、`X-Forwarded-Port: <port>`、`X-Forwarded-For: <client>`、`Host: <hostname>` |
+| 用戶端自帶 `X-Forwarded-Proto: gopher` 與 `X-Forwarded-Host: evil.test` | 與一般請求相同：Traefik 把兩者都換掉了 |
+
+測試用的 port 是 18445；經過 Runestone 自己的 443 時，host 不帶 port。語料現在告訴放在 Runestone 後面的 app 要信任這些標頭，以 Express 的 `trust proxy` 為例。

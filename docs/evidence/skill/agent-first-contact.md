@@ -88,3 +88,14 @@ Measured with two temporary containers of the 5.2 image, `--providers.docker=fal
 | `/some/path` | 404, page | 404, page |
 
 The error-page middleware keeps the original status and uses the body of its `/index.html` fetch even when that fetch itself answers 404, so an existing `traefik.dynamic.yml`, which `up` does not overwrite, keeps working.
+
+## Headers Traefik sends to an app (2026-11-18)
+
+One temporary Runestone container (5.2 image, `--providers.docker=false`, other ports) with a file-provider route to an nginx block that echoes the request headers. `curl -k --resolve` to that route:
+
+| Request | What the app received |
+| --- | --- |
+| Plain | `X-Forwarded-Proto: https`, `X-Forwarded-Host: <hostname>:<port>`, `X-Forwarded-Port: <port>`, `X-Forwarded-For: <client>`, `Host: <hostname>` |
+| With `X-Forwarded-Proto: gopher` and `X-Forwarded-Host: evil.test` from the client | The same as plain: Traefik replaced both |
+
+The test port was 18445; through Runestone's own 443 the host carries no port. The corpus now tells an app behind Runestone to trust these headers, with Express's `trust proxy` as the example.

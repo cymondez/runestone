@@ -94,6 +94,13 @@ export function renderUsedNames(snapshot: AgentContextSnapshot): string {
         ? `Traefik router IDs already registered, including by other projects: ${routers.join(', ')}`
         : 'Traefik reports no registered routers.'
     );
+    if (routers.length > 0) {
+      lines.push(
+        'Each ID ends in `@` and the provider that registered it: `@docker` for Compose labels, `@file` for `service add` ' +
+          'and Runestone itself, `@internal` for Traefik. A label or `service add` uses the part before the `@`, and that ' +
+          'part is what must not be taken.'
+      );
+    }
     // The router IDs alone did not say which hostnames other projects use, and
     // a Traefik service ID collides just as a router ID does. Both were already
     // in the snapshot; they were only not printed.

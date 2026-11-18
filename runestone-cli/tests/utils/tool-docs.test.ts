@@ -349,6 +349,23 @@ describe('the corpus tells an agent how to verify, and what not to treat as read
     }
   });
 
+  it('says which Vite versions check the hostname, and how to keep its port', () => {
+    // GHSA-vg6x-rcgg-rjx6 added the check in 6.0.9, 5.4.12 and 4.5.6; without
+    // --strictPort, Vite moves to another port and the route reaches nothing.
+    expect(service).toContain('6.0.9, 5.4.12 and 4.5.6');
+    expect(troubleshoot).toContain('6.0.9, 5.4.12 and 4.5.6');
+    expect(service).toContain('--strictPort');
+  });
+
+  it('tells an app behind Traefik to trust the forwarded headers', () => {
+    // Measured 2026-11-18: Traefik ends HTTPS and sends X-Forwarded-Proto https
+    // to a backend reached over plain HTTP.
+    for (const topic of [overview, troubleshoot]) {
+      expect(topic).toContain('X-Forwarded-Proto');
+      expect(topic).toContain('trust proxy');
+    }
+  });
+
   it('does not list doctor as read-only, because it offers to install things', () => {
     const readOnly = (text: string) => text.slice(text.indexOf('Read-only'), text.indexOf('\n\n', text.indexOf('Read-only') + 10));
 

@@ -19,6 +19,7 @@
 - `runestone service --help` now says what the command is for, putting a host dev server or an external URL on a Runestone hostname, and that it does not list what Runestone itself provides. `runestone service list` with nothing added says where to look instead of printing only the column headings.
 - `runestone service` will be renamed `runestone route` in 3.0. `runestone service` will keep working.
 - `runestone docs --ai-context` without a topic now prints the whole guide: how to choose between the two ways of connecting a project, then both of them. It still contains everything it printed before.
+- The agent guidance now explains that an app behind Runestone receives plain HTTP with `X-Forwarded-*` headers and has to trust them, which Vite versions check the hostname, how to keep a dev server on its port, and that the `@docker` or `@file` at the end of a Traefik name is not part of the name.
 - The agent guidance and the installed skill now walk an agent through the steps in order, and tell it what to do when the `runestone` command is not found.
 
 ### Fixed
