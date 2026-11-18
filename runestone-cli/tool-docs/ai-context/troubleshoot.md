@@ -7,31 +7,55 @@ Host domain suffix: {{RUNESTONE_HOST_DOMAIN}}
 External Docker network: {{RUNESTONE_NETWORK_NAME}}
 
 Read-only commands, safe to run without asking:
-- runestone status          containers, network, volume
-- runestone service list    routed services and their routes
+- runestone status          whether Runestone can be used right now, and what needs fixing
+- runestone service list    routes added with `service add`, and nothing else
 - runestone certs list      certificates and the domains they cover
 - runestone dns status      whether container DNS is in effect
-- runestone doctor          host environment check
 
-Symptom: 404 from Traefik.
+`runestone doctor` checks the host environment, but in a terminal it offers to
+install what is missing. Ask the user to run it.
+
+Symptom: the browser cannot find the hostname at all, a DNS error rather than a page.
+This machine does not resolve the Runestone domain, so no request reaches
+Traefik. `runestone status` says so, with the fix for this domain.
+- The default domain and names under `traefik.me` resolve through public DNS, so they fail on a machine whose DNS does not answer public names.
+- A domain of your own resolves only if the user's DNS or hosts file points it at 127.0.0.1. The hosts file is machine-wide and needs elevation; ask the user to change it, do not change it yourself.
+
+Symptom: a "Service not found!" page, or a 404.
 There is no route for that hostname. Either the router was never registered, or
-its rule does not match the hostname you opened.
+its rule does not match the hostname you opened. Runestone answers every
+hostname under {{RUNESTONE_HOST_DOMAIN}} that has no route with its own
+"Service not found!" page and HTTP status 404. A hostname outside
+{{RUNESTONE_HOST_DOMAIN}} gets Traefik's plain 404 page instead.
 - Compose path: is the container running, is it attached to {{RUNESTONE_NETWORK_NAME}}, and does it carry `traefik.enable=true`? A container that is not on that network is invisible to Traefik even with correct labels.
-- Service path: does `runestone service list` show the route?
-- Check the hostname for a typo against the rule.
+- `service add` path: does `runestone service list` show the route?
+- Check the hostname for a typo against the rule. `runestone docs --ai-context state` lists every hostname that has a route.
 
 Symptom: 502 from Traefik.
 The route matched and the target did not answer. The routing is correct; the
 port or the host is wrong.
 - Compose path: the port in `loadbalancer.server.port` must be the **container's internal** port, not the host-published one. In `"8080:3000"` the correct value is 3000. This is the single most common mistake on this path.
-- Service path: the --url host must be reachable from inside the Runestone container. If the app listens on the host, `localhost` will not do — use `host.docker.internal`.
+- `service add` path: the --url host must be reachable from inside the Runestone container. If the app listens on the host, `localhost` will not do — use `host.docker.internal`. On a Linux Docker Engine, as opposed to Docker Desktop, that is the Docker bridge address, so the app must listen on 0.0.0.0, not only on 127.0.0.1 or localhost.
 - Confirm the app is actually listening: on the host, or inside the container with the container's own port.
+
+Symptom: "Blocked request", "Invalid Host header", or a 403 from a dev server.
+The route works. The dev server refuses a hostname it does not know: Vite allows
+only localhost and IP addresses by default, webpack-dev-server only localhost and
+its own host.
+- Add the Runestone hostname to the dev server's allowed hosts: Vite `server.allowedHosts`, webpack-dev-server `devServer.allowedHosts`.
+- Vite has checked the hostname since 6.0.9, 5.4.12 and 4.5.6. An older Vite accepts any hostname, so this symptom does not come from it.
+
+Symptom: a redirect loop, links or redirects to `http://`, or a login cookie that does not stick.
+The route works. Traefik ends HTTPS and reaches the app over plain HTTP, so an
+app that does not read `X-Forwarded-Proto` believes the request was HTTP.
+- Make the app trust the proxy headers Traefik sends: `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-For`. In Express, `app.set('trust proxy', 1)`.
 
 Symptom: the browser warns about the certificate.
 Nothing is broken in the routing. No certificate covers that hostname.
 - `runestone certs list` shows the covered domains. Coverage is by wildcard, so a certificate for `example.test` covers `api.example.test` but not `a.b.example.test`.
 - The fix is `runestone certs create <base-domain>`, which is a project-integration step and is fine to propose.
 - If every domain warns rather than just this one, the root CA is not trusted on this machine. That needs `runestone certs install`, which requires elevation — **ask the user to run it**, do not run it yourself.
+- On Windows, curl (Git Bash's and `curl.exe` alike) checks certificate revocation through Schannel and fails on every local certificate with `CRYPT_E_NO_REVOCATION_CHECK`. That is not an untrusted CA and no reason for `runestone certs install`: add `--ssl-no-revoke`.
 
 Symptom: it works in the browser but not from another container.
 This is the loopback problem and it is the one failure that is not a
@@ -45,11 +69,17 @@ depending on where it is resolved.
 - Turning it on is `runestone dns enable`, which **restarts the Docker daemon and therefore stops every container on the machine**. Never run it. Tell the user it exists, tell them what it costs, and let them decide.
 - As a narrow workaround for one container, `extra_hosts` with `host-gateway` reaches the host without touching the daemon. It does not scale, because every project must then enumerate every domain it talks to.
 
-Symptom: the route worked and then stopped.
-- `runestone status` — did the Runestone container stop?
-- Did another project register the same router name or the same hostname? Names are global to Traefik, not scoped per project. `runestone service list` plus the state topic will show what is registered.
+Symptom: a service exposed through Runestone reaches another project's service.
+It calls a sibling by a name that another container on {{RUNESTONE_NETWORK_NAME}} also
+answers to, and Docker answered with that container.
+- `runestone docs --ai-context state` lists the names on {{RUNESTONE_NETWORK_NAME}}. If the sibling's name is among them, that is the cause.
+- Call the sibling by a name only this project has: its container name (`<project>-<service>-1`), or an alias on the project's own network.
 
-Symptom: a change to a service made no difference.
+Symptom: the route worked and then stopped.
+- `runestone status` — its first line says whether Runestone is running and usable.
+- Did another project register the same router name or the same hostname? Names are global to Traefik, not scoped per project. `runestone docs --ai-context state` lists every router ID, service ID and hostname registered with Traefik, by any project.
+
+Symptom: a change to a route added with `service add` made no difference.
 Traefik reloads its file provider on change, but a syntactically invalid file is
 ignored rather than reported. If a service stopped resolving right after an
 edit, prefer `runestone service repair <name>` over editing the generated file

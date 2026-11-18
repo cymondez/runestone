@@ -8,11 +8,13 @@ Runestone 可以自己把「怎麼把這個專案接上來」講給 AI coding ag
 
 ## agent 會拿到什麼
 
-兩件它自己推不出來的事。
+三件它自己推不出來的事。
 
-**兩條接入路徑該走哪一條。** 跑在 Docker 裡的專案用 Traefik labels 接。跑在 host 上的 dev server、已經在跑的行程、或外部 URL，要用 `runestone service add` 接。選錯會安靜地失敗：沒有容器的專案掛 labels 完全無效，而 file provider 的項目指向 `localhost` 時會連到 Runestone 容器自己，不是你的機器。
+**Runestone 已經跑著什麼。** Traefik 與 Mailpit 已經替這台機器上的每個專案跑著。指引會告訴 agent 不要自己再加 reverse proxy 或收信工具，以及專案的信要寄到哪裡。`runestone status` 也會列出同樣的位址。
 
-**這台機器的事實。** 哪些 hostname 有憑證覆蓋，以及哪些 router 與 service 名稱已經被註冊 —— 包含被其他專案註冊的，那在你的專案裡完全看不到。
+**兩條接入路徑該走哪一條。** 跑在 Docker 裡的專案用 Traefik labels 接。跑在 host 上的 dev server、已經在跑的行程、或外部 URL，要用 `runestone service add` 接 —— 那是你自己加上的路由，不是 Runestone 提供的服務。選錯會安靜地失敗：沒有容器的專案掛 labels 完全無效，而 file provider 的項目指向 `localhost` 時會連到 Runestone 容器自己，不是你的機器。
+
+**這台機器的事實。** 哪些 hostname 有憑證覆蓋，以及哪些 router 與 service 名稱已經被註冊 —— 包含被其他專案註冊的，那在你的專案裡完全看不到。agent 會用 `runestone service check` 檢查它選的名稱與 hostname，這個指令不會改動任何東西。你用 `runestone resource add` 宣告的共用資源（例如所有專案共用的同一個 Postgres）也會列出來，agent 會使用它們，而不是自己再加一個。
 
 ## 三種用法
 
@@ -22,16 +24,17 @@ Runestone 可以自己把「怎麼把這個專案接上來」講給 AI coding ag
 runestone docs --ai-context
 ```
 
-印出 compose 簡報。要其他主題就加參數：
+印出完整指引：先說怎麼在兩種接入方式之間選擇，再列出兩種方式。只要其中一部分就加參數：
 
 ```bash
-runestone docs --ai-context service        # 不在 Docker 裡
 runestone docs --ai-context state          # 這台機器的即時事實
-runestone docs --ai-context troubleshoot   # 404、502、憑證警告
-runestone docs --ai-context overview       # 怎麼選，以及不該執行什麼
+runestone docs --ai-context troubleshoot   # 路由不通的時候
+runestone docs --ai-context compose        # 只看 Docker 專案的接法
+runestone docs --ai-context service        # 只看不在 Docker 裡的接法
+runestone docs --ai-context all            # 全部，包含即時事實
 ```
 
-每個主題結尾都會列出其他主題，所以只跑了無參數版本的 agent 會自己找到其餘的。
+`runestone docs --help` 會列出所有主題。
 
 ### 安裝進專案
 
@@ -111,12 +114,15 @@ Claude Code 使用者注意：專案層級的 `.mcp.json` 在互動式 session �
 | `runestone setup` | 會重寫所有專案共用的設定 |
 | `runestone down` | 移除環境，加上旗標連資料一起 |
 | `runestone up`、`runestone stop` | 改變所有專案的執行狀態 |
+| `runestone resource add`、`modify`、`remove` | 這份清單是你對「這台機器上跑著什麼」的陳述，影響所有專案 |
 
 它會在接專案的過程中執行 `runestone service add`、`runestone service remove` 與 `runestone certs create`，也會在需要查東西時執行 `runestone status` 之類的唯讀指令。
 
 ## 看起來不對的時候
 
 **指令什麼都沒印而且回報錯誤。** Runestone 還沒設定完成。跑 `runestone setup`。
+
+**agent 回報「沒有終端機可以回答這個問題」。** 它在沒有終端機的 shell 裡跑了一個需要問你問題的指令。訊息會說改用什麼參數：例如 `runestone service add` 需要在命令列給齊名稱、`--route` 與 `--url`，而且 hostname 要已經有憑證涵蓋。
 
 **裝好的指引過期了。** 升級 Runestone 不會去改寫已經在你 repository 裡的檔案。`runestone skill status` 會回報，`runestone skill install` 會更新它。
 

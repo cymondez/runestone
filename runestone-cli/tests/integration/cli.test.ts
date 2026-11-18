@@ -20,16 +20,7 @@ function runCli(args: string[], extraEnv: NodeJS.ProcessEnv = {}) {
 }
 
 describe('runestone CLI integration', () => {
-  beforeAll(() => {
-    const build = spawnSync(node, [path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'), '--project', 'tsconfig.json'], {
-      cwd: root,
-      encoding: 'utf8'
-    });
-
-    if (build.status !== 0) {
-      throw new Error(build.stderr || build.stdout);
-    }
-  });
+  // dist/ is compiled once by tests/helpers/build-cli.js (jest globalSetup).
 
   it('prints top-level help with DESIGNE.md command set', () => {
     const result = runCli(['--help']);
@@ -42,6 +33,60 @@ describe('runestone CLI integration', () => {
     expect(result.stdout).toContain('status');
     expect(result.stdout).toContain('certs');
     expect(result.stdout).toContain('keys');
+  });
+
+  it('says what Runestone is and groups the commands by who should run them', () => {
+    // The root help is the first thing an AI agent reads. Before this it said
+    // only "cross-platform CLI tool" and listed every command flat, so an agent
+    // could not tell that Traefik and Mailpit already exist, nor which commands
+    // change every project on the machine.
+    const result = runCli(['--help']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Traefik');
+    expect(result.stdout).toContain('Mailpit');
+    expect(result.stdout).toContain('runestone docs --ai-context');
+    for (const title of [
+      'Connect a project:',
+      'Check:',
+      'Run the environment (affects every project; leave to the user):',
+      'Configure the machine (affects every project; leave to the user):'
+    ]) {
+      expect(result.stdout).toContain(title);
+    }
+    expect(result.stdout).not.toContain('Commands:');
+
+    // Every command is listed exactly once: grouping must neither drop one nor
+    // print it twice.
+    for (const name of ['setup', 'up', 'stop', 'down', 'certs', 'keys', 'service', 'dns', 'doctor', 'docs', 'skill', 'mcp', 'status']) {
+      expect(result.stdout.match(new RegExp(`^  ${name}\\b`, 'gm'))).toHaveLength(1);
+    }
+  });
+
+  it('says what `service` is for and what it is not', () => {
+    // "service" read as "the services Runestone provides". It is the routes the
+    // user adds for things outside Docker, so the help says both halves.
+    const root = runCli(['--help']);
+    expect(root.stdout).toContain('Put a host dev server or URL on a Runestone hostname');
+
+    const service = runCli(['service', '--help']);
+    expect(service.status).toBe(0);
+    expect(service.stdout).toContain('not in Docker');
+    expect(service.stdout).toContain('not services Runestone provides');
+    expect(service.stdout).toContain('runestone status');
+    expect(service.stdout).not.toContain('routed service');
+  });
+
+  it('does not describe skill --force as skipping the confirmation, which is --yes', () => {
+    // They read the same in 2.1.0 while doing different things: --yes accepts
+    // the plan, --force changes it to rewrite or delete files Runestone did
+    // not generate.
+    const install = runCli(['skill', 'install', '--help']);
+    const remove = runCli(['skill', 'remove', '--help']);
+
+    expect(install.stdout).toMatch(/--force\s+Also rewrite files Runestone did not generate/);
+    expect(remove.stdout).toMatch(/--force\s+Also delete files Runestone did not generate/);
+    expect(install.stdout).toMatch(/-y, --yes\s+Skip confirmation prompts/);
   });
 
   it('prints package version', () => {
@@ -96,7 +141,6 @@ describe('runestone CLI integration', () => {
     const commands = [
       ['setup'],
       ['doctor'],
-      ['status'],
       ['certs'],
       ['certs', 'create'],
       ['keys'],
@@ -123,6 +167,13 @@ describe('runestone CLI integration', () => {
     expect(docs.status).toBe(0);
     expect(docs.stdout).toContain('Options:');
     expect(docs.stdout).toContain('--ai-context');
+
+    // `status` gained --json, so a script or an agent can read the verdict
+    // without parsing the text report.
+    const status = runCli(['status', '--help']);
+    expect(status.status).toBe(0);
+    expect(status.stdout).toContain('Options:');
+    expect(status.stdout).toContain('--json');
 
     const up = runCli(['up', '--help']);
     expect(up.status).toBe(0);
@@ -196,7 +247,9 @@ describe('runestone CLI integration', () => {
       expect(result.stdout).toContain('External Docker network: mylab-network');
       expect(result.stdout).toContain('Host domain suffix: example.test');
       expect(result.stdout).toContain('HTTPS entrypoint name: secure');
-      expect(result.stdout).toContain('Optional HTTP entrypoint name: plain');
+      // The old line offered an 'optional HTTP entrypoint', but HTTP already
+      // redirects to HTTPS: an HTTP router is never what the project needs.
+      expect(result.stdout).toContain('HTTP entrypoint `plain` already redirects every request to HTTPS');
       expect(result.stdout).toContain('traefik.http.routers.<router-id>.entrypoints=secure');
       expect(result.stdout).toContain('traefik.http.routers.<router-id>.rule=Host(`<host-prefix>.example.test`)');
       expect(result.stdout).toContain('traefik.docker.network=mylab-network');
@@ -484,6 +537,8 @@ describe('runestone CLI integration', () => {
 
     const doctor = runCli(['doctor', '--help'], { RUNESTONE_LANG: 'zh-TW' });
     expect(doctor.status).toBe(0);
-    expect(doctor.stdout).toContain('檢查並修復 Runestone 主機環境');
+    // Not "check and repair" any more: doctor installs nothing without asking,
+    // and an agent reading "repair" took it for a command that changes things.
+    expect(doctor.stdout).toContain('檢查主機環境；缺少的工具會先詢問再安裝');
   });
 });

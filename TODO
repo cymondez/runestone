@@ -20,6 +20,10 @@
      - runestone 必須記住當次解析的 `host.docker.internal` IP位置，以應付如果 host.docker.internal 的 IP 位置改變時，能找到並刪除舊的ip位置
      - 必須讓使用者設定其他dns作為備援 dns，
 
+4. 3.x：`runestone service` 改名為 `runestone route`
+    - `service` 保留為 alias；2.x 維持現名，help 與語料先不提 `route`
+    - 原因：`service` 容易被讀成「Runestone 自己提供的服務」，它其實是使用者自己加上、指向 Docker 外部的路由
+
 ## bug fix
 
 - [ ] macOS上 cert 內的 .key檔案都無法進入 container

@@ -1,6 +1,7 @@
 import * as http from 'http';
 import * as https from 'https';
 import { URL } from 'url';
+import { traefikDashboardUrl } from '../utils/endpoints';
 
 export interface TraefikNamedResource {
   name: string;
@@ -65,11 +66,11 @@ function normalizeResources(value: unknown): TraefikNamedResource[] {
 }
 
 /**
- * Traefik's own dashboard host, which is where its API lives. Duplicated in
- * two command files before the agent-context module needed a third copy.
+ * Traefik's own dashboard host, which is where its API lives. The URL itself is
+ * defined once in `utils/endpoints`, beside the other things Runestone provides.
  */
 export function traefikApiBaseUrl(hostDomain: string): string {
-  return `https://traefik.${hostDomain}`;
+  return traefikDashboardUrl(hostDomain);
 }
 
 export async function readTraefikSnapshot(baseUrl: string): Promise<TraefikSnapshot> {

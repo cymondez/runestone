@@ -57,6 +57,8 @@ The reason kind 1 and kind 2 need the mapping at all is the same: their public a
 
 The cost is confined to kind 2, and it is real: a container can no longer use `10-0-0-5.traefik.me` to reach `10.0.0.5`, because the whole zone now answers with the Runestone host. To keep the address-decoding, remove `traefik.me.crt` and `traefik.me.key` from the certs directory, or write your own rule in `dns/custom.conf`, which Runestone never overwrites.
 
+One name is answered that no certificate carries: `host.docker.internal`, with the Target IP. That is the name's own IPv4 address by definition, so this is not a new meaning. It is there because Docker Desktop answers the name from its own resolver, which containers stop asking once the DNS feature is on; without it, the name every guide uses to reach the host was NXDOMAIN in every container.
+
 ## IPv4 only, and why
 
 **This is a scope decision, taken up front. It is not something the implementation happened to end up doing.**

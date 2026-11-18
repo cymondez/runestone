@@ -8,11 +8,13 @@ Runestone は「このプロジェクトをどう接続するか」を AI コー
 
 ## エージェントが得られるもの
 
-自力では判断できない 2 つのことです。
+自力では判断できない 3 つのことです。
 
-**2 つの接続経路のどちらを使うか。** Docker 内で動くプロジェクトは Traefik のラベルで接続します。ホスト上の開発サーバー、既に起動しているプロセス、外部 URL は `runestone service add` で接続します。ここを間違えると静かに失敗します。コンテナのないプロジェクトに付けたラベルは効果がなく、file provider の項目が `localhost` を指していると、あなたのマシンではなく Runestone コンテナ自身に届きます。
+**Runestone が既に動かしているもの。** Traefik と Mailpit は、このマシンのすべてのプロジェクト向けに既に動いています。ガイダンスは、エージェントが自前の reverse proxy やメール受信ツールを追加しないこと、そしてプロジェクトのメールの送り先を伝えます。`runestone status` も同じアドレスを表示します。
 
-**このマシンの事実。** どのホスト名が証明書でカバーされているか、そしてどの router 名と service 名が既に登録されているか。他のプロジェクトによる登録も含まれ、それはあなたのプロジェクトからは一切見えません。
+**2 つの接続経路のどちらを使うか。** Docker 内で動くプロジェクトは Traefik のラベルで接続します。ホスト上の開発サーバー、既に起動しているプロセス、外部 URL は `runestone service add` で接続します。これは自分で追加するルートで、Runestone が提供するサービスではありません。ここを間違えると静かに失敗します。コンテナのないプロジェクトに付けたラベルは効果がなく、file provider の項目が `localhost` を指していると、あなたのマシンではなく Runestone コンテナ自身に届きます。
+
+**このマシンの事実。** どのホスト名が証明書でカバーされているか、そしてどの router 名と service 名が既に登録されているか。他のプロジェクトによる登録も含まれ、それはあなたのプロジェクトからは一切見えません。エージェントは選んだ名前とホスト名を `runestone service check` で確認します。このコマンドは何も変更しません。`runestone resource add` で宣言した共有リソース（たとえばすべてのプロジェクトで使う 1 つの Postgres）も表示されるので、エージェントは自前で追加せずにそれを使います。
 
 ## 3 つの使い方
 
@@ -22,16 +24,17 @@ Runestone は「このプロジェクトをどう接続するか」を AI コー
 runestone docs --ai-context
 ```
 
-compose 向けの説明を出力します。他のトピックは引数で指定します:
+完全なガイドを出力します。まず 2 つの接続方法の選び方、次に両方の手順です。一部だけなら引数で指定します:
 
 ```bash
-runestone docs --ai-context service        # Docker 内ではない場合
 runestone docs --ai-context state          # このマシンの現在の事実
-runestone docs --ai-context troubleshoot   # 404、502、証明書の警告
-runestone docs --ai-context overview       # 選び方と、実行してはいけないもの
+runestone docs --ai-context troubleshoot   # ルートが機能しないとき
+runestone docs --ai-context compose        # Docker 内のプロジェクトの接続方法だけ
+runestone docs --ai-context service        # Docker 外のものの接続方法だけ
+runestone docs --ai-context all            # すべて（現在の事実を含む）
 ```
 
-どのトピックも末尾で他のトピックを一覧するので、引数なしで実行しただけのエージェントも残りを自分で見つけられます。
+`runestone docs --help` で全トピックを確認できます。
 
 ### プロジェクトに導入する
 
@@ -111,12 +114,15 @@ Claude Code についての注意: プロジェクト単位の `.mcp.json` は�
 | `runestone setup` | すべてのプロジェクトが共有する設定を書き換えます |
 | `runestone down` | 環境を削除し、フラグ次第でデータも削除します |
 | `runestone up`、`runestone stop` | すべてのプロジェクトの実行状態を変更します |
+| `runestone resource add`、`modify`、`remove` | この一覧は、このマシンで何が動いているかについてのあなたの宣言で、すべてのプロジェクトに影響します |
 
 プロジェクトの接続作業として `runestone service add`、`runestone service remove`、`runestone certs create` は実行しますし、何かを確認する必要があるときは `runestone status` のような読み取り専用コマンドも実行します。
 
 ## うまくいっていないように見えるとき
 
 **コマンドが何も出力せずエラーで終了する。** Runestone がまだ設定されていません。`runestone setup` を実行してください。
+
+**エージェントが「この質問に答える端末がありません」と報告する。** 端末のないシェルから、あなたに質問する必要のあるコマンドを実行しました。メッセージが代わりに渡すものを示します。たとえば `runestone service add` には、名前・`--route`・`--url` をすべてコマンドラインで指定し、証明書でカバー済みのホスト名を使う必要があります。
 
 **導入済みのガイダンスが古い。** Runestone を更新しても、既にリポジトリにあるファイルは書き換えられません。`runestone skill status` が報告し、`runestone skill install` が更新します。
 

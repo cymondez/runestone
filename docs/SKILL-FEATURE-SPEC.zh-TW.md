@@ -116,12 +116,13 @@ Runestone 有兩種結構上完全不同的方式可以把流量導到一個專�
 
 | 主題 | 內容 | 層級 |
 | --- | --- | --- |
-| `compose`（預設） | 今天的簡報原文，加上離線事實與 footer | 離線 |
+| `compose` | 今天的簡報原文，加上離線事實與 footer。2026-10-14 之前是預設，見 7.2 | 離線 |
 | `service` | §2.1 的第二條路徑：何時適用、確切指令、§5.2 的欄位規則、以及憑證需求 | 離線 |
 | `state` | 被覆蓋的 domain、憑證有效性、已註冊的 service 與 route、其他專案佔用的名稱、容器狀態 | **線上** |
 | `troubleshoot` | 症狀對因：404、502、TLS 警告、以及「瀏覽器通但另一個容器不通」 | 離線 |
 | `overview` | Runestone 是什麼、兩條路怎麼選、主題索引、護欄清單 | 離線 |
 | `all` | `overview`、`compose`、`service`、`state`、`troubleshoot`，依此順序，以 `---` 分隔。**只是 CLI 的值**，沒有 MCP 對應 —— 見 11.2 | 線上 |
+| `guide`（2026-10-14 起為預設） | `overview`、`compose`、`service`，依此順序，以 `---` 分隔。與 MCP 的 `runestone_integration_guide` 工具回傳的內容相同，使用同一個順序常數 | 離線 |
 
 `certs`、`dns`、`commands` 刻意**不**拆成獨立主題。憑證規則只有在選 hostname 的當下才有意義，所以它屬於 `service` 與 `compose`。DNS 只有作為某個症狀的成因時才重要，所以它屬於 `troubleshoot`。指令清單**就是** `overview`。每多一個主題，就多一次 agent 的來回。
 
@@ -130,6 +131,8 @@ Runestone 有兩種結構上完全不同的方式可以把流量導到一個專�
 `all` 依上表順序串接，而那刻意不是 manifest 自己的順序：`overview` 排最前，因為它說明兩條接入路徑該怎麼選，而在得到那個判斷依據之前先讀細節是顛倒的。
 
 **可發現性靠 footer 解決，不靠改預設。** 每個主題結尾都是同一段產生的區塊，列出其他主題名稱與字面指令列。因此無參數的 `runestone docs --ai-context` 會在第一次呼叫時就教會 agent `state` 的存在。
+
+**2026-10-14 修訂：只靠 footer 不夠，預設改了。** 只拿到 CLI 的只讀探測 agent 說明了原因。compose 主題會叫沒有 Compose 檔的專案「create compose.yml」，而指向另一條路徑的唯一線索在文末，排在 agent 已經讀完、會照著做的指示之後。冷啟動加 host dev server 的探測之所以沒走錯，只是因為它剛好先讀了 `docs --help`。無參數的 `--ai-context` 現在印出 `guide` 組合，讓「怎麼選」出現在兩條路徑之前；7.2 記錄了為什麼這不會破壞它原本保護的相容性。
 
 ### 5.2 事實來源規則
 
@@ -221,6 +224,10 @@ Runestone 有兩種結構上完全不同的方式可以把流量導到一個專�
 未知的主題會設定 `process.exitCode = 1`、不寫任何東西到 stdout、並在 stderr 列出合法主題。用 `process.exitCode` 而非 `process.exit(1)` 是刻意的、也是既有的：它讓 buffered stdout 得以 flush。
 
 ### 7.2 向後相容
+
+**2026-10-14 修訂：無參數的 `--ai-context` 印出 `guide` 組合**（`overview`、`compose`、`service`）。這是 §11.2 在 C4 替 MCP 做過的修正，現在補到一直維持舊形狀的 CLI。下面的相容性約束仍然成立，因為 guide 完整包含 compose 主題：為舊行為寫的 prompt 拿到的東西一樣不少，還多了它原本缺少的「兩條路徑怎麼選」。golden test 的斷言除了一行之外都沒改：「Optional HTTP entrypoint name」那句被刻意改寫，因為它提供了一個在 HTTP 已全域轉 HTTPS 時毫無用處的 HTTP router。`renderAiPromptContext` 仍然只渲染 compose 主題。
+
+以下是本節原文，保留作為被修訂決策的紀錄。
 
 **無參數的 `--ai-context` 繼續代表 `compose` 主題。** footer 與離線事實是**追加**上去的。
 
@@ -489,7 +496,7 @@ stdout 只承載 protocol frame，別無其他。
 
 ## 13. 相容性與遷移
 
-- 無參數的 `runestone docs --ai-context` 行為如前，只是追加了內容（§7.2）。
+- 無參數的 `runestone docs --ai-context` 行為如前，只是追加了內容（§7.2）。2026-10-14 修訂：它印出 guide，完整包含先前的輸出。
 - `tool-docs/ai-prompt-context.tmp.md` 移除，內容成為 `compose` 主題。`renderAiPromptContext()` 保留簽章作為薄包裝，維持一個版本。
 - 建立 `src/utils/tool-docs/` 時，`src/utils/tool-docs.ts` 必須**刪除**。兩者並存會讓舊 renderer 默默保持生效，因為模組解析優先選檔案。
 - `README.md` 目前連到 `runestone-cli/tool-docs/ai-prompt-context.tmp.md`。那個連結在 GitHub 上通、在 npm 複本裡早就是死的，而這裡那個檔案被移除了。`scripts/sync-readme.js` 重寫六個特定的 link pattern，每一個新的文件連結都需要一條規則。

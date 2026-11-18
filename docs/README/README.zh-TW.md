@@ -54,6 +54,14 @@ runestone doctor
 runestone up
 ```
 
+### 查看狀態
+
+`runestone status` 第一行說 Runestone 現在能不能用，接著列出每個專案都能用的 Traefik 與 Mailpit 位址，最後列出需要處理的問題與修正指令。`--json` 以 JSON 印出同一份報告，給 script 與 AI agent 使用。
+
+```bash
+runestone status
+```
+
 ### 停止 或 關閉
 
 注意：如果開機前未停止，runestone 預設會隨開機啟動。
@@ -114,9 +122,11 @@ runestone certs remove <domain>
 
 ## Service 管理
 
+`runestone service` 是用來把不在 Docker 裡、又想用 Runestone 網址開的東西掛上去：host 上的 dev server、已經在跑的程式，或外部 URL。這些是你自己加上的路由，不是 Runestone 提供的服務；那些請看 `runestone status`。在 Docker 裡的專案改用 Traefik labels。
+
 ### 新增 Service
 
-新增 routed service，並建立對應的 Traefik 動態設定檔。
+新增路由，並建立對應的 Traefik 動態設定檔。
 當必要參數缺少或不合法時，Runestone 會進入互動模式補齊。
 
 ```bash
@@ -125,7 +135,7 @@ runestone service add <service name> --route <domain> --url <url with port> --gr
 
 ### Service 清單
 
-顯示已設定的 routed services。
+顯示用 `service add` 加上的路由。
 
 ```bash
 runestone service list
@@ -133,10 +143,27 @@ runestone service list
 
 ### 移除 Service
 
-移除 routed service，並刪除對應的 Traefik 動態設定檔。
+移除路由，並刪除對應的 Traefik 動態設定檔。
 
 ```bash
 runestone service remove <service name>
+```
+
+### 檢查名稱
+
+確認一個名稱與 hostname 在這台機器的所有專案中是否還沒被用掉。不會改動任何東西。
+
+```bash
+runestone service check <service name> --route <domain>
+```
+
+## 共用資源
+
+宣告這台機器上應該由各專案共用、不要各自再加的後端服務，例如同一個 Postgres 或 Redis。AI agent 會在指引中看到它們。Runestone 只負責記錄：不會啟動或檢查它們，資源也沒有密碼欄位。
+
+```bash
+runestone resource add <name> --kind <kind> --host <host:port> --container <host:port>
+runestone resource list
 ```
 
 ## 專案整合
@@ -157,7 +184,7 @@ runestone skill install
 runestone docs --ai-context
 ```
 
-要其他主題就加參數 —— `service`、`state`、`troubleshoot`、`overview`。每個主題結尾都會列出其他主題，所以只跑了無參數版本的 agent 會自己找到其餘的。
+不加參數會印出完整指引：先說怎麼在兩種接入方式之間選擇，再列出兩種方式。要其中一部分就加參數 —— `state` 是這台機器的即時狀態，`troubleshoot` 用在路由不通時，`all` 一次全部；`runestone docs --help` 會列出所有主題。
 
 或是把 Runestone 接成唯讀的 MCP server：
 

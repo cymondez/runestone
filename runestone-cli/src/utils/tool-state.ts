@@ -6,6 +6,7 @@ interface ToolState {
   runestonePath?: string;
   locale?: string;
   services?: RunestoneServiceRecord[];
+  resources?: RunestoneResourceRecord[];
   dns?: DnsOwnershipState;
 }
 
@@ -14,6 +15,25 @@ export interface RunestoneServiceRecord {
   name: string;
   route: string;
   url: string;
+}
+
+/**
+ * A shared backing service the user declared, so AI agents use it instead of
+ * adding their own: a database, a cache, an object store. Declared, not
+ * verified: Runestone neither starts it nor checks it is running.
+ *
+ * There is no field for a password, deliberately. These records are printed in
+ * the agent context and returned over MCP, so a secret here would end up in an
+ * agent's transcript.
+ */
+export interface RunestoneResourceRecord {
+  name: string;
+  kind: string;
+  /** host:port, as a process on the host reaches it. */
+  hostAccess: string;
+  /** host:port, as a container reaches it. */
+  containerAccess: string;
+  notes: string | null;
 }
 
 export const DNS_STATE_SCHEMA_VERSION = 1;
@@ -143,6 +163,14 @@ export const toolState = {
 
   writeServices(services: RunestoneServiceRecord[]): void {
     writeState({ ...readState(), services });
+  },
+
+  readResources(): RunestoneResourceRecord[] {
+    return (readState().resources ?? []).map((resource) => ({ ...resource, notes: resource.notes || null }));
+  },
+
+  writeResources(resources: RunestoneResourceRecord[]): void {
+    writeState({ ...readState(), resources });
   },
 
   /**

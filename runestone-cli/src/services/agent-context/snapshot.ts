@@ -14,9 +14,14 @@
  * renderer over this value rather than a rewrite. A test asserts the round trip.
  */
 
+import { CaTrust, checkCaTrust } from '../ca-trust';
+import { listResources } from '../resource-manager';
+import { RunestoneResourceRecord } from '../../utils/tool-state';
 import { CertificateListItem, listDomainCertificates } from '../cert-manager';
 import { DockerContainer, composeService } from '../docker-compose';
-import { isDnsEnabled } from '../dns/settings';
+import { NetworkMember, networkService } from '../docker-network';
+import { isDnsEnabled, isDnsUiAuthConfigured, isDnsUiEnabled } from '../dns/settings';
+import { dnsUiUrl } from '../dns/ui-route';
 import { ServiceListItem, findCoveringCertificate, listServices } from '../service-manager';
 import { TraefikSnapshot, readTraefikSnapshot, traefikApiBaseUrl } from '../traefik-api';
 import { RunestoneEnv } from '../../utils/env-loader';
@@ -87,12 +92,22 @@ export interface AgentContextSnapshot {
     wildcards: string[];
   };
   certificates: SnapshotCertificate[];
+  /** Whether the system trust store holds Runestone's root CA. See ca-trust.ts. */
+  caTrust: CaTrust;
   services: SnapshotService[];
+  /** Shared resources the user declared with `runestone resource add`. Declared, not verified. */
+  resources: RunestoneResourceRecord[];
   /** What an agent must not collide with. */
   usedNames: { serviceNames: string[]; routes: string[] };
   dns: { enabled: boolean };
   containers: Probe<SnapshotContainer[]>;
   traefik: Probe<SnapshotTraefik>;
+  /**
+   * Running containers on the shared Runestone network. A service attached to
+   * it resolves these names too, and a name that also exists on its own
+   * network may answer with another project's container.
+   */
+  networkMembers: Probe<NetworkMember[]>;
   /** Rendered into prose. Never written to stderr. */
   warnings: string[];
 }
@@ -106,11 +121,17 @@ export interface AgentContextSnapshot {
 export interface AgentContextDependencies {
   listCertificates: (runestoneDir: string) => CertificateListItem[];
   listServices: (config: RunestoneEnv) => ServiceListItem[];
+  /** Offline: reads the tool state. */
+  listResources: () => RunestoneResourceRecord[];
+  /** Offline: reads the root CA file and the system store, spawns nothing. */
+  caTrust: (runestoneDir: string) => CaTrust;
   now: () => Date;
   /** Online. Spawns `docker compose ps`. */
   listContainers: (composePath: string) => DockerContainer[];
   /** Online. Issues an HTTPS request to Traefik's API. */
   readTraefik: (baseUrl: string) => Promise<TraefikSnapshot>;
+  /** Online. Spawns `docker ps --filter network=...`. */
+  listNetworkMembers: (networkName: string) => NetworkMember[];
 }
 
 /**
@@ -125,9 +146,12 @@ export const CONTAINER_PROBE_TIMEOUT_MS = 8000;
 export const defaultAgentContextDependencies: AgentContextDependencies = {
   listCertificates: (runestoneDir) => listDomainCertificates(runestoneDir),
   listServices: (config) => listServices(config),
+  caTrust: (runestoneDir) => checkCaTrust(runestoneDir),
+  listResources: () => listResources(),
   now: () => new Date(),
   listContainers: (composePath) => composeService.ps(composePath, CONTAINER_PROBE_TIMEOUT_MS),
-  readTraefik: (baseUrl) => readTraefikSnapshot(baseUrl)
+  readTraefik: (baseUrl) => readTraefikSnapshot(baseUrl),
+  listNetworkMembers: (networkName) => networkService.members(networkName, CONTAINER_PROBE_TIMEOUT_MS)
 };
 
 function environmentOf(config: RunestoneEnv): SnapshotEnvironment {
@@ -181,8 +205,29 @@ function servicesOf(services: ServiceListItem[], certificates: CertificateListIt
   }));
 }
 
-function warningsOf(certificates: SnapshotCertificate[], services: SnapshotService[]): string[] {
+function warningsOf(
+  config: RunestoneEnv,
+  certificates: SnapshotCertificate[],
+  services: SnapshotService[],
+  caTrust: CaTrust
+): string[] {
   const warnings: string[] = [];
+
+  if (caTrust === 'not-trusted') {
+    warnings.push(
+      "Runestone's root CA is not in this machine's system trust store, so browsers that use it warn on every " +
+        'Runestone hostname. Ask the user to run `runestone certs install`; it needs elevation, so do not run it yourself.'
+    );
+  }
+
+  // Read from .env alone, so the offline tier can say it. `dns status` already
+  // disclosed this while `state` said "Nothing to flag".
+  if (isDnsEnabled(config) && isDnsUiEnabled(config) && !isDnsUiAuthConfigured(config)) {
+    warnings.push(
+      `The DNS web UI at ${dnsUiUrl(config)} has no authentication: anyone who can reach this machine over HTTPS ` +
+        "can change its custom DNS rules. Ask the user to set DNS_UI_USER and DNS_UI_PASS in Runestone's .env."
+    );
+  }
 
   if (certificates.length === 0) {
     warnings.push('No certificates have been created yet, so no hostname is covered.');
@@ -196,7 +241,7 @@ function warningsOf(certificates: SnapshotCertificate[], services: SnapshotServi
   const orphaned = services.filter((service) => !service.dynamicConfigExists);
   if (orphaned.length > 0) {
     warnings.push(
-      `${orphaned.length} routed service(s) are registered but have no dynamic configuration file: ` +
+      `${orphaned.length} route(s) added with \`service add\` have no Traefik file: ` +
         `${orphaned.map((service) => service.name).join(', ')}. Run 'runestone service repair <name>'.`
     );
   }
@@ -204,7 +249,7 @@ function warningsOf(certificates: SnapshotCertificate[], services: SnapshotServi
   const uncovered = services.filter((service) => !service.certificateCovered);
   if (uncovered.length > 0) {
     warnings.push(
-      `${uncovered.length} routed service(s) have no certificate covering their route, so the browser will warn: ` +
+      `${uncovered.length} route(s) added with \`service add\` have no certificate covering their hostname, so the browser will warn: ` +
         `${uncovered.map((service) => service.route).join(', ')}.`
     );
   }
@@ -224,7 +269,10 @@ export function buildOfflineSnapshot(
   config: RunestoneEnv,
   deps: Partial<AgentContextDependencies> = {}
 ): AgentContextSnapshot {
-  const { listCertificates, listServices: readServices, now } = { ...defaultAgentContextDependencies, ...deps };
+  const { listCertificates, listServices: readServices, caTrust: readCaTrust, listResources: readResources, now } = {
+    ...defaultAgentContextDependencies,
+    ...deps
+  };
 
   // A missing certificate directory is an ordinary state, not a failure, so
   // the probe collapses to an empty list rather than surfacing as a warning
@@ -236,13 +284,16 @@ export function buildOfflineSnapshot(
 
   const certificates = certificatesOf(certificateItems);
   const services = servicesOf(serviceItems, certificateItems);
-  const warnings = warningsOf(certificates, services);
+  const caTrust = readCaTrust(config.PROJECT_DIR);
+  const rawResources = probe(() => readResources());
+  const resources = rawResources.ok ? rawResources.value : [];
+  const warnings = warningsOf(config, certificates, services, caTrust);
 
   if (!rawCertificates.ok) {
     warnings.unshift(`The certificate list could not be read: ${rawCertificates.message ?? 'unknown error'}.`);
   }
   if (!rawServices.ok) {
-    warnings.unshift(`The routed service list could not be read: ${rawServices.message ?? 'unknown error'}.`);
+    warnings.unshift(`The routes added with \`service add\` could not be read: ${rawServices.message ?? 'unknown error'}.`);
   }
 
   return {
@@ -253,7 +304,9 @@ export function buildOfflineSnapshot(
     environment: environmentOf(config),
     domains: domainsOf(config, certificates),
     certificates,
+    caTrust,
     services,
+    resources,
     usedNames: {
       serviceNames: services.map((service) => service.name).sort(),
       routes: services.map((service) => service.route).sort()
@@ -261,6 +314,7 @@ export function buildOfflineSnapshot(
     dns: { enabled: isDnsEnabled(config) },
     containers: skipped(),
     traefik: skipped(),
+    networkMembers: skipped(),
     warnings
   };
 }
@@ -316,6 +370,10 @@ export async function buildLiveSnapshot(
 
   const containers = probe(() => containersOf(merged.listContainers(config.COMPOSE_FILE_PATH)));
   const traefik = await probeAsync(async () => traefikOf(await merged.readTraefik(traefikApiBaseUrl(config.HOST_DOMAIN))));
+  // Asked only when Docker answered, so a stopped daemon costs one timeout, not two.
+  const networkMembers = containers.ok
+    ? probe(() => merged.listNetworkMembers(config.NETWORK_NAME))
+    : skipped<NetworkMember[]>();
 
   const warnings = [...offline.warnings];
   if (!containers.ok && containers.reason === 'unavailable') {
@@ -328,5 +386,5 @@ export async function buildLiveSnapshot(
     );
   }
 
-  return { ...offline, probeMode: 'live', containers, traefik, warnings };
+  return { ...offline, probeMode: 'live', containers, traefik, networkMembers, warnings };
 }

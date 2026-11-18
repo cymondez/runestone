@@ -14,6 +14,11 @@ jest.mock('../../src/services/traefik-api', () => ({
   readTraefikSnapshot: jest.fn()
 }));
 
+jest.mock('../../src/services/docker-network', () => ({
+  ...jest.requireActual('../../src/services/docker-network'),
+  networkService: { members: jest.fn(() => []) }
+}));
+
 jest.mock('../../src/services/cert-manager', () => ({
   createDomainCertificate: jest.fn(),
   listDomainCertificates: jest.fn()
@@ -58,7 +63,12 @@ describe('service command', () => {
   let logSpy: jest.SpyInstance<void, Parameters<typeof console.log>>;
   let warnSpy: jest.SpyInstance<void, Parameters<typeof console.warn>>;
 
+  const originalIsTTY = process.stdin.isTTY;
+
   beforeEach(() => {
+    // These tests drive the interactive prompts, which only run in a terminal.
+    // Jest's stdin is not one; the no-terminal path has its own tests below.
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runestone-service-command-'));
     process.env.RUNESTONE_TOOL_STATE_PATH = path.join(tempDir, 'runestone.config.json');
     process.env.RUNESTONE_LANG = 'en';
@@ -83,6 +93,7 @@ describe('service command', () => {
   });
 
   afterEach(() => {
+    Object.defineProperty(process.stdin, 'isTTY', { value: originalIsTTY, configurable: true });
     logSpy.mockRestore();
     warnSpy.mockRestore();
     delete process.env.RUNESTONE_TOOL_STATE_PATH;
@@ -302,6 +313,103 @@ describe('service command', () => {
     expect(output).toContain('none        web');
     expect(output).toContain('URL');
     expect(output).toContain('Config');
+  });
+
+  it('says what an empty list means instead of printing a bare heading', async () => {
+    // A heading row and nothing else read as "Runestone provides nothing",
+    // and agents went on to install a Traefik or a Mailpit of their own.
+    await createProgram().parseAsync(['node', 'runestone', 'service', 'list']);
+
+    const output = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    expect(output).toContain('No routes have been added with `runestone service add`');
+    expect(output).toContain('`runestone status`');
+    expect(output).toContain('`runestone docs --ai-context state`');
+    expect(output).not.toContain('Group Name');
+  });
+
+  describe('without a terminal, as an AI agent runs it', () => {
+    // Every prompt opens a terminal on stdin, so in an agent's shell `service
+    // add` crashed with ERR_TTY_INIT_FAILED. It now stops where the question
+    // would have been asked, writes nothing, and says what would answer it.
+    let exitSpy: jest.SpyInstance;
+    let errorSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      Object.defineProperty(process.stdin, 'isTTY', { value: undefined, configurable: true });
+      exitSpy = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+      errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
+    function errors(): string {
+      return errorSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    }
+
+    function written(): boolean {
+      return fs.existsSync(path.join(tempDir, 'configuration', 'services', 'api.service.yml'));
+    }
+
+    it('adds a route without asking anything when every value is given and covered', async () => {
+      await createProgram().parseAsync([
+        'node', 'runestone', 'service', 'add', 'api', '--route', 'api.example.test', '--url', 'http://host.docker.internal:3000'
+      ]);
+
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(written()).toBe(true);
+      expect(confirmMock).not.toHaveBeenCalled();
+    });
+
+    it('stops at a missing certificate and names the command that creates it', async () => {
+      await createProgram().parseAsync([
+        'node', 'runestone', 'service', 'add', 'api', '--route', 'api.other.test', '--url', 'http://host.docker.internal:3000'
+      ]);
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errors()).toContain('There is no terminal to answer this question');
+      expect(errors()).toContain('runestone certs create other.test');
+      expect(confirmMock).not.toHaveBeenCalled();
+      expect(fs.existsSync(path.join(tempDir, 'configuration', 'services', 'api.service.yml'))).toBe(false);
+    });
+
+    it('stops at a loopback URL and says to use host.docker.internal', async () => {
+      await createProgram().parseAsync([
+        'node', 'runestone', 'service', 'add', 'api', '--route', 'api.example.test', '--url', 'http://localhost:3000'
+      ]);
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errors()).toContain('use host.docker.internal');
+      expect(written()).toBe(false);
+    });
+
+    it('stops at a missing value and says to give all three on the command line', async () => {
+      await createProgram().parseAsync(['node', 'runestone', 'service', 'add', 'api']);
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errors()).toContain('--route');
+      expect(errors()).toContain('--url');
+      expect(textMock).not.toHaveBeenCalled();
+      expect(written()).toBe(false);
+    });
+
+    it('asks for --force instead of a confirmation before removing', async () => {
+      await createProgram().parseAsync([
+        'node', 'runestone', 'service', 'add', 'api', '--route', 'api.example.test', '--url', 'http://host.docker.internal:3000'
+      ]);
+      await createProgram().parseAsync(['node', 'runestone', 'service', 'rm', 'api']);
+
+      expect(errors()).toContain('add --force to confirm');
+      expect(written()).toBe(true);
+    });
+  });
+
+  it('keeps an empty list empty with --no-header, for scripts', async () => {
+    await createProgram().parseAsync(['node', 'runestone', 'service', 'list', '--no-header']);
+
+    expect(logSpy).not.toHaveBeenCalled();
   });
 
   it('offers to replace localhost upstream URLs with host.docker.internal', async () => {
@@ -896,4 +1004,121 @@ describe('service command', () => {
     exitSpy.mockRestore();
     errorSpy.mockRestore();
   });
+
+  describe('service check', () => {
+    // Read-only: an agent runs it before `service add` or before writing
+    // Traefik labels. Each field gets an accepted and a rejected case, through
+    // the real command entry (AGENTS.md).
+    let exitSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      process.exitCode = undefined;
+      exitSpy = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+    });
+
+    afterEach(() => {
+      process.exitCode = undefined;
+      exitSpy.mockRestore();
+    });
+
+    function printed(): string {
+      return logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    }
+
+    async function check(...args: string[]) {
+      await createProgram().parseAsync(['node', 'runestone', 'service', 'check', ...args]);
+    }
+
+    it('says a free name and a covered hostname are free, and exits 0', async () => {
+      await check('api', '--route', 'api.example.test');
+
+      expect(printed()).toContain('The name api is free.');
+      expect(printed()).toContain('The hostname api.example.test is free, and *.example.test covers it.');
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it('rejects a name the validator rejects, and exits 1', async () => {
+      await check('-api');
+
+      expect(printed()).toContain('The name -api cannot be used');
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('rejects a hostname with a scheme or a path, as service add does', async () => {
+      await check('--route', 'https://api.example.test/v1');
+
+      expect(printed()).toContain('cannot be used');
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('rejects a hostname another project already routes', async () => {
+      readTraefikSnapshotMock.mockResolvedValue({
+        routers: [{ name: 'other@docker', rule: 'Host(`api.example.test`)' }],
+        services: []
+      });
+
+      await check('--route', 'api.example.test');
+
+      expect(printed()).toContain('other@docker');
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('rejects a name already added with service add', async () => {
+      await createProgram().parseAsync([
+        'node', 'runestone', 'service', 'add', 'api', '--route', 'api.example.test', '--url', 'http://host.docker.internal:3000'
+      ]);
+      logSpy.mockClear();
+
+      await check('api');
+
+      expect(printed()).toContain('The name api cannot be used');
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('says which certificate to create when none covers the hostname, without failing', async () => {
+      await check('--route', 'api.other.test');
+
+      expect(printed()).toContain('runestone certs create other.test');
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it('asks nothing and writes nothing', async () => {
+      Object.defineProperty(process.stdin, 'isTTY', { value: undefined, configurable: true });
+
+      await check('api', '--route', 'api.other.test');
+
+      expect(confirmMock).not.toHaveBeenCalled();
+      expect(textMock).not.toHaveBeenCalled();
+      expect(fs.existsSync(path.join(tempDir, 'runestone.config.json'))).toBe(false);
+    });
+
+    it('with --offline, skips Traefik and says other projects were not checked', async () => {
+      await check('api', '--offline');
+
+      expect(readTraefikSnapshotMock).not.toHaveBeenCalled();
+      expect(printed()).toContain('were not checked');
+    });
+
+    it('prints the verdict as JSON with --json', async () => {
+      const stdout = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      await check('api', '--route', 'api.example.test', '--json');
+
+      const result = JSON.parse(stdout.mock.calls.map((call) => String(call[0])).join(''));
+      stdout.mockRestore();
+      expect(result.serviceName).toEqual({ value: 'api', available: true });
+      expect(result.route.available).toBe(true);
+    });
+
+    it('exits 1 with the usage when given nothing to check', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      await check();
+
+      expect(errorSpy.mock.calls.join(' ')).toContain('runestone service check <name> --route <hostname>');
+      expect(process.exitCode).toBe(1);
+      errorSpy.mockRestore();
+    });
+  });
+
 });

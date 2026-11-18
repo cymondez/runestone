@@ -1,5 +1,45 @@
 # Changelog
 
+## 2.2.0 - 2026-11-18
+
+### Added
+
+- `runestone status --json` prints the status report as JSON, for scripts and AI agents.
+- `runestone docs --ai-context guide` prints the whole guide for connecting a project; it is also what `--ai-context` prints with no topic.
+- `runestone resource add`, `list`, `modify` and `remove` declare the shared services on this machine that projects should use instead of adding their own, such as one Postgres or Redis. Each has an address for processes on the host and one for containers. AI agents see them in `runestone docs --ai-context` and over MCP, and are told to leave the list to you; `runestone status` lists them. Runestone does not start or check them, and a resource has no password field.
+- `runestone service check <name> --route <hostname>` says whether a name and a hostname are free across every project on this machine, and which certificate to create when none covers the hostname. It changes nothing, and exits 1 when either is taken. `--json` prints the result for scripts and AI agents.
+
+### Changed
+
+- `runestone status` now starts with whether Runestone can be used right now, shows the Traefik and Mailpit addresses every project can use, container DNS, certificates and routes, and ends with what needs attention and the command that fixes each problem. Networks and volumes are reported as existing or missing instead of running or stopped.
+- `runestone --help` now says what Runestone already runs for every project, Traefik and Mailpit, and groups the commands into the ones that connect a project, the ones that check, and the ones that affect every project on the machine.
+- `runestone doctor --help` no longer says "repair": doctor only installs something after asking.
+- The agent guidance and the installed skill now say that Runestone already runs Traefik and Mailpit, tell the agent not to add its own reverse proxy or mail catcher, and give the Mailpit SMTP address to use from the host, from a container on the Runestone network, and from any other container. Run `runestone skill install` again to update an installed skill.
+- `runestone up` prints the Mailpit address as `https://`.
+- `runestone service --help` now says what the command is for, putting a host dev server or an external URL on a Runestone hostname, and that it does not list what Runestone itself provides. `runestone service list` with nothing added says where to look instead of printing only the column headings.
+- `runestone service` will be renamed `runestone route` in 3.0. `runestone service` will keep working.
+- `runestone docs --ai-context` without a topic now prints the whole guide: how to choose between the two ways of connecting a project, then both of them. It still contains everything it printed before.
+- The agent guidance now explains that an app behind Runestone receives plain HTTP with `X-Forwarded-*` headers and has to trust them, which Vite versions check the hostname, how to keep a dev server on its port, and that the `@docker` or `@file` at the end of a Traefik name is not part of the name.
+- The agent guidance and the installed skill now walk an agent through the steps in order, and tell it what to do when the `runestone` command is not found.
+
+### Fixed
+
+- With container DNS on, containers can resolve `host.docker.internal` again. It answers with the same address as before the feature was turned on. Run `runestone up` to get the new image.
+- `runestone dns status` no longer prints the dns service's state twice.
+- `runestone skill status` no longer reports an installed skill as edited after you create a certificate or add a route. The installed files no longer contain this machine's certificates, routes or warnings; they point to `runestone docs --ai-context state` instead.
+- `runestone skill install --force` and `runestone skill remove --force` now say what they do. They used to read the same as `--yes`.
+- `runestone status` and `runestone docs --ai-context state` now report a DNS web UI that has no authentication, which only `runestone dns status` mentioned before.
+- When this machine cannot resolve the Runestone domain, `runestone status` now says so, with the fix for that kind of domain, instead of reporting that Traefik did not answer. The agent guidance explains how Runestone hostnames resolve on the host.
+- `runestone status` and the agent guidance now say whether this machine's system trust store holds Runestone's root CA, and point to `runestone certs install` when it does not. Before, nothing said why every hostname showed a certificate warning.
+- `runestone docs --ai-context` with no topic, and with `all`, no longer repeats the topic list and the hostname lists once per topic.
+- `runestone docs`, `runestone service add` and `runestone doctor` no longer crash when run without a terminal, as AI agents run them. `runestone docs` points to `--ai-context`; `service add` and `doctor` stop where they would have asked a question and say what to do instead.
+- The agent guidance for Docker projects no longer cuts the exposed service off from the project's other services, such as its database: its example `compose.override.yml` keeps the project's own network.
+- A hostname under the Runestone domain that has no route now answers with status 404 as well as the "Service not found!" page. It used to answer 200, so a check of the status code took it for a running app. Run `runestone up` to get the new image.
+- The agent guidance now has the agent check that a response comes from its app, and covers dev servers that refuse unknown hostnames, such as Vite and webpack-dev-server.
+- `runestone docs --ai-context state` now also lists the hostnames and Traefik service IDs other projects use, not only their router IDs.
+- `runestone docs --ai-context state` now lists the names already on the shared Runestone network, and the guidance for Docker projects explains how a service attached to it can reach another project's container when both use the same name, and how to avoid it.
+- The agent guidance no longer lists `runestone doctor` as read-only, explains how to run `runestone service add` without a terminal, and has the agent choose a hostname from the project's name instead of stopping to ask.
+
 ## 2.1.0 - 2026-09-09
 
 **Agent support.** Runestone can now tell an AI coding agent how to connect a project to it, so you no longer have to explain it in every prompt. See [docs/AI-AGENTS.md](../docs/AI-AGENTS.md).

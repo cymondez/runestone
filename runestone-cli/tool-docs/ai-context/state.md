@@ -20,6 +20,10 @@ Pick something that does not appear below.
 
 {{BLOCK:USED_NAMES}}
 
+## Shared resources the user declared
+
+{{BLOCK:RESOURCES}}
+
 ## Is Runestone running
 
 {{BLOCK:RUNTIME}}

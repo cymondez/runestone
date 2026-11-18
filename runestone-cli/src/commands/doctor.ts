@@ -67,6 +67,16 @@ export function createDoctorCommand(): Command {
         }
 
         const installable = report.checks.filter((check) => check.status === 'fail' && check.canInstall);
+        // Asking opens a terminal on stdin, and an agent's shell is not one:
+        // the confirm crashed with ERR_TTY_INIT_FAILED. With nobody to ask,
+        // install nothing and say how to get it installed. The failed check
+        // still fails the command below.
+        if (installable.length > 0 && !process.stdin.isTTY) {
+          for (const check of installable) {
+            p.log.warn(t('doctor.nonInteractive', { required: check.required }));
+          }
+          installable.length = 0;
+        }
         for (const check of installable) {
           const shouldInstall = await p.confirm({
             message: `Install ${check.required} now?`,

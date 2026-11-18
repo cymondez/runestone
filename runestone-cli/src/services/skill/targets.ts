@@ -69,10 +69,12 @@ const SKILL_NAME = 'runestone';
  * to match the parent directory; both are asserted by a test.
  */
 const SKILL_DESCRIPTION =
-  'Connect a project to Runestone, the local development environment that gives projects real HTTPS on a local domain ' +
-  'through Traefik. Use when adding Runestone support to a project, choosing a local hostname, writing Traefik labels or ' +
-  'a compose.override.yml for it, exposing a host dev server or an external URL through it, or diagnosing a 404, a 502, ' +
-  'a certificate warning or a URL that works in the browser but not from another container.';
+  'Connect a project to Runestone, the local development environment that already runs Traefik (real HTTPS on local ' +
+  'domains) and Mailpit (an SMTP mail catcher) for every project on this machine. Use when adding Runestone support to ' +
+  'a project, choosing a local hostname, writing Traefik labels or a compose.override.yml, exposing a host dev server or ' +
+  'an external URL, setting up email sending in development, or about to add a reverse proxy (Traefik, nginx-proxy, ' +
+  'Caddy) or a mail catcher (Mailpit, MailHog, smtp4dev), which Runestone already provides. Also for diagnosing a 404, ' +
+  'a 502, a certificate warning or a URL that works in the browser but not from another container.';
 
 function frontmatter(version: number): string {
   return [
@@ -96,34 +98,66 @@ function skillBody(context: RenderContext): string {
     '',
     '# Runestone',
     '',
-    'Runestone is already installed and configured on this machine. Setting it up is not your job.',
+    'Runestone already runs Traefik and Mailpit for every project on this machine. Never add your own reverse proxy or',
+    'mail catcher; connect the project to these. [overview](references/overview.md) lists the Mailpit SMTP addresses.',
+    '',
+    'Runestone is already installed and configured. Setting it up is not your job.',
     '',
     `Local domains end in \`${context.hostDomain}\`.`,
     '',
-    '## Choose the integration path first',
+    '## Steps',
     '',
-    'Ask one question: does the thing being exposed run in a container Traefik can discover?',
+    '1. Choose the integration path. Ask one question: does the thing being exposed run in a container Traefik can',
+    '   discover?',
+    '   - Yes: Traefik labels plus the external Runestone network. Follow [compose](references/compose.md).',
+    '   - No: `runestone service add`, which writes a Traefik file-provider entry. Follow [service](references/service.md).',
     '',
-    '- Yes — Traefik labels plus the external Runestone network. See [compose](references/compose.md).',
-    '- No — `runestone service add`, which writes a Traefik file-provider entry. See [service](references/service.md).',
+    '   Getting this wrong fails quietly: labels on a project with no container are inert, and a file-provider entry',
+    '   pointing at `localhost` reaches the Runestone container rather than the host.',
+    '2. Run `runestone docs --ai-context state`. It reports which hostnames a certificate covers, and which router IDs,',
+    '   service IDs and hostnames are already taken, including by other projects, which is not visible any other way.',
+    '3. Choose the hostname and the name yourself, from the project\'s directory name, and check them with',
+    '   `runestone service check <name> --route <hostname>`, which changes nothing. Say in your report that you chose',
+    '   them; do not stop to ask.',
+    '4. Write the Compose override, or run `runestone service add` with the name, `--route` and `--url` all on the',
+    '   command line: without a terminal it cannot ask for anything.',
+    '5. Verify with the checks at the end of the reference you followed. Look at the response, not only its status:',
+    '   an unrouted hostname gets Runestone\'s "Service not found!" page with status 404.',
+    '6. Report what you changed, the URL, and anything you assumed.',
     '',
-    'Getting this wrong fails quietly: labels on a project with no container are inert, and a file-provider entry',
-    'pointing at `localhost` reaches the Runestone container rather than the host.',
+    'If the `runestone` command is not found, you are probably inside a container or a sandbox that cannot see the',
+    'host. Ask the user to run the Runestone commands on the host.',
     '',
-    '## Before choosing names',
-    '',
-    'Run `runestone docs --ai-context state`. It reports which hostnames a certificate covers and which router and',
-    'service IDs are already registered — including by other projects, which is not visible any other way.',
+    '`runestone docs --ai-context` prints the same guidance from the installed CLI; `runestone docs --ai-context all`',
+    'adds the live state and the troubleshooting topic.',
     '',
     '## Never run these yourself',
     '',
     'They change state outside this project. Propose them and let the user run them: `runestone dns enable`,',
     '`runestone dns disable`, `runestone certs install`, `runestone setup`, `runestone down`, `runestone up`,',
-    '`runestone stop`. See [overview](references/overview.md) for what each one costs.',
+    '`runestone stop`, and `runestone resource add`, `modify` or `remove`. See [overview](references/overview.md)',
+    'for what each one costs.',
     '',
     '## References',
     '',
     ...TOPICS.map((topic: TopicDefinition) => `- [${topic.id}](references/${topic.id}.md) — ${topic.summary}`),
+    ''
+  ].join('\n');
+}
+
+/**
+ * An online topic is nothing but live facts, so its installed copy says where
+ * to get them. The rendered topic began "Everything below was read at the
+ * moment this command ran. Do not copy it into a file", and was then written
+ * into a file.
+ */
+function liveTopicStub(topicId: string): string {
+  return [
+    `# Runestone: ${topicId}`,
+    '',
+    'This topic is the live state of this machine, so it is not stored in this file. Run:',
+    '',
+    `    runestone docs --ai-context ${topicId}`,
     ''
   ].join('\n');
 }
@@ -138,7 +172,7 @@ function skillFiles(skillsDir: string, context: RenderContext, version: number):
     },
     ...TOPICS.map((topic) => ({
       relativePath: `${root}/references/${topic.id}.md`,
-      content: `${fileMarker(version)}\n\n${context.topics[topic.id]}`
+      content: `${fileMarker(version)}\n\n${topic.tier === 'online' ? liveTopicStub(topic.id) : context.topics[topic.id]}`
     }))
   ];
 }

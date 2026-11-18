@@ -249,6 +249,38 @@ describe('runestone skill', () => {
       expect(output()).toContain('No Runestone agent guidance is installed here');
     });
 
+    it('still reports an install as current after a certificate is created', async () => {
+      // The installed references used to carry the covered domains and the
+      // taken names. Creating a certificate afterwards changed a fresh render,
+      // so status called the untouched file "edited here".
+      fs.mkdirSync(path.join(root, '.agents'), { recursive: true });
+      await run('install', '--yes', root);
+
+      (listDomainCertificates as jest.Mock).mockReturnValue([
+        {
+          status: '✓',
+          sans: ['*.example.test'],
+          issuer: 'test CA',
+          validUntil: '2030-01-01',
+          expiry: '1000d',
+          certFile: '',
+          keyFile: '',
+          dynamicConfigFile: ''
+        }
+      ]);
+      logs = [];
+      await run('status', root);
+
+      expect(output()).toContain('current');
+      expect(output()).not.toContain('edited here');
+
+      const references = path.join(root, '.agents', 'skills', 'runestone', 'references');
+      const compose = fs.readFileSync(path.join(references, 'compose.md'), 'utf8');
+      expect(compose).toContain('Run `runestone docs --ai-context state` for the current value.');
+      expect(compose).not.toContain('Wildcard coverage');
+      expect(fs.readFileSync(path.join(references, 'state.md'), 'utf8')).toContain('is not stored in this file');
+    });
+
     it('reports a current install, an out-of-date one and one edited here', async () => {
       fs.mkdirSync(path.join(root, '.agents', 'skills', 'runestone'), { recursive: true });
 

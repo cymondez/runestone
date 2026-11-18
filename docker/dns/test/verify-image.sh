@@ -179,6 +179,11 @@ expect_contains "first upstream" "$dnsmasq_conf" "server=1.1.1.1"
 expect_contains "second upstream, whitespace trimmed" "$dnsmasq_conf" "server=8.8.8.8"
 expect_contains "includes the managed rules" "$dnsmasq_conf" "conf-file=/etc/dnsmasq.d/managed.conf"
 expect_contains "includes the user rules" "$dnsmasq_conf" "conf-file=/etc/dnsmasq.d/custom.conf"
+expect_contains "answers host.docker.internal with the target IP" "$dnsmasq_conf" \
+    "address=/host.docker.internal/${TARGET_IP}"
+# The CLI compares managed.conf line for line with what the certificates call
+# for; a line there that no certificate produced would read as a pending change.
+expect_absent "keeps host.docker.internal out of managed.conf" "$rules" "host.docker.internal"
 
 say ""
 say "refuses to start without the address it is meant to answer with"
@@ -235,6 +240,7 @@ done
 expect_equal "answers a managed domain over udp" "$TARGET_IP" "$(server_dns_query local.test)"
 expect_equal "answers over tcp as well" "$TARGET_IP" "$(server_dns_query local.test '+tcp')"
 expect_equal "answers a wildcard subdomain" "$TARGET_IP" "$(server_dns_query deep.sub.api.example.test)"
+expect_equal "answers host.docker.internal" "$TARGET_IP" "$(server_dns_query host.docker.internal)"
 expect_equal "does not answer an unmapped domain with the target IP" "" \
     "$(server_dns_query unmapped.invalid)"
 

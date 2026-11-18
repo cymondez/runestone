@@ -2,8 +2,6 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as p from '@clack/prompts';
 import { dim, green, red, yellow } from 'kleur';
-import { contextBlocks } from '../services/agent-context/render';
-import { buildOfflineSnapshot } from '../services/agent-context/snapshot';
 import { ApplyResult, applyInstall, applyRemove, findOrphans } from '../services/skill/apply';
 import { Plan, PlannedFile, planInstall, planRemove } from '../services/skill/plan';
 import {
@@ -28,7 +26,7 @@ import {
 } from '../services/skill/targets';
 import { SKILL_HOME_OVERRIDE } from '../services/skill/scope';
 import { envLoader } from '../utils/env-loader';
-import { TOPICS, renderAiContext } from '../utils/tool-docs';
+import { TOPICS, installedFactPointers, renderAiContext } from '../utils/tool-docs';
 import { logger } from '../utils/logger';
 import { padToWidth } from '../utils/text';
 import { t } from '../i18n';
@@ -50,14 +48,15 @@ function collect(value: string, previous: string[]): string[] {
 }
 
 /**
- * The corpus, rendered once. Only offline scalars go in: the installed files
- * outlive the moment they were written, so a live fact baked into one would be
- * a lie within minutes. They instruct the agent to run the state topic instead.
+ * The corpus, rendered once. Only `.env` scalars go in: the installed files
+ * outlive the moment they were written, so every fact block is a pointer to the
+ * state topic rather than a value. The offline snapshot used to fill them, and
+ * those values (certificates, routes, warnings) change without the user
+ * touching the file, which made `skill status` report it as edited.
  */
 function renderContext(): RenderContext {
   const config = envLoader.load();
-  const snapshot = buildOfflineSnapshot(config);
-  const blocks = contextBlocks(snapshot);
+  const blocks = installedFactPointers();
 
   const topics: Record<string, string> = {};
   for (const topic of TOPICS) {
@@ -344,7 +343,8 @@ function createInstallCommand(): Command {
     .option('--skills-dir <path>', t('skill.option.skillsDir'))
     .option('--user', t('skill.option.user'))
     .option('--dry-run', t('skill.option.dryRun'))
-    .option('--force', t('options.force.description'))
+    // Not "skip confirmation": that is --yes. --force changes what is written.
+    .option('--force', t('skill.option.forceInstall'))
     .option('-y, --yes', t('options.yes.description'))
     .action(async (dir: string | undefined, options: SharedOptions) => {
       reportOverride();
@@ -438,7 +438,7 @@ function createRemoveCommand(): Command {
     .option('--skills-dir <path>', t('skill.option.skillsDir'))
     .option('--user', t('skill.option.user'))
     .option('--dry-run', t('skill.option.dryRun'))
-    .option('--force', t('options.force.description'))
+    .option('--force', t('skill.option.forceRemove'))
     .option('-y, --yes', t('options.yes.description'))
     .action(async (dir: string | undefined, options: SharedOptions) => {
       reportOverride();

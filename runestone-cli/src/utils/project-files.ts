@@ -13,8 +13,10 @@ import { pathHelpers } from './path-helpers';
  * 2  adds the dns service under profile `dns`
  * 3  publishes 53 with no address, so the default WSL2 installation works
  * 4  writes both image references literally instead of substituting `.env`
+ * 5  runestone image 5.3, whose catch-all answers an unrouted hostname with 404;
+ *    runestone-dns image 1.1, which answers host.docker.internal
  */
-export const COMPOSE_TEMPLATE_VERSION = '4';
+export const COMPOSE_TEMPLATE_VERSION = '5';
 
 const COMPOSE_MARKER_PREFIX = '# runestone-compose-template:';
 const COMPOSE_MARKER_PATTERN = /^# runestone-compose-template:\s*(\S+)/m;

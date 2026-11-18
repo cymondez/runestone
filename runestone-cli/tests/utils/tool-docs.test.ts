@@ -1,12 +1,19 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import {
   DEFAULT_TOPIC,
+  GUIDE_TOPIC,
+  GUIDE_TOPIC_ORDER,
+  compositeTopicOrder,
+  selectableTopicIds,
   TOPICS,
   TemplateError,
   UnknownTopicError,
   findTopic,
+  installedFactPointers,
   renderAiContext,
+  renderAiContextSequence,
   renderAiPromptContext,
   topicIds
 } from '../../src/utils/tool-docs';
@@ -42,32 +49,44 @@ function stubBlocks() {
     USED_NAMES: () => '- STUB_USED_NAMES',
     RUNTIME: () => '- STUB_RUNTIME',
     WARNINGS: () => '- STUB_WARNINGS',
-    DNS_STATE: () => '- STUB_DNS_STATE'
+    DNS_STATE: () => '- STUB_DNS_STATE',
+    RESOURCES: () => '- STUB_RESOURCES'
   };
 }
 
 describe('tool-docs renderer', () => {
-  it('keeps the pre-refactor output as a contiguous prefix of the compose topic', () => {
-    // The fixture was produced from tool-docs/ai-prompt-context.tmp.md by the
-    // renderer this module replaced, using the same values as the golden
-    // integration test.
-    //
-    // A3 appends live facts and the topic footer to this topic, which is a
-    // deliberate compatibility decision: the golden integration test asserts
-    // with `toContain`, so adding text at the end satisfies every existing
-    // assertion while changing what an agent receives for the better. A prefix
-    // check is therefore the strongest claim still available, and it is the one
-    // that matters — it proves nothing in the original brief was reordered,
-    // reworded or dropped.
-    const expected = fs.readFileSync(
-      path.join(packageRoot, 'tests', 'fixtures', 'tool-docs', 'compose-topic.expected.md'),
-      'utf8'
-    );
+  it('gives a compose override that keeps the service on its own network', () => {
+    // This replaced a byte-for-byte prefix check against the pre-A1 brief. That
+    // check was a milestone property: it proved the refactor changed nothing,
+    // and this change has to change the brief, because one of its sentences was
+    // wrong. "Attach the exposed service to the runestone network", with a
+    // snippet listing only that network, drops the implicit default network
+    // once followed in an override, and the service loses its database.
+    // Measured with docker compose config on 2026-10-14: networks listed as
+    // [runestone] leave only runestone; [default, runestone] keep both.
+    const rendered = renderAiContext('compose', config(), stubBlocks());
+    const block = /```yaml\n([\s\S]*?)```/.exec(rendered);
+    expect(block).not.toBeNull();
 
+    const override = yaml.load((block as RegExpExecArray)[1]) as {
+      services: Record<string, { networks: string[]; labels: string[] }>;
+      networks: Record<string, { external: boolean; name: string }>;
+    };
+    const service = override.services['<compose-service>'];
+
+    expect(service.networks).toEqual(['default', 'runestone']);
+    expect(service.labels).toHaveLength(7);
+    expect(service.labels).toContain('traefik.enable=true');
+    expect(service.labels).toContain('traefik.http.routers.<router-id>.entrypoints=secure');
+    expect(service.labels).toContain('traefik.docker.network=mylab-network');
+    expect(override.networks.runestone).toEqual({ external: true, name: 'mylab-network' });
+  });
+
+  it('does not offer an HTTP router, because HTTP already redirects to HTTPS', () => {
     const rendered = renderAiContext('compose', config(), stubBlocks());
 
-    expect(rendered.startsWith(expected)).toBe(true);
-    expect(rendered.length).toBeGreaterThan(expected.length);
+    expect(rendered).not.toContain('Optional HTTP entrypoint');
+    expect(rendered).toContain('HTTP entrypoint `plain` already redirects every request to HTTPS');
   });
 
   it('renders the corpus with LF endings, whoever checked it out', () => {
@@ -245,10 +264,249 @@ describe('the overview topic names the commands an agent must not run', () => {
     expect(topic).toContain(command);
   });
 
+  it('leaves the shared resource list to the user, and lists reading it as safe', () => {
+    // The list is the user telling agents what runs on this machine; an agent
+    // that adds to it would be telling itself.
+    const mustNot = topic.slice(topic.indexOf('## Commands you must not run'), topic.indexOf('## Commands that are safe'));
+    const safe = topic.slice(topic.indexOf('## Commands that are safe'), topic.indexOf('Project-integration writes'));
+
+    expect(mustNot).toContain('runestone resource add');
+    expect(safe).toContain('runestone resource list');
+    expect(safe).not.toContain('resource add');
+  });
+
   it('states the two integration paths and how to choose between them', () => {
     expect(topic).toContain('runestone service add');
     expect(topic).toContain('Traefik labels');
     expect(findTopic('compose')).toBeDefined();
     expect(findTopic('service')).toBeDefined();
+  });
+});
+
+describe('the corpus says what Runestone already provides', () => {
+  // Agents that did not know Traefik and Mailpit were already running added
+  // their own to the project. The overview is the first topic of the guide, so
+  // it is where an agent learns this before it writes anything.
+  const overview = renderAiContext('overview', config(), stubBlocks());
+
+  it('names Traefik and Mailpit as provided, with what not to add instead', () => {
+    expect(overview).toContain('Runestone already provides these');
+    for (const name of ['nginx-proxy', 'Caddy', 'MailHog', 'smtp4dev']) {
+      expect(overview).toContain(name);
+    }
+    expect(overview).toContain('https://mailpit.example.test');
+    expect(overview).toContain('https://traefik.example.test');
+  });
+
+  it('gives the Mailpit address for each place a sender can run', () => {
+    expect(overview).toContain('`localhost:1025`');
+    expect(overview).toContain('`mylab:1025`');
+    expect(overview).toContain('`host.docker.internal:1025`');
+    // host.docker.internal did not resolve in ordinary containers on a machine
+    // measured for this change, so the address is never offered without the
+    // line that makes it resolve.
+    expect(overview).toContain('host.docker.internal:host-gateway');
+  });
+
+  it('tells both integration paths not to add a proxy or a mail catcher', () => {
+    expect(renderAiContext('compose', config(), stubBlocks())).toContain('Add a Mailpit, MailHog, smtp4dev');
+    expect(renderAiContext('service', config(), stubBlocks())).toContain('Start a reverse proxy or a mail catcher of your own');
+  });
+});
+
+describe('the corpus gives "service" one meaning per term', () => {
+  // "service" means Runestone's components, a route added with `service add`,
+  // a Traefik service ID and a Compose service. Agents read `runestone service`
+  // as "the services Runestone provides", which it is not.
+  it('defines the four meanings once, in the overview', () => {
+    const overview = renderAiContext('overview', config(), stubBlocks());
+
+    expect(overview).toContain('What "service" means in these topics');
+    for (const term of ["Runestone's own components", 'A route added with `runestone service add`', 'Traefik router ID and Traefik service ID', 'Compose service']) {
+      expect(overview).toContain(term);
+    }
+  });
+
+  it.each(['overview', 'compose', 'service', 'troubleshoot', 'state'])('does not use the ambiguous phrasings in %s', (id) => {
+    const rendered = renderAiContext(id, config(), stubBlocks());
+
+    expect(rendered).not.toMatch(/routed service/i);
+    expect(rendered).not.toMatch(/\bService path\b/);
+    expect(rendered).not.toMatch(/Add a Traefik service/);
+  });
+});
+
+describe('the corpus tells an agent how to verify, and what not to treat as read-only', () => {
+  // Each of these was a sentence an agent following the text literally would
+  // have got wrong. Found by read-only probe agents on 2026-10-14.
+  const troubleshoot = renderAiContext('troubleshoot', config(), stubBlocks());
+  const service = renderAiContext('service', config(), stubBlocks());
+  const overview = renderAiContext('overview', config(), stubBlocks());
+
+  it('says an unrouted hostname gets the "Service not found!" page with a 404', () => {
+    // docker/traefik/dynamic/traefik.dynamic.yml routes every unrouted
+    // *.HOST_DOMAIN to the catch-all; docker/catchall/nginx.conf answers every
+    // path there with 404 and the "Service not found!" page.
+    for (const topic of [troubleshoot, service, renderAiContext('compose', config(), stubBlocks())]) {
+      expect(topic).toMatch(/"Service not found!" page (?:and|with) HTTP status 404/);
+      expect(topic).not.toContain('status 200');
+    }
+  });
+
+  it('covers a dev server refusing an unknown hostname', () => {
+    for (const topic of [troubleshoot, service]) {
+      expect(topic).toContain('server.allowedHosts');
+      expect(topic).toContain('Invalid Host header');
+    }
+  });
+
+  it('says which Vite versions check the hostname, and how to keep its port', () => {
+    // GHSA-vg6x-rcgg-rjx6 added the check in 6.0.9, 5.4.12 and 4.5.6; without
+    // --strictPort, Vite moves to another port and the route reaches nothing.
+    expect(service).toContain('6.0.9, 5.4.12 and 4.5.6');
+    expect(troubleshoot).toContain('6.0.9, 5.4.12 and 4.5.6');
+    expect(service).toContain('--strictPort');
+  });
+
+  it('tells an app behind Traefik to trust the forwarded headers', () => {
+    // Measured 2026-11-18: Traefik ends HTTPS and sends X-Forwarded-Proto https
+    // to a backend reached over plain HTTP.
+    for (const topic of [overview, troubleshoot]) {
+      expect(topic).toContain('X-Forwarded-Proto');
+      expect(topic).toContain('trust proxy');
+    }
+  });
+
+  it('does not list doctor as read-only, because it offers to install things', () => {
+    const readOnly = (text: string) => text.slice(text.indexOf('Read-only'), text.indexOf('\n\n', text.indexOf('Read-only') + 10));
+
+    expect(readOnly(troubleshoot)).not.toContain('doctor');
+    expect(readOnly(overview)).not.toContain('doctor');
+    expect(troubleshoot).toContain('Ask the user to run it');
+  });
+
+  it('tells an agent how to run service add without a terminal', () => {
+    expect(service).toContain('Running it without a terminal');
+    expect(service).toContain('Pass the name, --route and --url on the command line, all three.');
+  });
+
+  it('tells the agent to choose the hostname rather than stop to ask', () => {
+    for (const topic of [overview, service, renderAiContext('compose', config(), stubBlocks())]) {
+      expect(topic).toMatch(/do not stop to ask|Do not stop to ask/);
+    }
+  });
+
+  it('names the Windows curl failure so it is not mistaken for an untrusted CA', () => {
+    expect(troubleshoot).toContain('CRYPT_E_NO_REVOCATION_CHECK');
+    expect(troubleshoot).toContain('--ssl-no-revoke');
+  });
+});
+
+describe('the guide a bare --ai-context prints', () => {
+  it('is overview, compose and service, offline, overview first', () => {
+    expect(GUIDE_TOPIC_ORDER).toEqual(['overview', 'compose', 'service']);
+    for (const id of GUIDE_TOPIC_ORDER) {
+      expect(findTopic(id)?.tier).toBe('offline');
+    }
+    expect(compositeTopicOrder(GUIDE_TOPIC)).toBe(GUIDE_TOPIC_ORDER);
+    expect(selectableTopicIds()).toContain(GUIDE_TOPIC);
+  });
+
+  it('starts with the steps, before either path', () => {
+    const overview = renderAiContext('overview', config(), stubBlocks());
+
+    expect(overview.indexOf('How to connect a project, step by step')).toBeLessThan(
+      overview.indexOf('There are exactly two ways to connect a project')
+    );
+    expect(overview).toContain('If the `runestone` command is not found');
+  });
+});
+
+describe('the topic footer', () => {
+  it('advertises the two composites as well as every topic', () => {
+    // A re-run probe agent found guide and all only through `docs --help`; the
+    // footer it had read on every page listed neither.
+    const footer = renderAiContext('service', config(), stubBlocks());
+
+    expect(footer).toContain('`runestone docs --ai-context guide`');
+    expect(footer).toContain('`runestone docs --ai-context all`');
+  });
+
+  it('asks before committing what carries this machine domain, not before writing it', () => {
+    const compose = renderAiContext('compose', config(), stubBlocks());
+    const service = renderAiContext('service', config(), stubBlocks());
+
+    expect(compose).toContain('Write the file without asking, but ask before committing it.');
+    expect(compose).toContain('Recreating the containers restarts the user');
+    expect(service).toContain('add the Runestone hostname there before you verify');
+  });
+});
+
+describe('several topics rendered as one document', () => {
+  // The guide printed the footer once per topic and the hostname lists twice.
+  const blocks = () => ({
+    ...stubBlocks(),
+    DOMAINS: () => '- STUB_DOMAINS',
+    USED_NAMES: () => '- STUB_USED_NAMES'
+  });
+
+  it('prints the footer once, at the end', () => {
+    const text = renderAiContextSequence(GUIDE_TOPIC_ORDER, config(), blocks());
+
+    expect(text.match(/More Runestone context/g)).toHaveLength(1);
+    expect(text.trimEnd().endsWith('Every topic in one go, including the live state and troubleshooting.')).toBe(true);
+  });
+
+  it('prints each fact block in full once, then points back to it', () => {
+    const text = renderAiContextSequence(GUIDE_TOPIC_ORDER, config(), blocks());
+
+    expect(text.match(/STUB_DOMAINS/g)).toHaveLength(1);
+    expect(text.match(/STUB_USED_NAMES/g)).toHaveLength(1);
+    expect(text).toContain('- As listed earlier in this output.');
+  });
+
+  it('renders a single topic exactly as renderAiContext does', () => {
+    expect(renderAiContextSequence(['service'], config(), blocks())).toBe(renderAiContext('service', config(), blocks()));
+  });
+});
+
+describe('the corpus says how the host resolves Runestone hostnames', () => {
+  it('states it in the overview and gives the DNS failure its own symptom', () => {
+    // All three re-run probes resolved the domain by hand with nslookup,
+    // because nothing said how it resolves (docs/DOMAINS.md does).
+    expect(renderAiContext('overview', config(), stubBlocks())).toContain('are meant to resolve to 127.0.0.1 on\nthis machine');
+    const troubleshoot = renderAiContext('troubleshoot', config(), stubBlocks());
+    expect(troubleshoot).toContain('the browser cannot find the hostname at all');
+    expect(troubleshoot).toContain('do not change it yourself');
+  });
+});
+
+describe('the corpus warns about names on the shared network', () => {
+  it('says how a sibling name can collide, where to look, and what to call it instead', () => {
+    const compose = renderAiContext('compose', config(), stubBlocks());
+
+    expect(compose).toContain('Names on the shared network:');
+    expect(compose).toContain('`<project>-<service>-1`');
+    expect(renderAiContext('troubleshoot', config(), stubBlocks())).toContain("reaches another project's service");
+  });
+});
+
+describe('the corpus points at service check for names', () => {
+  it('tells both paths and the overview to check a name before using it', () => {
+    for (const id of ['overview', 'compose', 'service']) {
+      expect(renderAiContext(id, config(), stubBlocks())).toContain('runestone service check');
+    }
+  });
+});
+
+describe('shared resources in the corpus', () => {
+  it('puts the declared resources in the overview and the state topic', () => {
+    expect(renderAiContext('overview', config(), stubBlocks())).toContain('## Shared resources the user declared');
+    expect(renderAiContext('overview', config(), stubBlocks())).toContain('STUB_RESOURCES');
+    expect(renderAiContext('state', config(), stubBlocks())).toContain('STUB_RESOURCES');
+  });
+
+  it('never writes them into an installed file', () => {
+    expect(Object.keys(installedFactPointers())).toContain('RESOURCES');
   });
 });
